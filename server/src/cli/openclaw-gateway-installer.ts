@@ -20,7 +20,7 @@ function getSourceDir(): string {
 }
 
 
-export async function installGateway(): Promise<void> {
+export async function installOpenClawGateway(): Promise<void> {
   console.log('[clawke] 🔍 Detecting OpenClaw installation...');
 
   // Step 1: 检测 OpenClaw

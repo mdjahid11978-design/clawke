@@ -1,4 +1,5 @@
 [English](README.md)
+[中文文档](README_zh.md)
 
 # Clawke
 
@@ -37,12 +38,14 @@
 
 ```bash
 cd server
-npm install              # 安装依赖 + 编译 TypeScript
-npx clawke gateway install   # 安装 Gateway 插件到 OpenClaw
-npx clawke server start      # 启动 Clawke 服务
+npm install                              # 安装依赖 + 编译 TypeScript
+npx clawke openclaw-gateway install       # 安装 OpenClaw Gateway 插件
+# 或: npx clawke nanobot-gateway install  # 安装 nanobot Gateway
+npx clawke server start                   # 启动 Clawke 服务
 ```
 
 服务端会：
+
 1. 首次运行时将配置模板拷贝到 `~/.clawke/clawke.json`
 2. 在 `~/.clawke/data/clawke.db` 初始化 SQLite 数据库
 3. 启动 WebSocket 服务（8765 端口：客户端，8766 端口：上行）
@@ -65,8 +68,9 @@ clawke/
 │   ├── src/             # 源码
 │   ├── config/          # 配置模板
 │   └── test/            # 测试（42 个用例）
-├── gateways/            # OpenClaw Gateway 插件
-│   └── openclaw/clawke/
+├── gateways/            # Gateway 插件
+│   ├── openclaw/clawke/ # OpenClaw Gateway
+│   └── nanobot/clawke/  # nanobot Gateway
 └── relay-server/        # Relay 服务配置
 ```
 

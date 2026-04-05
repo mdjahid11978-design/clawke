@@ -3,9 +3,10 @@
  * Clawke CLI 入口
  *
  * 用法：
- *   npx clawke gateway install   — 安装 Gateway 插件到本机 OpenClaw
- *   npx clawke server start      — 启动 Clawke Server
- *   npx clawke --help             — 显示帮助
+ *   npx clawke openclaw-gateway install   — 安装 Gateway 插件到本机 OpenClaw
+ *   npx clawke nanobot-gateway install     — 安装 Clawke channel 到本机 nanobot
+ *   npx clawke server start               — 启动 Clawke Server
+ *   npx clawke --help                      — 显示帮助
  */
 
 const args = process.argv.slice(2);
@@ -13,9 +14,13 @@ const command = args[0];
 const subCommand = args[1];
 
 async function main(): Promise<void> {
-  if (command === 'gateway' && subCommand === 'install') {
-    const { installGateway } = await import('./gateway-installer.js');
-    await installGateway();
+  if (command === 'openclaw-gateway' && subCommand === 'install') {
+    const { installOpenClawGateway } = await import('./openclaw-gateway-installer.js');
+    await installOpenClawGateway();
+
+  } else if (command === 'nanobot-gateway' && subCommand === 'install') {
+    const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
+    await installNanobotGateway();
 
   } else if (command === 'server' && subCommand === 'start') {
     // 直接加载 server 入口
@@ -35,17 +40,19 @@ function printHelp(): void {
     npx clawke <command>
 
   Commands:
-    gateway install    Install/update Clawke gateway plugin to local OpenClaw
-    server start       Start Clawke Server
+    openclaw-gateway install   Install/update Clawke gateway plugin to local OpenClaw
+    nanobot-gateway install    Install Clawke channel to local nanobot
+    server start               Start Clawke Server
 
   Options:
-    --help, -h         Show this help message
+    --help, -h                 Show this help message
 
   Quick Start:
     cd server
     npm install
-    npx clawke gateway install    # Install gateway + restart OpenClaw
-    npx clawke server start       # Start CS Server
+    npx clawke openclaw-gateway install   # Install OpenClaw gateway
+    npx clawke nanobot-gateway install    # Or install nanobot gateway
+    npx clawke server start               # Start CS Server
 `);
 }
 

@@ -1,3 +1,4 @@
+[English](README.md)
 [中文文档](README_zh.md)
 
 # Clawke
@@ -37,12 +38,14 @@ A secure, edge-cloud collaborative AI workspace. Clawke connects your local serv
 
 ```bash
 cd server
-npm install              # Installs dependencies + compiles TypeScript
-npx clawke gateway install   # Install gateway plugin to local OpenClaw
-npx clawke server start      # Start Clawke Server
+npm install                           # Installs dependencies + compiles TypeScript
+npx clawke openclaw-gateway install    # Install OpenClaw gateway plugin
+# or: npx clawke nanobot-gateway install  # Install nanobot gateway
+npx clawke server start                # Start Clawke Server
 ```
 
 The server will:
+
 1. Copy config template to `~/.clawke/clawke.json` (first run)
 2. Initialize SQLite database at `~/.clawke/data/clawke.db`
 3. Start WebSocket server on port 8765 (client) and 8766 (upstream)
@@ -65,8 +68,9 @@ clawke/
 │   ├── src/             # Source code
 │   ├── config/          # Config templates
 │   └── test/            # Tests (42 cases)
-├── gateways/            # OpenClaw gateway plugin
-│   └── openclaw/clawke/
+├── gateways/            # Gateway plugins
+│   ├── openclaw/clawke/ # OpenClaw gateway
+│   └── nanobot/clawke/  # nanobot gateway
 └── relay-server/        # Relay server config
 ```
 
