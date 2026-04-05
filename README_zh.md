@@ -70,6 +70,8 @@ clawke/
 └── relay-server/        # Relay 服务配置
 ```
 
+> 📖 高级配置、Mock 模式、测试和构建说明，请参阅 [CONFIGURATION_zh.md](CONFIGURATION_zh.md)。
+
 ## 贡献
 
 1. Fork 本仓库
