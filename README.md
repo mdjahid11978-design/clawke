@@ -70,7 +70,7 @@ clawke/
 └── relay-server/        # Relay server config
 ```
 
-> 📖 For advanced configuration, Mock Mode, testing, and build instructions, see [CONFIGURATION.md](CONFIGURATION.md).
+> 📖 For advanced configuration, Mock Mode, testing, and build instructions, see [CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ## Contributing
 

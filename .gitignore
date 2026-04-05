@@ -49,7 +49,7 @@ relay-server/frp-auth/
 .agents/
 .claude/
 .superpowers/
-docs/
+.internal-docs/
 CLAUDE.md
 bak/
 .worktrees/
