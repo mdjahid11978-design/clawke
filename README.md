@@ -63,7 +63,9 @@ The server will:
 ```bash
 cd client
 flutter pub get
-flutter run              # iOS Simulator / macOS / Android
+flutter run -d ios        # iOS
+flutter run -d macos      # macOS
+flutter run -d android    # Android
 ```
 
 ## Project Structure
