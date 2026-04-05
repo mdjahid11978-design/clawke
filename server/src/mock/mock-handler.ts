@@ -8,9 +8,20 @@ import { sendToClient } from '../downstream/client-server.js';
 import type { WebSocket } from 'ws';
 import type { CupV2Handler } from '../protocol/cup-v2-handler.js';
 
-// 动态加载 scenarios（仍是旧 JS）
+// 动态加载 scenarios（仅在 mock 模式下需要，延迟加载避免缺失时崩溃）
 const serverDir = path.join(__dirname, '..', '..');
-const { matchScenario } = require(path.join(serverDir, 'mock', 'scenarios'));
+let _matchScenario: ((text: string) => any) | null = null;
+function getMatchScenario(): (text: string) => any {
+  if (!_matchScenario) {
+    try {
+      _matchScenario = require(path.join(serverDir, 'mock', 'scenarios')).matchScenario;
+    } catch {
+      _matchScenario = (text: string) => ({ text: `Mock mode unavailable: ${text}`, thinking: null, component: null });
+      console.warn('[Mock] mock/scenarios not found — mock replies will be placeholder text');
+    }
+  }
+  return _matchScenario!;
+}
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const abortSignals = new Set<string>();
@@ -26,7 +37,7 @@ export async function handleMessage(
   cupHandler: CupV2Handler,
   fastMode: boolean,
 ): Promise<void> {
-  const scenario = matchScenario(payload.content || '');
+  const scenario = getMatchScenario()(payload.content || '');
   const text = scenario.text;
   const msgId = `msg_${Date.now()}`;
   const thinkingId = `think_${Date.now()}`;
