@@ -5,6 +5,8 @@
 
 安全的边缘-云端协作 AI 工作空间。Clawke 通过 CUP 协议（Clawke Unified Protocol）连接本地服务器与 AI 提供商，并通过 SDUI（Server-Driven UI）提供丰富的原生客户端体验。
 
+[📱 iOS App](https://apps.apple.com/app/clawke/id6744313782) • 🖥 Mac App（即将上线） • 🤖 Android（即将上线） • [🔧 从源码构建](#从源码构建)
+
 ## 架构
 
 ```
@@ -54,7 +56,9 @@ npx clawke server start                   # 启动 Clawke 服务
 3. 启动 WebSocket 服务（8765 端口：客户端，8766 端口：上行）
 4. 启动 HTTP/媒体服务（8781 端口）
 
-### 启动客户端
+### 从源码构建
+
+> iOS 已上架 [App Store](https://apps.apple.com/app/clawke/id6744313782)。Mac App Store 和 Google Play 即将上线，敬请期待。
 
 ```bash
 cd client

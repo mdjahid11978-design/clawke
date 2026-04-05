@@ -5,6 +5,8 @@
 
 A secure, edge-cloud collaborative AI workspace. Clawke connects your local server to AI providers through the CUP (Clawke Unified Protocol) and delivers a rich native client experience via SDUI (Server-Driven UI).
 
+[📱 iOS App](https://apps.apple.com/app/clawke/id6744313782) • 🖥 Mac App (coming soon) • 🤖 Android (coming soon) • [🔧 Build from Source](#build-from-source)
+
 ## Architecture
 
 ```
@@ -54,7 +56,9 @@ The server will:
 3. Start WebSocket server on port 8765 (client) and 8766 (upstream)
 4. Start HTTP/media server on port 8781
 
-### Start Client
+### Build from Source
+
+> iOS is available on the [App Store](https://apps.apple.com/app/clawke/id6744313782). Mac App Store and Google Play are coming soon.
 
 ```bash
 cd client
