@@ -18,6 +18,8 @@ build/
 .flutter-plugins-dependencies
 .packages
 *.g.dart
+**/flutter/generated_plugin_registrant.*
+**/flutter/generated_plugins.cmake
 
 # Server runtime
 server/.env

@@ -31,8 +31,8 @@ graph TD
         L1["Minimax"] ~~~ L2["Codex"] ~~~ L3["Claude Code"]
     end
 
-    Client -->|"CUP 协议"| Core
-    Core -->|"WebSocket"| Agent
+    Client --> Core
+    Core --> Agent
     Agent --> LLM
 ```
 
