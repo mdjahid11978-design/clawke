@@ -9,19 +9,19 @@
 
 ## 架构
 
-```
-┌─────────────┐        CUP/WS        ┌──────────────┐       WS        ┌──────────────┐
-│ Flutter App  │ ◄──────────────────► │ Clawke Server│ ◄─────────────► │   OpenClaw    │
-│  (iOS/Mac)   │    下行链路           │   (Node.js)  │    上行链路     │   Gateway     │
-└─────────────┘                       └──────┬───────┘                 └──────┬───────┘
-                                              │                               │
-                                              │        WS              ┌──────▼───────┐
-                                              └──────────────────────► │  AI 提供商    │
-                                                                       │ (Claude 等)   │
-                                              ┌──────────────┐         └──────▲───────┘
-                                              │   nanobot     │               │
-                                              │   Gateway     │ ──────────────┘
-                                              └──────────────┘
+```mermaid
+graph LR
+    Client["📱 Flutter 客户端\n(iOS / Mac / Android)"]
+    Server["⚙️ Clawke 服务端\n(Node.js)"]
+    OC["OpenClaw\nGateway"]
+    NB["nanobot\nGateway"]
+    AI["🤖 AI 提供商\n(Claude, GPT …)"]
+
+    Client <-->|"CUP / WebSocket\n(下行链路)"| Server
+    Server <-->|"WebSocket\n(上行链路)"| OC
+    Server <-->|"WebSocket\n(上行链路)"| NB
+    OC --> AI
+    NB --> AI
 ```
 
 ## 功能特性
