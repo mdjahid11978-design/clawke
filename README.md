@@ -63,12 +63,10 @@ The server will:
 ```bash
 cd client
 flutter pub get
-flutter run -d ios        # iOS
-flutter run -d macos      # macOS
-flutter run -d android    # Android
-flutter run -d windows    # Windows
-flutter run -d linux      # Linux
+flutter run -d macos
 ```
+
+> Replace `-d macos` with `-d ios`, `-d android`, `-d windows`, or `-d linux` for other platforms.
 
 ## Project Structure
 

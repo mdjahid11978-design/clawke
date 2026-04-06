@@ -63,12 +63,10 @@ npx clawke server start                   # 启动 Clawke 服务
 ```bash
 cd client
 flutter pub get
-flutter run -d ios        # iOS
-flutter run -d macos      # macOS
-flutter run -d android    # Android
-flutter run -d windows    # Windows
-flutter run -d linux      # Linux
+flutter run -d macos
 ```
+
+> 替换 `-d macos` 为 `-d ios`、`-d android`、`-d windows` 或 `-d linux` 以构建其他平台。
 
 ## 项目结构
 
