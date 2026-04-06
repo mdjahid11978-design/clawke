@@ -74,9 +74,12 @@ jobs:
           sed -i '' 's/CODE_SIGN_IDENTITY = "Apple Development"/CODE_SIGN_IDENTITY = "-"/g' Runner.xcodeproj/project.pbxproj
           sed -i '' 's/DEVELOPMENT_TEAM = .*;/DEVELOPMENT_TEAM = "";/g' Runner.xcodeproj/project.pbxproj
           sed -i '' 's/CODE_SIGN_ENTITLEMENTS = .*;//g' Runner.xcodeproj/project.pbxproj
+          # Build universal binary (arm64 + x86_64)
+          sed -i '' 's/ONLY_ACTIVE_ARCH = YES/ONLY_ACTIVE_ARCH = NO/g' Runner.xcodeproj/project.pbxproj
           # Also set via xcconfig as fallback
           echo 'CODE_SIGNING_REQUIRED = NO' >> Flutter/Release.xcconfig
           echo 'CODE_SIGNING_ALLOWED = NO' >> Flutter/Release.xcconfig
+          echo 'ONLY_ACTIVE_ARCH = NO' >> Flutter/Release.xcconfig
 
       - name: Build macOS
         working-directory: client
