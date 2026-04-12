@@ -99,6 +99,16 @@ class ClawkeChannel(BaseChannel):
                 elif msg.get("type") == "abort":
                     logger.info("Abort request: conversation={}",
                                 msg.get("conversation_id"))
+                elif msg.get("type") == "query_models":
+                    await ws.send(json.dumps({
+                        "type": "models_response",
+                        "models": [],
+                    }))
+                elif msg.get("type") == "query_skills":
+                    await ws.send(json.dumps({
+                        "type": "skills_response",
+                        "skills": [],
+                    }))
 
         self._ws = None
         logger.info("Disconnected from Clawke Server")
