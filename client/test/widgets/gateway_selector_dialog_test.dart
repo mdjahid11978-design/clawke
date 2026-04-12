@@ -58,10 +58,6 @@ Widget _buildGatewaySelectorDialog(
       ],
     ),
     contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-    actionsPadding: EdgeInsets.zero,
-    actions: [
-      TextButton(onPressed: () => onSelect(null), child: const Text('取消')),
-    ],
   );
 }
 
@@ -118,11 +114,11 @@ void main() {
       expect(result?.accountId, 'nanobot');
     });
 
-    testWidgets('有取消按钮', (tester) async {
+    testWidgets('无取消按钮（点击外部关闭）', (tester) async {
       await tester.pumpWidget(wrap(Builder(
         builder: (ctx) => _buildGatewaySelectorDialog(ctx, twoAccounts, (_) {}),
       )));
-      expect(find.text('取消'), findsOneWidget);
+      expect(find.text('取消'), findsNothing);
     });
 
     testWidgets('标题显示"新建会话"', (tester) async {

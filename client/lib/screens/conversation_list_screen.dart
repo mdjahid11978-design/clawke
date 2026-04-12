@@ -573,13 +573,6 @@ class NewConversationButton extends ConsumerWidget {
               ],
             ),
             contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-            actionsPadding: EdgeInsets.zero,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('取消'),
-              ),
-            ],
           );
         },
       );
