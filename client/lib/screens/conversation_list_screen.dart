@@ -506,30 +506,82 @@ class NewConversationButton extends ConsumerWidget {
       // 多后端：弹出选择器
       final selected = await showDialog<ConnectedAccount>(
         context: context,
-        builder: (ctx) => SimpleDialog(
-          title: Text(context.l10n.newConversation),
-          children: accounts.map((a) {
-            return SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop(a),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.smart_toy_outlined,
-                    color: Theme.of(ctx).colorScheme.primary,
-                    size: 20,
+        builder: (ctx) {
+          final cs = Theme.of(ctx).colorScheme;
+          final tt = Theme.of(ctx).textTheme;
+          return AlertDialog(
+            title: Text(context.l10n.newConversation),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '请选择 AI 后端',
+                  style: tt.bodyMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      a.accountId,
-                      style: Theme.of(ctx).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 16),
+                ...accounts.map((a) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: cs.surfaceContainerHighest.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.of(ctx).pop(a),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: cs.primary.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.smart_toy_outlined,
+                                  color: cs.primary,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  a.accountId,
+                                  style: tt.titleSmall,
+                                ),
+                              ),
+                              Icon(
+                                Icons.chevron_right,
+                                color: cs.onSurfaceVariant.withOpacity(0.4),
+                                size: 20,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                  );
+                }),
+              ],
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            actionsPadding: EdgeInsets.zero,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('取消'),
               ),
-            );
-          }).toList(),
-        ),
+            ],
+          );
+        },
       );
       if (selected == null) return; // 取消
       accountId = selected.accountId;
