@@ -59,6 +59,12 @@ export function startOpenClawListener(
       if (accountId) {
         payload.account_id = payload.account_id || accountId;
       }
+
+      // models_response / skills_response 由 _queryGateway 的临时 listener 处理，不走主路由
+      if (payload.type === 'models_response' || payload.type === 'skills_response') {
+        return;
+      }
+
       messageHandler(payload);
     });
 
