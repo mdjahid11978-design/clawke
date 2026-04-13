@@ -279,8 +279,16 @@ class SettingsScreen extends ConsumerWidget {
   /// 统一处理外链打开（应用内浏览器，macOS 自动降级为外部浏览器）。
   Future<void> _handleOpenUrl(String url) async {
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    try {
+      // First try in-app browser view
+      if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
+        // Fallback to external application
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Failed to launch url: $e');
+      // Final fallback effort without mode restriction
+      launchUrl(uri).ignore();
     }
   }
 
