@@ -46,19 +46,27 @@ const sessionModels = new Map<string, string>();
 /** 从 OpenClaw 配置中提取可用模型列表 */
 function getAvailableModels(ctx: ChannelGatewayContext<ResolvedClawkeAccount>): string[] {
   try {
-    const core = getClawkeRuntime();
-    const agentsList = (core as any).config?.agents?.list;
-    if (Array.isArray(agentsList)) {
-      const models = new Set<string>();
-      for (const agent of agentsList) {
-        if (agent.llm) models.add(agent.llm);
-        if (agent.llmDefault) models.add(agent.llmDefault);
+    const fs = require("fs");
+    const path = require("path");
+    const os = require("os");
+    const configPath = path.join(os.homedir(), ".openclaw", "openclaw.json");
+    if (!fs.existsSync(configPath)) return [];
+
+    const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const providers = config?.models?.providers;
+    if (!providers || typeof providers !== "object") return [];
+
+    const models = new Set<string>();
+    for (const providerKey of Object.keys(providers)) {
+      const providerModels = providers[providerKey]?.models;
+      if (Array.isArray(providerModels)) {
+        for (const m of providerModels) {
+          if (m.id) models.add(m.id);
+          else if (m.name) models.add(m.name);
+        }
       }
-      return [...models];
     }
-    // 尝试从 ctx.cfg 获取
-    const llm = (ctx.cfg as any)?.agents?.default?.llm;
-    if (llm) return [llm];
+    return [...models];
   } catch (e: any) {
     ctx.log?.error(`getAvailableModels failed: ${e.message}`);
   }
