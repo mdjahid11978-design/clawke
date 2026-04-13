@@ -682,4 +682,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hideToken => 'Hide Token';
+
+  @override
+  String get termsUrl => 'https://clawke.ai/ai/legal/terms.htm?lang=en';
+
+  @override
+  String get privacyUrl => 'https://clawke.ai/ai/legal/privacy.htm?lang=en';
 }

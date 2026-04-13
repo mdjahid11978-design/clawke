@@ -254,7 +254,6 @@ class SettingsScreen extends ConsumerWidget {
 
   /// 法律信息。
   Widget _buildLegalSection(BuildContext context, dynamic t) {
-    final lang = Localizations.localeOf(context).languageCode;
     return _MenuCard(
       children: [
         _MenuRow(
@@ -262,7 +261,7 @@ class SettingsScreen extends ConsumerWidget {
           iconColor: const Color(0xFF94a3b8),
           iconBg: const Color(0xFF94a3b8).withValues(alpha: 0.12),
           label: t.termsOfService,
-          onTap: () => _handleOpenUrl('https://clawke.ai/ai/legal/terms.htm?lang=$lang'),
+          onTap: () => _handleOpenUrl(t.termsUrl),
         ),
         _MenuRow(
           icon: Icons.policy_outlined,
@@ -270,7 +269,7 @@ class SettingsScreen extends ConsumerWidget {
           iconBg: const Color(0xFF94a3b8).withValues(alpha: 0.12),
           label: t.privacyPolicy,
           isLast: true,
-          onTap: () => _handleOpenUrl('https://clawke.ai/ai/legal/privacy.htm?lang=$lang'),
+          onTap: () => _handleOpenUrl(t.privacyUrl),
         ),
       ],
     );

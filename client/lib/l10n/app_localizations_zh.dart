@@ -662,4 +662,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get hideToken => '隐藏 Token';
+
+  @override
+  String get termsUrl => 'https://clawke.ai/ai/legal/terms.htm?lang=zh';
+
+  @override
+  String get privacyUrl => 'https://clawke.ai/ai/legal/privacy.htm?lang=zh';
 }

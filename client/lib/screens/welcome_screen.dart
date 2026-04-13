@@ -20,8 +20,7 @@ class WelcomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final locale = ref.watch(localeProvider);
-    final currentLang =
-        locale?.languageCode ?? Localizations.localeOf(context).languageCode;
+    final currentLang = locale?.languageCode ?? Localizations.localeOf(context).languageCode;
     final t = AppLocalizations.of(context)!;
 
     return Scaffold(
@@ -165,8 +164,7 @@ class WelcomeScreen extends ConsumerWidget {
                   children: [
                     _LegalLink(
                       label: t.termsOfService,
-                      onTap: () =>
-                          _handleOpenUrl('https://clawke.ai/ai/legal/terms.htm?lang=$currentLang'),
+                      onTap: () => _handleOpenUrl(t.termsUrl),
                     ),
                     Text(
                       ' · ',
@@ -176,8 +174,7 @@ class WelcomeScreen extends ConsumerWidget {
                     ),
                     _LegalLink(
                       label: t.privacyPolicy,
-                      onTap: () => _handleOpenUrl(
-                          'https://clawke.ai/ai/legal/privacy.htm?lang=$currentLang'),
+                      onTap: () => _handleOpenUrl(t.privacyUrl),
                     ),
                   ],
                 ),
