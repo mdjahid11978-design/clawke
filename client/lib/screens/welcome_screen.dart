@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:client/core/url_utils.dart';
 import 'package:client/screens/login_screen.dart';
 import 'package:client/screens/manual_config_screen.dart';
 import 'package:client/providers/locale_provider.dart';
@@ -164,7 +164,7 @@ class WelcomeScreen extends ConsumerWidget {
                   children: [
                     _LegalLink(
                       label: t.termsOfService,
-                      onTap: () => _handleOpenUrl(t.termsUrl),
+                      onTap: () => openTermsOfService(context),
                     ),
                     Text(
                       ' · ',
@@ -174,7 +174,7 @@ class WelcomeScreen extends ConsumerWidget {
                     ),
                     _LegalLink(
                       label: t.privacyPolicy,
-                      onTap: () => _handleOpenUrl(t.privacyUrl),
+                      onTap: () => openPrivacyPolicy(context),
                     ),
                   ],
                 ),
@@ -200,12 +200,6 @@ class WelcomeScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _handleOpenUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-    }
-  }
 }
 
 class _LegalLink extends StatelessWidget {

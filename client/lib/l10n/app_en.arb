@@ -222,7 +222,5 @@
   "later": "Later",
   "reLogin": "Log In Again",
   "showToken": "Show Token",
-  "hideToken": "Hide Token",
-  "termsUrl": "https://clawke.ai/ai/legal/terms.htm?lang=en",
-  "privacyUrl": "https://clawke.ai/ai/legal/privacy.htm?lang=en"
+  "hideToken": "Hide Token"
 }

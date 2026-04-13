@@ -50,7 +50,6 @@ export async function getModels(req: Request, res: Response): Promise<void> {
     if (queryModelsFunc) {
       models = await queryModelsFunc(accountId);
     }
-    console.log(`[ConfigAPI] getModels(${accountId}): ${models.length} models returned, refresh=${forceRefresh}`);
 
     // 空结果不缓存（gateway 可能还没连接）
     if (models.length > 0) {

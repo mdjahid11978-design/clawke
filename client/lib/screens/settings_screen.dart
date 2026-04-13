@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:client/core/url_utils.dart';
 import 'package:client/screens/server_settings_page.dart';
 import 'package:client/screens/appearance_settings_page.dart';
 import 'package:client/screens/modify_password_screen.dart';
@@ -261,7 +261,7 @@ class SettingsScreen extends ConsumerWidget {
           iconColor: const Color(0xFF94a3b8),
           iconBg: const Color(0xFF94a3b8).withValues(alpha: 0.12),
           label: t.termsOfService,
-          onTap: () => _handleOpenUrl(t.termsUrl),
+          onTap: () => openTermsOfService(context),
         ),
         _MenuRow(
           icon: Icons.policy_outlined,
@@ -269,26 +269,10 @@ class SettingsScreen extends ConsumerWidget {
           iconBg: const Color(0xFF94a3b8).withValues(alpha: 0.12),
           label: t.privacyPolicy,
           isLast: true,
-          onTap: () => _handleOpenUrl(t.privacyUrl),
+          onTap: () => openPrivacyPolicy(context),
         ),
       ],
     );
-  }
-
-  /// 统一处理外链打开（应用内浏览器，macOS 自动降级为外部浏览器）。
-  Future<void> _handleOpenUrl(String url) async {
-    final uri = Uri.parse(url);
-    try {
-      // First try in-app browser view
-      if (!await launchUrl(uri, mode: LaunchMode.inAppBrowserView)) {
-        // Fallback to external application
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      debugPrint('Failed to launch url: $e');
-      // Final fallback effort without mode restriction
-      launchUrl(uri).ignore();
-    }
   }
 
   /// 登出确认。

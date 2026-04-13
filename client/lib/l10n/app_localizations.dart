@@ -1339,18 +1339,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'隐藏 Token'**
   String get hideToken;
-
-  /// No description provided for @termsUrl.
-  ///
-  /// In zh, this message translates to:
-  /// **'https://clawke.ai/ai/legal/terms.htm?lang=zh'**
-  String get termsUrl;
-
-  /// No description provided for @privacyUrl.
-  ///
-  /// In zh, this message translates to:
-  /// **'https://clawke.ai/ai/legal/privacy.htm?lang=zh'**
-  String get privacyUrl;
 }
 
 class _AppLocalizationsDelegate
