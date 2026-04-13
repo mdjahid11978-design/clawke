@@ -208,8 +208,7 @@ class _ConversationSettingsSheetState
           backgroundColor: colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           title: Text(
-              _isCreateMode ? '新建会话' : '会话设置',
-              style: Theme.of(context).textTheme.titleMedium),
+              _isCreateMode ? '新建会话' : '会话设置'),
           actions: [
             if (_isCreateMode)
               TextButton(
@@ -781,8 +780,7 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
       appBar: AppBar(
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
-        title: Text('选择模型',
-            style: Theme.of(context).textTheme.titleMedium),
+        title: Text('选择模型'),
         actions: [
           if (widget.onRefresh != null)
             IconButton(
@@ -980,8 +978,7 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
             onPressed: () => Navigator.of(context)
                 .pop(_SkillPickerResult(selected: _selected, mode: _mode)),
           ),
-          title: Text('选择 Skills',
-              style: Theme.of(context).textTheme.titleMedium),
+          title: Text('选择 Skills'),
           actions: [
             if (widget.onRefresh != null)
               IconButton(
@@ -1295,8 +1292,7 @@ class _TextEditorPageState extends State<_TextEditorPage> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           onPressed: () => Navigator.of(context).pop(_controller.text),
         ),
-        title: Text(widget.title,
-            style: Theme.of(context).textTheme.titleMedium),
+        title: Text(widget.title),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -1367,8 +1363,7 @@ class _WorkDirPageState extends State<_WorkDirPage> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
           onPressed: () => Navigator.of(context).pop(_controller.text),
         ),
-        title: Text('工作目录',
-            style: Theme.of(context).textTheme.titleMedium),
+        title: Text('工作目录'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),

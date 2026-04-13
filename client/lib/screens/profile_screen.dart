@@ -25,7 +25,7 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: Text(context.l10n.profile, style: Theme.of(context).textTheme.titleMedium),
+        title: Text(context.l10n.profile),
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
       ),

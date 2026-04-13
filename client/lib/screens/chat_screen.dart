@@ -520,8 +520,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _buildAppBarTitle(String? convId, ColorScheme colorScheme) {
     if (convId == null) {
-      return Text('Clawke',
-          style: Theme.of(context).textTheme.titleMedium);
+      return Text('Clawke');
     }
     final conversationsAsync = ref.watch(conversationListProvider);
     final name = conversationsAsync.valueOrNull
@@ -531,7 +530,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Text(
       name ?? convId,
       overflow: TextOverflow.ellipsis,
-      style: Theme.of(context).textTheme.titleMedium,
     );
   }
 

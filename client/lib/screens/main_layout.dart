@@ -393,7 +393,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       appBar: AppBar(
         title: Text(
           context.l10n.navDashboard,
-          style: Theme.of(context).textTheme.titleMedium,
         ),
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -409,7 +408,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: Text(context.l10n.navChat, style: Theme.of(context).textTheme.titleMedium),
+        title: Text(context.l10n.navChat),
         centerTitle: true,
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
