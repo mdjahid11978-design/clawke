@@ -86,8 +86,11 @@ class ClawkeApp extends ConsumerWidget {
         ),
         textTheme: scaledText,
         useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          actionsPadding: EdgeInsets.only(right: 8),
+        appBarTheme: AppBarTheme(
+          actionsPadding: const EdgeInsets.only(right: 8),
+          titleTextStyle: scaledText.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         extensions: [
           GptMarkdownThemeData(
@@ -116,8 +119,11 @@ class ClawkeApp extends ConsumerWidget {
         ),
         textTheme: scaledText,
         useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          actionsPadding: EdgeInsets.only(right: 8),
+        appBarTheme: AppBarTheme(
+          actionsPadding: const EdgeInsets.only(right: 8),
+          titleTextStyle: scaledText.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
         extensions: [
           GptMarkdownThemeData(
