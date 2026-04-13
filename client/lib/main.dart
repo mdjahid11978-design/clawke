@@ -86,6 +86,9 @@ class ClawkeApp extends ConsumerWidget {
         ),
         textTheme: scaledText,
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          actionsPadding: EdgeInsets.only(right: 8),
+        ),
         extensions: [
           GptMarkdownThemeData(
             brightness: Brightness.light,
@@ -113,6 +116,9 @@ class ClawkeApp extends ConsumerWidget {
         ),
         textTheme: scaledText,
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          actionsPadding: EdgeInsets.only(right: 8),
+        ),
         extensions: [
           GptMarkdownThemeData(
             brightness: Brightness.dark,
