@@ -3,19 +3,19 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// 法律页面基础地址。
-const _legalBase = 'https://clawke.ai/ai/legal';
+/// 法律页面基础域名。
+const _legalHost = 'https://clawke.ai';
 
 /// 根据当前语言打开「服务条款」页面。
 void openTermsOfService(BuildContext context) {
   final lang = Localizations.localeOf(context).languageCode;
-  openUrl('$_legalBase/terms.htm?lang=$lang');
+  openUrl('$_legalHost/$lang/ai/legal/terms.htm');
 }
 
 /// 根据当前语言打开「隐私政策」页面。
 void openPrivacyPolicy(BuildContext context) {
   final lang = Localizations.localeOf(context).languageCode;
-  openUrl('$_legalBase/privacy.htm?lang=$lang');
+  openUrl('$_legalHost/$lang/ai/legal/privacy.htm');
 }
 
 /// 统一打开外部链接。
