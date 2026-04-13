@@ -409,7 +409,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: Text(context.l10n.navChat),
-        centerTitle: true,
         backgroundColor: colorScheme.surface,
         surfaceTintColor: Colors.transparent,
         actions: [
@@ -424,7 +423,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
               );
             },
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: ConversationListScreen(
