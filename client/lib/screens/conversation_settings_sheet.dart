@@ -211,11 +211,6 @@ class _ConversationSettingsSheetState
               _isCreateMode ? '新建会话' : '会话设置',
               style: Theme.of(context).textTheme.titleMedium),
           actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh_rounded, size: 20),
-              tooltip: '刷新模型和 Skills',
-              onPressed: _loading ? null : () => _loadData(refresh: true),
-            ),
             if (_isCreateMode)
               TextButton(
                 onPressed: _saving ? null : _save,
@@ -245,11 +240,9 @@ class _ConversationSettingsSheetState
                   const SizedBox(height: 24),
 
                   // ── Skills ──
-                  if (_availableSkills.isNotEmpty) ...[
-                    _sectionLabel('Skills'),
-                    _buildSkillPanel(colorScheme),
-                    const SizedBox(height: 24),
-                  ],
+                  _sectionLabel('Skills'),
+                  _buildSkillPanel(colorScheme),
+                  const SizedBox(height: 24),
 
                   // ── 系统提示词 ──
                   _sectionLabel('系统提示词'),
@@ -355,10 +348,7 @@ class _ConversationSettingsSheetState
   // 配置组 — 模型选择
   // ═══════════════════════════════════════
   Widget _buildConfigGroup(ColorScheme colorScheme) {
-    final hasModels = _availableModels.isNotEmpty;
-    final displayModel = hasModels
-        ? (_selectedModel ?? '默认模型')
-        : '不支持指定模型';
+    final displayModel = _selectedModel ?? '默认模型';
 
     return Container(
       decoration: BoxDecoration(
@@ -366,7 +356,7 @@ class _ConversationSettingsSheetState
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(
-        onTap: hasModels ? () => _openModelPicker(colorScheme) : null,
+        onTap: () => _openModelPicker(colorScheme),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -375,11 +365,11 @@ class _ConversationSettingsSheetState
               Container(
                 width: 30, height: 30,
                 decoration: BoxDecoration(
-                  color: colorScheme.primary.withOpacity(hasModels ? 0.12 : 0.06),
+                  color: colorScheme.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Icon(Icons.layers_rounded,
-                    size: 16, color: hasModels ? colorScheme.primary : colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                    size: 16, color: colorScheme.primary),
               ),
               const SizedBox(width: 12),
               Text(
@@ -387,7 +377,7 @@ class _ConversationSettingsSheetState
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w500,
-                  color: hasModels ? colorScheme.onSurface : colorScheme.onSurfaceVariant.withOpacity(0.5),
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(width: 8),
@@ -398,15 +388,14 @@ class _ConversationSettingsSheetState
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: 14,
-                    color: hasModels ? colorScheme.onSurfaceVariant : colorScheme.onSurfaceVariant.withOpacity(0.4),
+                    color: colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
               const SizedBox(width: 6),
-              if (hasModels)
-                Icon(Icons.chevron_right_rounded,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+              Icon(Icons.chevron_right_rounded,
+                  size: 18,
+                  color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
             ],
           ),
         ),
@@ -634,6 +623,12 @@ class _ConversationSettingsSheetState
         builder: (_) => _ModelPickerPage(
           models: _availableModels,
           selected: _selectedModel,
+          onRefresh: () async {
+            final models = await _api.getModels(
+                accountId: widget.accountId, refresh: true);
+            setState(() => _availableModels = models);
+            return models;
+          },
         ),
       ),
     );
@@ -652,6 +647,12 @@ class _ConversationSettingsSheetState
           availableSkills: _availableSkills,
           selectedSkills: Set.from(_selectedSkills),
           skillMode: _skillMode,
+          onRefresh: () async {
+            final skills = await _api.getSkills(
+                accountId: widget.accountId, refresh: true);
+            setState(() => _availableSkills = skills);
+            return skills;
+          },
         ),
       ),
     );
@@ -702,11 +703,37 @@ class _ConversationSettingsSheetState
 // ═══════════════════════════════════════════════════════════
 // Model Picker 子页面
 // ═══════════════════════════════════════════════════════════
-class _ModelPickerPage extends StatelessWidget {
+class _ModelPickerPage extends StatefulWidget {
   final List<String> models;
   final String? selected;
+  final Future<List<String>> Function()? onRefresh;
 
-  const _ModelPickerPage({required this.models, this.selected});
+  const _ModelPickerPage({required this.models, this.selected, this.onRefresh});
+
+  @override
+  State<_ModelPickerPage> createState() => _ModelPickerPageState();
+}
+
+class _ModelPickerPageState extends State<_ModelPickerPage> {
+  late List<String> _models;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _models = List.from(widget.models);
+  }
+
+  Future<void> _refresh() async {
+    if (widget.onRefresh == null) return;
+    setState(() => _refreshing = true);
+    try {
+      final newModels = await widget.onRefresh!();
+      if (mounted) setState(() => _models = newModels);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -719,6 +746,18 @@ class _ModelPickerPage extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
         title: Text('选择模型',
             style: Theme.of(context).textTheme.titleMedium),
+        actions: [
+          if (widget.onRefresh != null)
+            IconButton(
+              icon: _refreshing
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh_rounded, size: 20),
+              tooltip: '刷新模型列表',
+              onPressed: _refreshing ? null : _refresh,
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -732,10 +771,30 @@ class _ModelPickerPage extends StatelessWidget {
             child: Column(
               children: [
                 // 默认模型
-                _buildModelItem(context, null, '默认模型', colorScheme),
-                ...models.map(
-                  (m) => _buildModelItem(context, m, m, colorScheme),
-                ),
+                _buildModelItem(null, '默认模型', colorScheme),
+                if (_models.isEmpty)
+                  // 空状态提示
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline_rounded,
+                            size: 16, color: colorScheme.onSurfaceVariant.withOpacity(0.5)),
+                        const SizedBox(width: 8),
+                        Text(
+                          '当前 Gateway 不支持指定模型',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ..._models.map(
+                    (m) => _buildModelItem(m, m, colorScheme),
+                  ),
               ],
             ),
           ),
@@ -745,12 +804,11 @@ class _ModelPickerPage extends StatelessWidget {
   }
 
   Widget _buildModelItem(
-    BuildContext context,
     String? value,
     String label,
     ColorScheme colorScheme,
   ) {
-    final isSelected = selected == value;
+    final isSelected = widget.selected == value;
     return InkWell(
       onTap: () => Navigator.of(context).pop(value ?? ''),
       child: Container(
@@ -801,11 +859,13 @@ class _SkillPickerPage extends StatefulWidget {
   final List<SkillInfo> availableSkills;
   final Set<String> selectedSkills;
   final String skillMode;
+  final Future<List<SkillInfo>> Function()? onRefresh;
 
   const _SkillPickerPage({
     required this.availableSkills,
     required this.selectedSkills,
     required this.skillMode,
+    this.onRefresh,
   });
 
   @override
@@ -815,14 +875,17 @@ class _SkillPickerPage extends StatefulWidget {
 class _SkillPickerPageState extends State<_SkillPickerPage> {
   late Set<String> _selected;
   late String _mode;
+  late List<SkillInfo> _skills;
   String _searchQuery = '';
   final _searchController = TextEditingController();
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
     _selected = Set.from(widget.selectedSkills);
     _mode = widget.skillMode;
+    _skills = List.from(widget.availableSkills);
   }
 
   @override
@@ -831,14 +894,25 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
     super.dispose();
   }
 
+  Future<void> _refresh() async {
+    if (widget.onRefresh == null) return;
+    setState(() => _refreshing = true);
+    try {
+      final newSkills = await widget.onRefresh!();
+      if (mounted) setState(() => _skills = newSkills);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     // Filter & sort: selected first
     final filtered = _searchQuery.isEmpty
-        ? widget.availableSkills
-        : widget.availableSkills.where((s) =>
+        ? _skills
+        : _skills.where((s) =>
             s.name.toLowerCase().contains(_searchQuery) ||
             s.description.toLowerCase().contains(_searchQuery));
     final sorted = filtered.toList()
@@ -846,22 +920,17 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
         final aS = _selected.contains(a.name) ? 0 : 1;
         final bS = _selected.contains(b.name) ? 0 : 1;
         if (aS != bS) return aS - bS;
-        // Both selected: preserve selection order
         if (aS == 0 && bS == 0) {
           final selList = _selected.toList();
           return selList.indexOf(a.name) - selList.indexOf(b.name);
         }
-        // Both unselected: alphabetical
         return a.name.compareTo(b.name);
       });
 
     return PopScope(
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
-          // Return result on pop
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            // Will already be popped, using NavigatorState result
-          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {});
         }
       },
       child: Scaffold(
@@ -876,8 +945,49 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
           ),
           title: Text('选择 Skills',
               style: Theme.of(context).textTheme.titleMedium),
+          actions: [
+            if (widget.onRefresh != null)
+              IconButton(
+                icon: _refreshing
+                    ? const SizedBox(
+                        width: 18, height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh_rounded, size: 20),
+                tooltip: '刷新 Skills 列表',
+                onPressed: _refreshing ? null : _refresh,
+              ),
+          ],
         ),
-        body: Column(
+        body: _skills.isEmpty
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.extension_off_rounded,
+                          size: 48, color: colorScheme.onSurfaceVariant.withOpacity(0.3)),
+                      const SizedBox(height: 16),
+                      Text(
+                        '当前 Gateway 不支持指定 Skill',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '点击右上角刷新按钮重试',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurfaceVariant.withOpacity(0.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            : Column(
           children: [
 
             // Chips row for selected
