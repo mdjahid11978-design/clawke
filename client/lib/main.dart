@@ -87,7 +87,7 @@ class ClawkeApp extends ConsumerWidget {
         textTheme: scaledText,
         useMaterial3: true,
         appBarTheme: AppBarTheme(
-          actionsPadding: const EdgeInsets.only(right: 12),
+          actionsPadding: const EdgeInsets.only(right: 8),
           foregroundColor: Colors.black87,
           titleTextStyle: scaledText.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
@@ -122,7 +122,7 @@ class ClawkeApp extends ConsumerWidget {
         textTheme: scaledText,
         useMaterial3: true,
         appBarTheme: AppBarTheme(
-          actionsPadding: const EdgeInsets.only(right: 12),
+          actionsPadding: const EdgeInsets.only(right: 8),
           foregroundColor: const Color(0xFFE4E4E7),
           titleTextStyle: scaledText.titleMedium?.copyWith(
             fontWeight: FontWeight.w600,
