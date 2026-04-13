@@ -229,14 +229,14 @@ class _ConversationSettingsSheetState
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // ── 会话名称 ──
-                  _sectionLabel('会话名称'),
-                  _buildNameInput(colorScheme),
+                  // ── 基本信息 ──
+                  _sectionLabel('基本信息'),
+                  _buildBasicInfoGroup(colorScheme),
                   const SizedBox(height: 24),
 
-                  // ── 配置 ──
-                  _sectionLabel('配置'),
-                  _buildConfigGroup(colorScheme),
+                  // ── 模型 ──
+                  _sectionLabel('模型'),
+                  _buildModelCard(colorScheme),
                   const SizedBox(height: 24),
 
                   // ── Skills ──
@@ -266,31 +266,6 @@ class _ConversationSettingsSheetState
                     placeholder: 'default',
                     onTap: () => _openWorkDirEditor(colorScheme),
                   ),
-                  // ── 调试信息 ──
-                  const Divider(height: 32),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '其他信息',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SelectableText(
-                          'Gateway: ${widget.accountId}\n会话 ID: ${widget.conversationId ?? "（创建后生成）"}',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                            fontFamily: 'monospace',
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -317,37 +292,143 @@ class _ConversationSettingsSheetState
   }
 
   // ═══════════════════════════════════════
-  // 会话名称 — iOS 风格圆角输入框
+  // 基本信息组 — 会话名称 + Gateway + 会话 ID
   // ═══════════════════════════════════════
-  Widget _buildNameInput(ColorScheme colorScheme) {
+  Widget _buildBasicInfoGroup(ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: TextField(
-        controller: _nameController,
-        style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
-        decoration: InputDecoration(
-          hintText: '输入会话名称',
-          hintStyle: TextStyle(
-            color: colorScheme.onSurface.withOpacity(0.3),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // 会话名称
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            child: Row(
+              children: [
+                Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(Icons.chat_bubble_outline_rounded,
+                      size: 16, color: colorScheme.primary),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '会话名称',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _nameController,
+                    style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
+                    textAlign: TextAlign.right,
+                    decoration: InputDecoration(
+                      hintText: '输入名称',
+                      hintStyle: TextStyle(
+                        color: colorScheme.onSurface.withOpacity(0.3),
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      isDense: true,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 14,
+          Divider(height: 1, thickness: 1,
+              color: colorScheme.outlineVariant.withOpacity(0.1)),
+          // Gateway
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(Icons.dns_outlined,
+                      size: 16, color: colorScheme.onSurfaceVariant.withOpacity(0.5)),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Gateway',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  widget.accountId,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          Divider(height: 1, thickness: 1,
+              color: colorScheme.outlineVariant.withOpacity(0.1)),
+          // 会话 ID
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 30, height: 30,
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(Icons.tag_rounded,
+                      size: 16, color: colorScheme.onSurfaceVariant.withOpacity(0.5)),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '会话 ID',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  widget.conversationId ?? '（创建后生成）',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // ═══════════════════════════════════════
-  // 配置组 — 模型选择
+  // 模型卡片 — 显示模型名称
   // ═══════════════════════════════════════
-  Widget _buildConfigGroup(ColorScheme colorScheme) {
+  Widget _buildModelCard(ColorScheme colorScheme) {
     final displayModel = _selectedModel ?? '默认模型';
 
     return Container(
@@ -372,23 +453,14 @@ class _ConversationSettingsSheetState
                     size: 16, color: colorScheme.primary),
               ),
               const SizedBox(width: 12),
-              Text(
-                '模型',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   displayModel,
                   overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.right,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -452,32 +524,25 @@ class _ConversationSettingsSheetState
                         Text(
                           selectedList.isEmpty
                               ? '未启用'
-                              : '${selectedList.length} 个已启用',
+                              : '已启用 ${selectedList.length} 个',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
                             color: colorScheme.onSurface,
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '点击修改 Skills 配置',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                          ),
-                        ),
                       ],
                     ),
                   ),
-                  Text(
-                    modeText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.primary,
+                  if (selectedList.isNotEmpty)
+                    Text(
+                      modeText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
                     ),
-                  ),
                   const SizedBox(width: 6),
                   Icon(Icons.chevron_right_rounded,
                       size: 18, color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
