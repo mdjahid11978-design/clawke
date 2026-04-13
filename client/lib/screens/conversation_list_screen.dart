@@ -29,7 +29,7 @@ class ConversationListScreen extends ConsumerWidget {
         if (showHeader)
           Container(
             height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.only(left: 16, right: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
                   ? colorScheme.surfaceContainerLowest
