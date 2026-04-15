@@ -525,6 +525,7 @@ async function handleClawkeInbound(
       deliver: async (payload: ReplyPayload, info?: { kind?: string }) => {
         const kind = info?.kind ?? "final";
         const replyText = payload.text ?? "";
+        ctx.log?.info(`🔍 deliver called: kind=${kind}, hasDeliveredBlock=${hasDeliveredBlock}, hasStreamedAny=${hasStreamedAny}, textLen=${replyText.length}`);
 
         // Clawke 是 append-only 渠道（不支持消息编辑），block 已经投递了完整内容，
         // final 只是给可编辑渠道（如 Telegram）做"终稿替换"用的，对 append-only 跳过。
