@@ -101,10 +101,18 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
-_No releases yet since changelog tracking was added._
+### v1.1.3 (2026-04-15)
+
+**[New Feature]** Multi-session support with per-conversation AI configuration.  
+**[New Feature]** Gateway selector for new conversations.  
+**[Enhancement]** Complete internationalization (i18n) for all screens.  
+**[Enhancement]** Desktop UI polish — unified AppBar styling and spacing.  
+**[Bug Fix]** Fix cross-conversation message leakage.  
+**[Bug Fix]** Fix port conflict detection on startup.  
+**[Architecture]** Server-side conversation auto-creation.  
 <!-- README_CHANGELOG_END -->
 
-> [Full Changelog](CHANGELOG.md)
+> [Full Changelog](docs/CHANGELOG.md)
 
 ## Contributing
 
