@@ -243,6 +243,7 @@ async function main() {
     const messageRouter = new MessageRouter(
       translateToCup, cupHandler, statsCollector,
       (msg) => broadcastToClients(msg),
+      conversationStore,
     );
 
     // 覆盖 ping handler 和 dashboard handler 的依赖
@@ -269,10 +270,20 @@ async function main() {
       configStore,
     }));
     registry.register('abort', createAbortHandler({
-      forwardToUpstream: (accountId: string, msg: unknown) => {
+      forwardToUpstream: (_clientAccountId: string, msg: unknown) => {
         const m = msg as Record<string, unknown>;
-        const sessionKey = (m.conversation_id as string) || accountId;
-        sendToOpenClaw(accountId, { action: 'chat.abort', sessionKey });
+        // 使用实际已连接的 Gateway accountId（如 "OpenClaw"），
+        // 而非客户端 accountId（"default"）。
+        // 客户端 abort event 的 ctx.accountId 是 "default"，
+        // 但 Gateway WebSocket 注册在 "OpenClaw" 下，用 "default" 找不到连接。
+        const gatewayAccounts = getConnectedAccountIds();
+        if (gatewayAccounts.length === 0) {
+          console.warn('[Gateway] ⚠️  No upstream gateway connected, cannot forward abort');
+          return;
+        }
+        const gatewayAccountId = gatewayAccounts[0];
+        const sessionKey = (m.conversation_id as string) || gatewayAccountId;
+        sendToOpenClaw(gatewayAccountId, { action: 'chat.abort', sessionKey });
       },
       messageRouter,
     }));
