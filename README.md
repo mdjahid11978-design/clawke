@@ -62,8 +62,6 @@ clawke gateway install     # Auto-detect and install AI gateway plugin
 clawke server start        # Start Clawke Server
 ```
 
-> **Windows users**: Install [WSL](https://learn.microsoft.com/windows/wsl/install) first (`wsl --install`), then run in WSL.
-
 ### Manual Install
 
 Prerequisites: [Node.js](https://nodejs.org/) >= 18, [Flutter](https://flutter.dev/) >= 3.x (for client)

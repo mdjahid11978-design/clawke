@@ -62,8 +62,6 @@ clawke gateway install     # 自动检测并安装 AI Gateway 插件
 clawke server start        # 启动 Clawke 服务
 ```
 
-> **Windows 用户**：请先安装 [WSL](https://learn.microsoft.com/windows/wsl/install)（`wsl --install`），然后在 WSL 终端中运行。
-
 ### 手动安装
 
 前置条件：[Node.js](https://nodejs.org/) >= 18，[Flutter](https://flutter.dev/) >= 3.x（客户端）
