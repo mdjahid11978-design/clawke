@@ -686,6 +686,8 @@ print_success() {
     echo -e "${CYAN}${BOLD}🚀 Commands:${NC}"
     echo ""
     echo -e "   ${GREEN}clawke server start${NC}           Start Clawke Server"
+    echo -e "   ${GREEN}clawke server stop${NC}            Stop Clawke Server"
+    echo -e "   ${GREEN}clawke server restart${NC}         Restart Clawke Server"
     echo -e "   ${GREEN}clawke gateway install${NC}        Install AI gateway plugin"
     echo -e "   ${GREEN}clawke --help${NC}                 Show all commands"
     echo ""
