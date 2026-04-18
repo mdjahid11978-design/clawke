@@ -68,7 +68,7 @@ export class CupV2Handler {
    */
   handleSync(payload: ClientPayload): Record<string, unknown> {
     const data = payload.data as Record<string, unknown> | undefined;
-    const lastSeq = (data?.last_seq as number) || 0;
+    let lastSeq = (data?.last_seq as number) || 0;
     const currentSeq = this.messageStore.getCurrentSeq();
 
     // 新设备（last_seq=0）：不拉历史
@@ -80,6 +80,12 @@ export class CupV2Handler {
         current_seq: currentSeq,
         messages: [],
       };
+    }
+
+    // 客户端 seq 超过服务端（切换 Server 或 Server seq 被重置） → 返回全部消息，客户端按 message_id 去重
+    if (lastSeq > currentSeq) {
+      console.log(`[Tunnel] ⚠️ seq mismatch: client last_seq=${lastSeq} > server currentSeq=${currentSeq} → returning all messages`);
+      lastSeq = 0;
     }
 
     const messages = this.messageStore.getAfterSeq(lastSeq);
