@@ -757,6 +757,20 @@ class ClawkeHermesGateway:
         except Exception:
             pass
 
+        # Fallback: read from config.yaml model.default
+        if not models:
+            try:
+                import yaml
+                cfg_path = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser() / "config.yaml"
+                if cfg_path.exists():
+                    with open(cfg_path) as f:
+                        cfg = yaml.safe_load(f) or {}
+                    default_model = (cfg.get("model") or {}).get("default", "")
+                    if default_model:
+                        models.append(default_model)
+            except Exception:
+                pass
+
         await self._send({
             "type": GatewayMessageType.ModelsResponse,
             "models": models,
