@@ -125,6 +125,155 @@ async function installGateway(): Promise<void> {
   }
 }
 
+// ────────────── PID 管理 ──────────────
+
+const CLAWKE_HOME = path.join(os.homedir(), '.clawke');
+const PID_FILE = path.join(CLAWKE_HOME, 'server.pid');
+
+function writePid(): void {
+  fs.mkdirSync(CLAWKE_HOME, { recursive: true });
+  fs.writeFileSync(PID_FILE, String(process.pid));
+}
+
+function readPid(): number | null {
+  try {
+    const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8').trim(), 10);
+    return isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // signal 0 = check existence
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function removePidFile(): void {
+  try { fs.unlinkSync(PID_FILE); } catch {}
+}
+
+// ────────────── Server 命令 ──────────────
+
+async function serverStart(): Promise<void> {
+  // 检查是否已有实例在运行 — Check if already running
+  const existingPid = readPid();
+  if (existingPid && isProcessAlive(existingPid)) {
+    console.error(`[clawke] ⚠️  Server already running (PID ${existingPid})`);
+    console.error('[clawke] Use "clawke server stop" to stop it first, or "clawke server restart".');
+    process.exit(1);
+  }
+
+  // 自动编译 TypeScript（增量模式，没改动时秒完成）— Auto-build before start
+  const serverDir = path.join(__dirname, '..', '..');
+  const tsconfigPath = path.join(serverDir, 'tsconfig.json');
+  if (fs.existsSync(tsconfigPath)) {
+    const { execSync } = await import('child_process');
+    try {
+      execSync('npx tsc', { cwd: serverDir, stdio: 'inherit' });
+    } catch {
+      console.error('[clawke] ⚠️  TypeScript build failed, starting with existing dist...');
+    }
+  }
+
+  // 写入 PID 文件 — Write PID file
+  writePid();
+
+  // 进程退出时清理 PID 文件 — Cleanup PID file on exit
+  const cleanup = () => { removePidFile(); };
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => { cleanup(); process.exit(0); });
+  process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+
+  // 加载 server 入口 — Load server entry
+  await import('../index.js');
+}
+
+function serverStop(): void {
+  const pid = readPid();
+  if (!pid) {
+    console.log('[clawke] No PID file found. Server may not be running.');
+    return;
+  }
+
+  if (!isProcessAlive(pid)) {
+    console.log(`[clawke] Process ${pid} not found (stale PID file). Cleaning up.`);
+    removePidFile();
+    return;
+  }
+
+  console.log(`[clawke] Stopping server (PID ${pid})...`);
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (err: any) {
+    console.error(`[clawke] ❌ Failed to stop: ${err.message}`);
+    process.exit(1);
+  }
+
+  // 等待进程退出（最多 5 秒）— Wait up to 5s for graceful shutdown
+  let waited = 0;
+  const interval = 200;
+  const maxWait = 5000;
+  const check = setInterval(() => {
+    waited += interval;
+    if (!isProcessAlive(pid)) {
+      clearInterval(check);
+      removePidFile();
+      console.log('[clawke] ✅ Server stopped.');
+    } else if (waited >= maxWait) {
+      clearInterval(check);
+      console.log(`[clawke] ⚠️  Process ${pid} didn't exit gracefully, sending SIGKILL...`);
+      try { process.kill(pid, 'SIGKILL'); } catch {}
+      removePidFile();
+      console.log('[clawke] ✅ Server killed.');
+    }
+  }, interval);
+}
+
+function serverStatus(): void {
+  const pid = readPid();
+  if (!pid) {
+    console.log('[clawke] Server is not running (no PID file).');
+    return;
+  }
+
+  if (isProcessAlive(pid)) {
+    console.log(`[clawke] ✅ Server is running (PID ${pid}).`);
+  } else {
+    console.log(`[clawke] Server is not running (stale PID ${pid}). Cleaning up.`);
+    removePidFile();
+  }
+}
+
+async function serverRestart(): Promise<void> {
+  const pid = readPid();
+  if (pid && isProcessAlive(pid)) {
+    console.log(`[clawke] Stopping server (PID ${pid})...`);
+    process.kill(pid, 'SIGTERM');
+
+    // 等待旧进程退出 — Wait for old process to exit
+    let waited = 0;
+    while (isProcessAlive(pid) && waited < 5000) {
+      await new Promise(r => setTimeout(r, 200));
+      waited += 200;
+    }
+    if (isProcessAlive(pid)) {
+      try { process.kill(pid, 'SIGKILL'); } catch {}
+    }
+    removePidFile();
+    console.log('[clawke] ✅ Old server stopped.');
+  }
+
+  console.log('[clawke] Starting server...');
+  await serverStart();
+}
+
+// ────────────── Main ──────────────
+
 async function main(): Promise<void> {
   // 统一入口：clawke gateway install
   if (command === 'gateway' && subCommand === 'install') {
@@ -139,20 +288,17 @@ async function main(): Promise<void> {
     const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
     await installNanobotGateway();
 
-  } else if (command === 'server' && subCommand === 'start') {
-    // 自动编译 TypeScript（增量模式，没改动时秒完成）— Auto-build before start
-    const serverDir = path.join(__dirname, '..', '..');
-    const tsconfigPath = path.join(serverDir, 'tsconfig.json');
-    if (fs.existsSync(tsconfigPath)) {
-      const { execSync } = await import('child_process');
-      try {
-        execSync('npx tsc', { cwd: serverDir, stdio: 'inherit' });
-      } catch {
-        console.error('[clawke] ⚠️  TypeScript build failed, starting with existing dist...');
-      }
+  } else if (command === 'server') {
+    switch (subCommand) {
+      case 'start':   await serverStart(); break;
+      case 'stop':    serverStop(); break;
+      case 'restart': await serverRestart(); break;
+      case 'status':  serverStatus(); break;
+      default:
+        console.error(`[clawke] Unknown server command: ${subCommand}`);
+        console.error('  Available: start, stop, restart, status');
+        process.exit(1);
     }
-    // 加载 server 入口 — Load server entry
-    await import('../index.js');
 
   } else {
     printHelp();
@@ -168,8 +314,11 @@ function printHelp(): void {
     clawke <command>
 
   Commands:
-    gateway install            Auto-detect and install gateway plugin
     server start               Start Clawke Server
+    server stop                Stop Clawke Server
+    server restart             Restart Clawke Server
+    server status              Check if server is running
+    gateway install            Auto-detect and install gateway plugin
 
   Legacy Commands:
     openclaw-gateway install   Install OpenClaw gateway (same as gateway install)
@@ -188,3 +337,4 @@ main().catch((err) => {
   console.error('[clawke] Fatal error:', err.message);
   process.exit(1);
 });
+

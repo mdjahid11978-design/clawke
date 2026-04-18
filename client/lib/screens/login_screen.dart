@@ -6,11 +6,13 @@ import 'package:client/core/http_util.dart';
 import 'package:client/models/user_model.dart';
 import 'package:client/services/auth_service.dart';
 import 'package:client/providers/auth_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:client/providers/server_host_provider.dart';
 import 'package:client/screens/forgot_password_screen.dart';
 import 'package:client/l10n/l10n.dart';
 import 'package:client/core/ws_service.dart';
 import 'package:client/services/media_resolver.dart';
+import 'package:flutter/services.dart';
 
 /// Login and registration screen with email, Google, and Apple sign-in.
 class LoginScreen extends ConsumerStatefulWidget {
@@ -25,6 +27,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   late TabController _tabController;
   bool _isLoading = false;
   String? _error;
+
+  static const _kLastEmailKey = 'clawke_last_login_email';
 
   // Login fields
   final _loginEmailController = TextEditingController();
@@ -46,6 +50,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadLastEmail();
+  }
+
+  /// 从 SharedPreferences 读取上次登录的邮箱并预填
+  Future<void> _loadLastEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastEmail = prefs.getString(_kLastEmailKey);
+    if (lastEmail != null && lastEmail.isNotEmpty && mounted) {
+      _loginEmailController.text = lastEmail;
+    }
+  }
+
+  /// 登录成功后保存邮箱
+  Future<void> _saveLastEmail(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastEmailKey, email);
   }
 
   @override
@@ -174,12 +194,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Widget _buildLoginForm(ColorScheme colorScheme) {
-    return Column(
+    return AutofillGroup(
+      child: Column(
       children: [
         // Email
         TextField(
           controller: _loginEmailController,
           keyboardType: TextInputType.emailAddress,
+          autofillHints: const [AutofillHints.email, AutofillHints.username],
           decoration: InputDecoration(
             labelText: context.l10n.emailAddress,
             hintText: context.l10n.enterEmail,
@@ -215,6 +237,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         TextField(
           controller: _loginPasswordController,
           obscureText: _obscureLoginPassword,
+          autofillHints: const [AutofillHints.password],
           decoration: InputDecoration(
             labelText: context.l10n.password,
             hintText: context.l10n.enterPassword,
@@ -289,6 +312,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -492,7 +516,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       setState(() => _error = context.l10n.fillEmailAndPassword);
       return;
     }
-    await _doLogin(() => AuthService.loginWithEmail(email, password));
+    await _doLogin(() async {
+      final user = await AuthService.loginWithEmail(email, password);
+      await _saveLastEmail(email);
+      return user;
+    });
   }
 
   Future<void> _handleSendCode() async {
@@ -581,6 +609,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       debugPrint('[Login] Step 5: WsService/MediaResolver synced with new credentials');
 
       if (mounted) {
+        // 通知系统保存自动填充的凭证（触发 Keychain 保存提示）
+        TextInput.finishAutofillContext();
         debugPrint('[Login] Step 6: Navigating to /main...');
         Navigator.of(context).pushNamedAndRemoveUntil('/main', (route) => false);
       }
