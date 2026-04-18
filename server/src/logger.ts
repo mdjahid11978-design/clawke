@@ -64,5 +64,6 @@ export function initLogger(): void {
     writeToFile('WARN', args);
   };
 
-  console.log(`[Logger] File logging enabled: ${LOG_DIR}/server-YYYY-MM-DD.log`);
+  const currentLogPath = ensureLogFile();
+  console.log(`[Logger] File logging enabled: ${currentLogPath}`);
 }

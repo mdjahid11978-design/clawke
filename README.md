@@ -46,18 +46,29 @@ graph TD
 
 ## Quick Start
 
-### Prerequisites
+### One-Click Install (Recommended)
 
-- [Node.js](https://nodejs.org/) >= 18
-- [Flutter](https://flutter.dev/) >= 3.x (for client)
+```bash
+curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
+```
 
-### Start Server
+This will automatically install Node.js (if needed), clone the repo, build the server, and set up the global `clawke` command. After installation:
+
+```bash
+clawke gateway install     # Auto-detect and install AI gateway plugin
+clawke server start        # Start Clawke Server
+```
+
+> **Windows users**: Install [WSL](https://learn.microsoft.com/windows/wsl/install) first (`wsl --install`), then run in WSL.
+
+### Manual Install
+
+Prerequisites: [Node.js](https://nodejs.org/) >= 18, [Flutter](https://flutter.dev/) >= 3.x (for client)
 
 ```bash
 cd server
 npm install                           # Installs dependencies + compiles TypeScript
-npx clawke openclaw-gateway install    # Install OpenClaw gateway plugin
-# or: npx clawke nanobot-gateway install  # Install nanobot gateway
+npx clawke gateway install             # Auto-detect and install gateway plugin
 npx clawke server start                # Start Clawke Server
 ```
 

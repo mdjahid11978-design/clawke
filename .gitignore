@@ -58,6 +58,7 @@ bak/
 extends/
 dump.rdb
 scripts/
+!scripts/install.sh
 client/test_download.dart
 
 # Private (local only)

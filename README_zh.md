@@ -46,18 +46,29 @@ graph TD
 
 ## 快速开始
 
-### 前置条件
+### 一键安装（推荐）
 
-- [Node.js](https://nodejs.org/) >= 18
-- [Flutter](https://flutter.dev/) >= 3.x（客户端）
+```bash
+curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
+```
 
-### 启动服务端
+自动安装 Node.js（如果没有）、克隆仓库、编译服务端、配置全局 `clawke` 命令。安装完成后：
+
+```bash
+clawke gateway install     # 自动检测并安装 AI Gateway 插件
+clawke server start        # 启动 Clawke 服务
+```
+
+> **Windows 用户**：请先安装 [WSL](https://learn.microsoft.com/windows/wsl/install)（`wsl --install`），然后在 WSL 终端中运行。
+
+### 手动安装
+
+前置条件：[Node.js](https://nodejs.org/) >= 18，[Flutter](https://flutter.dev/) >= 3.x（客户端）
 
 ```bash
 cd server
 npm install                              # 安装依赖 + 编译 TypeScript
-npx clawke openclaw-gateway install       # 安装 OpenClaw Gateway 插件
-# 或: npx clawke nanobot-gateway install  # 安装 nanobot Gateway
+npx clawke gateway install                # 自动检测并安装 Gateway 插件
 npx clawke server start                   # 启动 Clawke 服务
 ```
 
