@@ -44,17 +44,20 @@ graph TD
 - **媒体** — 图片/PDF/文本文件上传与内联渲染
 - **Relay** — 内置隧道，无需端口转发即可远程访问
 
-## 快速开始
-
-### 一键安装（推荐）
+## 快速安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
 ```
 
-自动安装 Node.js（如果没有）、克隆仓库、编译服务端、配置全局 `clawke` 命令。安装完成后：
+支持 macOS、Linux 和 WSL2 环境。安装器会自动为您编译后端服务、探测系统环境并配置好全局 CLI 命令。
+
+> **Windows:** 不支持原生 Windows，请安装 [WSL2](https://learn.microsoft.com/zh-cn/windows/wsl/install) 后再运行上述命令。
+
+安装完成后：
 
 ```bash
+source ~/.bashrc           # 重新加载环境（若是 zsh 请使用 source ~/.zshrc）
 clawke gateway install     # 自动检测并安装 AI Gateway 插件
 clawke server start        # 启动 Clawke 服务
 ```

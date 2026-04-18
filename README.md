@@ -44,17 +44,20 @@ graph TD
 - **Media** — Image/PDF/text file upload and inline rendering
 - **Relay** — Built-in tunnel for remote access without port forwarding
 
-## Quick Start
-
-### One-Click Install (Recommended)
+## Quick Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
 ```
 
-This will automatically install Node.js (if needed), clone the repo, build the server, and set up the global `clawke` command. After installation:
+Works on macOS, Linux, and WSL2. The installer handles compiling the server, detecting your environment, and setting up the global CLI for you.
+
+> **Windows:** Native Windows is not supported. Please install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run the command above.
+
+After installation:
 
 ```bash
+source ~/.bashrc           # reload shell (or ~/.zshrc)
 clawke gateway install     # Auto-detect and install AI gateway plugin
 clawke server start        # Start Clawke Server
 ```
