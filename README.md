@@ -79,17 +79,21 @@ The server will:
 1. Start WebSocket server on port 8765 (client) and 8766 (upstream)
 2. Start HTTP/media server on port 8781
 
-### Build from Source
+### Install Client
 
-> iOS is available on the [App Store](https://apps.apple.com/app/clawke/id6744313782). Mac App Store and Google Play are coming soon.
+- **iOS**: Download from the [App Store](https://apps.apple.com/app/clawke/id6744313782).
+- **Android**: Download from [Google Play](#) *(Coming soon)*.
+- **macOS / Windows / Linux**: Download compiled binaries from the [Releases](https://github.com/clawke/clawke/releases) page.
+
+Alternatively, you can build it yourself from source:
 
 ```bash
 cd client
 flutter pub get
-flutter run -d macos
+flutter build macos  # Or: ios, apk, windows, linux
 ```
 
-> Replace `-d macos` with `-d ios`, `-d android`, `-d windows`, or `-d linux` for other platforms.
+> To run in debug mode, use `flutter run -d macos` (replace `macos` with your target platform).
 
 ## Project Structure
 

@@ -79,17 +79,21 @@ npx clawke server start                   # 启动 Clawke 服务
 1. 启动 WebSocket 服务（8765 端口：客户端，8766 端口：上行）
 2. 启动 HTTP/媒体服务（8781 端口）
 
-### 从源码构建
+### 安装客户端
 
-> iOS 已上架 [App Store](https://apps.apple.com/app/clawke/id6744313782)。Mac App Store 和 Google Play 即将上线，敬请期待。
+- **iOS**：请在 [App Store](https://apps.apple.com/app/clawke/id6744313782) 下载。
+- **Android**：请在 [Google Play](#) 下载（即将上线）。
+- **macOS / Windows / Linux**：请前往 Github 的 [Releases](https://github.com/clawke/clawke/releases) 页面下载编译好的安装包。
+
+如果您希望自己构建客户端：
 
 ```bash
 cd client
 flutter pub get
-flutter run -d macos
+flutter build macos  # 也可以是 ios, apk, windows, linux
 ```
 
-> 替换 `-d macos` 为 `-d ios`、`-d android`、`-d windows` 或 `-d linux` 以构建其他平台。
+> 如果需要运行调试模式，请执行 `flutter run -d macos`（可将 `macos` 替换为其他平台）。
 
 ## 项目结构
 
