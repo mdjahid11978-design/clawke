@@ -2,18 +2,20 @@
 
 Protocol reference: docs/GATEWAY_INTEGRATION.md
 
-This channel runs inside the Hermes Python process, connecting to Clawke Server's
-upstream WebSocket port (default 8766). It directly instantiates Hermes AIAgent
-with four callbacks mapped to the CUP protocol:
+This channel runs as a standalone Python process sharing the Hermes Python
+environment, connecting to Clawke Server's upstream WebSocket port (default
+8766). It directly instantiates Hermes AIAgent with five callbacks mapped
+to the CUP protocol:
 
   stream_delta_callback  →  agent_text_delta
   reasoning_callback     →  agent_thinking_delta / agent_thinking_done
   tool_progress_callback →  agent_tool_call / agent_tool_result
-  clarify_callback       →  clarify_request (Phase 3)
+  clarify_callback       →  clarify_request / clarify_response
+  approval (notify)      →  approval_request / approval_response
 
 Architecture reference:
   - nanobot gateway (gateways/nanobot/clawke/clawke.py) — WS client pattern
-  - hermes-webui (api/streaming.py) — AIAgent instantiation + four callbacks
+  - hermes-webui (api/streaming.py) — AIAgent instantiation + callbacks
   - OpenClaw gateway (gateways/openclaw/clawke/src/gateway.ts) — streaming + abort
 """
 
@@ -59,6 +61,9 @@ class GatewayMessageType:
     AgentStatus = "agent_status"
     AgentTurnStats = "agent_turn_stats"
 
+    ApprovalRequest = "approval_request"
+    ClarifyRequest = "clarify_request"
+
 
 class InboundMessageType:
     """Clawke Server → Gateway (upstream: user input / control)."""
@@ -66,6 +71,8 @@ class InboundMessageType:
     Abort = "abort"
     QueryModels = "query_models"
     QuerySkills = "query_skills"
+    ApprovalResponse = "approval_response"
+    ClarifyResponse = "clarify_response"
 
 
 class AgentStatusValue:
@@ -157,6 +164,10 @@ class ClawkeHermesGateway:
         # Streaming state per conversation
         self._partial_texts: dict[str, str] = {}
 
+        # Approval/Clarify pending requests (session_id → {event, result})
+        self._pending_approvals: dict[str, dict] = {}
+        self._pending_clarifies: dict[str, dict] = {}
+
     # ── Public API ───────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -229,6 +240,12 @@ class ClawkeHermesGateway:
 
                 elif msg_type == InboundMessageType.QuerySkills:
                     await self._handle_query_skills()
+
+                elif msg_type == InboundMessageType.ApprovalResponse:
+                    self._handle_approval_response(msg)
+
+                elif msg_type == InboundMessageType.ClarifyResponse:
+                    self._handle_clarify_response(msg)
 
         self._ws = None
         logger.info("Disconnected from Clawke Server")
@@ -458,9 +475,89 @@ class ClawkeHermesGateway:
             except Exception:
                 toolsets = None
 
+        # ── Clarify callback (blocking — waits for client response) ────
+
+        def on_clarify(question, choices):
+            """clarify_callback → clarify_request, blocks until response."""
+            timeout = 120  # seconds
+            choices_list = [str(c) for c in (choices or [])]
+
+            # Push clarify_request to client
+            self._send_sync({
+                "type": GatewayMessageType.ClarifyRequest,
+                "conversation_id": sender_id,
+                "account_id": self.config.account_id,
+                "question": str(question or ""),
+                "choices": choices_list,
+                "message_id": msg_id,
+            })
+
+            # Create pending entry with Event
+            evt = threading.Event()
+            self._pending_clarifies[sender_id] = {
+                "event": evt, "result": None,
+            }
+
+            # Wait for response or timeout
+            deadline = time.monotonic() + timeout
+            while True:
+                if cancel_event.is_set():
+                    self._pending_clarifies.pop(sender_id, None)
+                    return (
+                        "The user did not provide a response within the time limit. "
+                        "Use your best judgement to make the choice and proceed."
+                    )
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._pending_clarifies.pop(sender_id, None)
+                    return (
+                        "The user did not provide a response within the time limit. "
+                        "Use your best judgement to make the choice and proceed."
+                    )
+                if evt.wait(timeout=min(1.0, remaining)):
+                    result = str(self._pending_clarifies.get(sender_id, {}).get("result", "")).strip()
+                    self._pending_clarifies.pop(sender_id, None)
+                    return (
+                        result
+                        or "The user did not provide a response within the time limit. "
+                           "Use your best judgement to make the choice and proceed."
+                    )
+
         def _run_agent():
             """Run AIAgent.run_conversation in a background thread."""
             nonlocal full_text
+
+            # Register approval notify callback
+            _unreg_approval = None
+            try:
+                from tools.approval import (
+                    register_gateway_notify as _reg_approval,
+                    unregister_gateway_notify as _unreg_approval_fn,
+                )
+
+                def _on_approval_notify(approval_data):
+                    """Push approval request to client via WS."""
+                    if cancel_event.is_set():
+                        return
+                    # Create pending entry
+                    evt = threading.Event()
+                    self._pending_approvals[sender_id] = {
+                        "event": evt, "result": None,
+                    }
+                    self._send_sync({
+                        "type": GatewayMessageType.ApprovalRequest,
+                        "conversation_id": sender_id,
+                        "account_id": self.config.account_id,
+                        "message_id": msg_id,
+                        "command": approval_data.get("command", ""),
+                        "description": approval_data.get("description", ""),
+                        "pattern_keys": approval_data.get("pattern_keys", []),
+                    })
+
+                _reg_approval(sender_id, _on_approval_notify)
+                _unreg_approval = lambda: _unreg_approval_fn(sender_id)
+            except ImportError:
+                logger.debug("Approval module not available")
 
             try:
                 agent = AIAgent(
@@ -476,6 +573,7 @@ class ClawkeHermesGateway:
                     stream_delta_callback=on_token,
                     reasoning_callback=on_reasoning,
                     tool_progress_callback=on_tool,
+                    clarify_callback=on_clarify,
                 )
 
                 # Store agent for abort access
@@ -497,6 +595,13 @@ class ClawkeHermesGateway:
                 return {"error": str(e)}
             finally:
                 self._agents.pop(sender_id, None)
+                self._pending_approvals.pop(sender_id, None)
+                self._pending_clarifies.pop(sender_id, None)
+                if _unreg_approval:
+                    try:
+                        _unreg_approval()
+                    except Exception:
+                        pass
 
         # Run in thread pool to avoid blocking the event loop
         loop = asyncio.get_event_loop()
@@ -606,6 +711,37 @@ class ClawkeHermesGateway:
                 logger.info("📥 agent.interrupt() called for %s", sender_id)
             except Exception as e:
                 logger.warning("agent.interrupt() failed: %s", e)
+
+    def _handle_approval_response(self, msg: dict) -> None:
+        """Route approval_response from client to waiting thread."""
+        sender_id = msg.get("conversation_id", "")
+        choice = msg.get("choice", "once")  # once|session|always|deny
+        pending = self._pending_approvals.get(sender_id)
+        if pending:
+            pending["result"] = choice
+            pending["event"].set()
+            logger.info("📥 Approval response: %s → %s", sender_id, choice)
+
+            # Route to Hermes approval system
+            try:
+                from tools.approval import submit_response
+                submit_response(sender_id, choice)
+            except Exception as e:
+                logger.debug("approval.submit_response failed: %s", e)
+        else:
+            logger.warning("📥 Approval response for unknown session: %s", sender_id)
+
+    def _handle_clarify_response(self, msg: dict) -> None:
+        """Route clarify_response from client to waiting on_clarify thread."""
+        sender_id = msg.get("conversation_id", "")
+        response_text = msg.get("response", "")
+        pending = self._pending_clarifies.get(sender_id)
+        if pending:
+            pending["result"] = response_text
+            pending["event"].set()
+            logger.info("📥 Clarify response: %s → %s", sender_id, response_text[:40])
+        else:
+            logger.warning("📥 Clarify response for unknown session: %s", sender_id)
 
     # ── Query Handlers ───────────────────────────────────────────────────
 
