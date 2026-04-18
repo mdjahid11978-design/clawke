@@ -77,13 +77,10 @@ export class MessageRouter {
     }
 
     // 中止拦截（以 conversationId 为 key）
+    // abort 标记只由 user_message handler 中的 clearAbort() 清除，
+    // 上游消息不清除标记 — 防止 Gateway 回复（如 /abort 确认）意外放行后续消息。
     if (this.abortedSessions.has(conversationId)) {
-      if (msg.type === 'agent_text_done' || msg.type === ('agent_turn_done' as string)) {
-        this.abortedSessions.delete(conversationId);
-        console.log(`[MessageRouter] Cleared abort for conversation=${conversationId} (upstream done)`);
-      } else {
-        console.log(`[MessageRouter] Discarded message for aborted conversation=${conversationId}`);
-      }
+      console.log(`[MessageRouter] Discarded message for aborted conversation=${conversationId} type=${msg.type}`);
       return;
     }
 

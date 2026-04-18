@@ -53,11 +53,18 @@ const sessionModels = new Map<string, string>();
 // key = senderId (即 conversation_id)，value = 上一次 dispatch 的 Promise
 const activeDispatches = new Map<string, Promise<void>>();
 
-// Abort 代数计数器：每次 abort 递增，排队消息入队时快照当前代数，
-// await 结束后比较代数，若有变化说明期间发生了 abort，跳过执行。
-// 相比 boolean Set，generation counter 解决了以下竞态条件：
-//   abort → 新消息到达（清除标记）→ 旧排队消息 await 结束（标记已被清除，无法识别 abort）
-const abortGenerations = new Map<string, number>();
+// per-dispatch AbortController：abort 时通过 SDK 原生 AbortSignal 切断 LLM 流。
+// handleClawkeInbound 内通过局部 send() 检查 signal.aborted 拦截残余消息。
+const dispatchAbortControllers = new Map<string, AbortController>();
+
+// 流式输出过程中持续更新的部分回复文本缓存（abort 时读取）
+const dispatchPartialTexts = new Map<string, string>();
+
+// abort 后保存的部分回复，供下次消息注入 system prompt 告知 AI 不要重复回答
+const abortedPartials = new Map<string, string>();
+
+// 标记某个 senderId 正在执行合成 stop dispatch（回复应被静默丢弃）
+const silentDispatches = new Set<string>();
 
 /** 从 OpenClaw 配置中提取可用模型列表 */
 function getAvailableModels(ctx: ChannelGatewayContext<ResolvedClawkeAccount>): string[] {
@@ -211,8 +218,6 @@ export async function startClawkeGateway(
             ctx.log?.info(`📥 Inbound message: ${text.slice(0, 80)}`);
             // 串行队列：同 session 的消息按序执行，不并发
             const senderId = msg.conversation_id || "clawke_user";
-            // 快照当前 abort 代数（入队时刻的值）
-            const myAbortGen = abortGenerations.get(senderId) ?? 0;
             const prevDispatch = activeDispatches.get(senderId);
             const thisDispatch = (async () => {
               if (prevDispatch) {
@@ -227,10 +232,10 @@ export async function startClawkeGateway(
                 });
                 // 等待前一个 dispatch 完成
                 await prevDispatch.catch(() => {});
-                // abort 代数检查：如果入队后发生过 abort，跳过执行
-                const currentGen = abortGenerations.get(senderId) ?? 0;
-                if (currentGen > myAbortGen) {
-                  ctx.log?.info(`🚫 Session ${senderId} aborted (gen ${myAbortGen}→${currentGen}), dropping queued message: ${text.slice(0, 40)}`);
+                // abort 检查：如果入队后该会话被 abort，跳过执行
+                const ac = dispatchAbortControllers.get(senderId);
+                if (ac?.signal.aborted) {
+                  ctx.log?.info(`🚫 Session ${senderId} aborted, dropping queued message: ${text.slice(0, 40)}`);
                   return;
                 }
                 ctx.log?.info(`▶️  Session ${senderId} idle, executing queued message: ${text.slice(0, 40)}`);
@@ -248,23 +253,55 @@ export async function startClawkeGateway(
           } else if (msg.type === InboundMessageType.Abort) {
             const abortSenderId = msg.conversation_id || "clawke_user";
             ctx.log?.info(`📥 Abort request: conversation=${abortSenderId}`);
-            // 递增 abort 代数：排队消息入队时快照了旧代数，
-            // await 后比较发现代数变化即可判断发生过 abort
-            abortGenerations.set(abortSenderId, (abortGenerations.get(abortSenderId) ?? 0) + 1);
-            // 注意：不删除 activeDispatches。被 abort 的 dispatch 仍在运行中，
-            // 新消息需要排队等它完成（被 abort 杀死后会 resolve），
-            // 否则新消息跳过队列直接执行，导致并发冲突。
-            // 通过发送合成的 /abort 消息来复用 OpenClaw 完整的中止逻辑：
-            // - tryFastAbortFromMessage 会清理消息队列、终止子 Agent、更新会话状态
-            // - 比直接调用 replyRunRegistry.abort() 更可靠（不会留下"僵尸子进程"）
-            handleClawkeInbound(ctx, {
-              type: InboundMessageType.Chat,
-              conversation_id: msg.conversation_id,
-              text: "/abort",
-              client_msg_id: `abort_${Date.now()}`,
-            }).catch((err) => {
-              ctx.log?.error(`Failed to handle abort: ${String(err)}`);
-            });
+            // 通过 SDK 原生 AbortSignal 切断 LLM 流
+            const ac = dispatchAbortControllers.get(abortSenderId);
+            if (ac && !ac.signal.aborted) {
+              ac.abort();
+              // 保存被中止的部分回复，供下次消息注入 system prompt
+              const partial = dispatchPartialTexts.get(abortSenderId);
+              if (partial && partial.trim()) {
+                abortedPartials.set(abortSenderId, partial);
+                ctx.log?.info(`📝 Saved aborted partial (${partial.length} chars) for ${abortSenderId}`);
+              }
+              dispatchPartialTexts.delete(abortSenderId);
+              ctx.log?.info(`📥 AbortController.abort() called for ${abortSenderId}`);
+
+              // 等当前 dispatch 结束后，发送合成 "stop" 消息触发 OpenClaw 内部 abort 处理
+              // OpenClaw 的 handleAbortTrigger 会设置 sessionEntry.abortedLastRun = true，
+              // 使下次 AI 回复时自动注入 "The previous agent run was aborted" 提示。
+              // 通过 silentDispatches 标记静默丢弃合成 dispatch 的回复（不能 abort AC，
+              // 否则会中断 SDK 内部的 stop 命令处理流程）。
+              const currentDispatch = activeDispatches.get(abortSenderId);
+              const dispatchStop = async () => {
+                if (currentDispatch) {
+                  try { await currentDispatch; } catch {}
+                }
+                ctx.log?.info(`📤 Dispatching synthetic 'stop' for abort cleanup: ${abortSenderId}`);
+                silentDispatches.add(abortSenderId);
+                try {
+                  await handleClawkeInbound(ctx, {
+                    type: 'chat',
+                    text: 'stop',
+                    conversation_id: msg.conversation_id,
+                    _synthetic: true,
+                  });
+                  ctx.log?.info(`📤 Synthetic 'stop' dispatch completed`);
+                } catch (e) {
+                  ctx.log?.warn(`Synthetic 'stop' dispatch failed: ${e}`);
+                } finally {
+                  silentDispatches.delete(abortSenderId);
+                }
+              };
+              // 注册到串行队列：后续用户消息会排在 stop 之后，
+              // 防止并发 dispatch 导致 ReplyRunAlreadyActiveError
+              const stopPromise = dispatchStop();
+              activeDispatches.set(abortSenderId, stopPromise);
+              stopPromise.finally(() => {
+                if (activeDispatches.get(abortSenderId) === stopPromise) {
+                  activeDispatches.delete(abortSenderId);
+                }
+              });
+            }
           } else if (msg.type === InboundMessageType.QueryModels) {
             // 查询可用模型列表
             const models = getAvailableModels(ctx);
@@ -344,6 +381,8 @@ async function handleClawkeInbound(
     skill_mode?: 'priority' | 'exclusive';
     system_prompt?: string;
     work_dir?: string;
+    // 内部标记：合成 stop dispatch（跳过 abort context 和 system prompt 注入）
+    _synthetic?: boolean;
   },
 ): Promise<void> {
   const core = getClawkeRuntime();
@@ -354,9 +393,49 @@ async function handleClawkeInbound(
   pendingModel = '';
   pendingProvider = '';
 
+  // per-dispatch AbortController：传给 SDK 的 abortSignal，abort 时切断 LLM 流
+  const dispatchSenderId = msg.conversation_id || "clawke_user";
+  const dispatchAC = new AbortController();
+  dispatchAbortControllers.set(dispatchSenderId, dispatchAC);
+
+  // 局部 send：捕获自己的 AC 引用，abort 后静默丢弃，不依赖全局 Map 查找
+  // 也检查 silentDispatches 标记，用于合成 stop dispatch 的回复静默丢弃
+  const _sendToClawkeServer = (jsonObj: Record<string, unknown>) => {
+    if (dispatchAC.signal.aborted) {
+      ctx.log?.info(`🚫 send SKIP (aborted): type=${jsonObj.type}`);
+      // 从被拦截的消息中提取文本，保存为 abort 上下文
+      // （解决 deliver 在 abort handler 之后执行的竞态问题）
+      const skippedText = (jsonObj.text as string) || (jsonObj.fullText as string) || (jsonObj.delta as string) || '';
+      if (skippedText.trim() && !abortedPartials.has(dispatchSenderId)) {
+        abortedPartials.set(dispatchSenderId, skippedText);
+        ctx.log?.info(`📝 Captured aborted text from send SKIP (${skippedText.length} chars)`);
+      }
+      return;
+    }
+    if (silentDispatches.has(dispatchSenderId)) {
+      ctx.log?.info(`🔇 send SKIP (silent stop dispatch): type=${jsonObj.type}`);
+      return;
+    }
+    sendToClawkeServer(jsonObj);
+  };
+
   // 注入 system-prompt（Gateway 侧负责，支持热更新）
   let text = msg.text || "";
   let systemPrompt = loadSystemPrompt(ctx);
+
+  // abort 上下文注入：如果上一轮被中止，告知 AI 不要重复回答
+  // 合成 stop dispatch 跳过此注入（否则会干扰 OpenClaw 的 isAbortTrigger 检测）
+  if (!msg._synthetic) {
+    const abortedText = abortedPartials.get(dispatchSenderId);
+    if (abortedText) {
+      const abortCtx = `[System] The previous conversation turn was aborted by the user. ` +
+        `The partial response that was generated (but not delivered) was: "${abortedText.slice(0, 200)}". ` +
+        `Do NOT repeat or continue the aborted response. Answer the user's new question directly.`;
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${abortCtx}` : abortCtx;
+      abortedPartials.delete(dispatchSenderId);
+      ctx.log?.info(`📝 Injected abort context for ${dispatchSenderId}: ${abortedText.slice(0, 60)}`);
+    }
+  }
 
   // 会话定制 system-prompt
   if (msg.system_prompt) {
@@ -378,7 +457,8 @@ async function handleClawkeInbound(
     ctx.log?.info(`[ConvConfig] workDir=${msg.work_dir}`);
   }
 
-  if (systemPrompt) {
+  // 合成 stop dispatch 不注入 system prompt（保持纯 "stop" 文本以匹配 isAbortTrigger）
+  if (systemPrompt && !msg._synthetic) {
     text = `${text}\n\n---\n${systemPrompt}`;
   }
 
@@ -581,7 +661,7 @@ async function handleClawkeInbound(
     accountId: ctx.accountId,
     // P1-1.1: Typing 指示器 — AI 开始回复前通知客户端显示"正在思考..."
     typing: {
-      start: () => sendToClawkeServer({
+      start: () => _sendToClawkeServer({
         type: GatewayMessageType.AgentTyping,
         to: clawkeTo,
         account_id: ctx.accountId,
@@ -612,6 +692,10 @@ async function handleClawkeInbound(
       deliver: async (payload: ReplyPayload, info?: { kind?: string }) => {
         const kind = info?.kind ?? "final";
         const replyText = payload.text ?? "";
+        // 更新部分回复缓存（deliver 可能在 onPartialReply 之外被调用，如非流式回复）
+        if (replyText) {
+          dispatchPartialTexts.set(dispatchSenderId, replyText);
+        }
         ctx.log?.info(`deliver: kind=${kind}, hasStreamedAny=${hasStreamedAny}, textLen=${replyText.length}`);
 
         // P0-0.1: disableBlockStreaming=true 后，deliver 只会收到 kind="final"
@@ -636,7 +720,7 @@ async function handleClawkeInbound(
           // 发送最后一批剩余差量（如果有）
           if (replyText.length > lastSentLength) {
             const delta = replyText.slice(lastSentLength);
-            sendToClawkeServer({
+            _sendToClawkeServer({
               type: GatewayMessageType.AgentTextDelta,
               message_id: streamMsgId,
               delta,
@@ -646,7 +730,7 @@ async function handleClawkeInbound(
             });
           }
 
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentTextDone,
             message_id: streamMsgId,
             fullText: replyText,
@@ -661,7 +745,7 @@ async function handleClawkeInbound(
           pendingProvider = '';
         } else if (replyText.trim()) {
           // 没有流式输出（fallback），直接发完整文本
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentText,
             message_id: streamMsgId,
             text: replyText,
@@ -678,7 +762,7 @@ async function handleClawkeInbound(
 
         // 发送媒体附件
         for (const mediaUrl of mediaList) {
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentMedia,
             message_id: streamMsgId,
             mediaUrl,
@@ -718,7 +802,7 @@ async function handleClawkeInbound(
     const last = toolCalls[toolCalls.length - 1];
     if (last && !('endTime' in last)) {
       const durationMs = Date.now() - last.startTime;
-      sendToClawkeServer({
+      _sendToClawkeServer({
         type: GatewayMessageType.AgentToolResult,
         message_id: streamMsgId,
         toolCallId: last.id,
@@ -744,6 +828,7 @@ async function handleClawkeInbound(
       } : {}),
       replyOptions: {
         ...replyOptions,
+        abortSignal: dispatchAC.signal,  // SDK 原生 abort：切断 LLM 流
         // P0-0.1: 禁用 block streaming — Clawke 通过 onPartialReply 自己做流式，
         // 不需要 SDK 通过 block 投递中间段。所有有自己流式实现的 channel 都设为 true。
         disableBlockStreaming: true,
@@ -754,7 +839,7 @@ async function handleClawkeInbound(
         onAssistantMessageStart: () => {
           // 结束上一段流式（如果有）
           if (hasStreamedAny) {
-            sendToClawkeServer({
+            _sendToClawkeServer({
               type: GatewayMessageType.AgentTextDone,
               message_id: streamMsgId,
               fullText: lastFullText,
@@ -774,7 +859,7 @@ async function handleClawkeInbound(
           const text = payload.text ?? "";
           if (text.length > lastSentLength) {
             const delta = text.slice(lastSentLength);
-            sendToClawkeServer({
+            _sendToClawkeServer({
               type: GatewayMessageType.AgentTextDelta,
               message_id: streamMsgId,
               delta,
@@ -784,6 +869,7 @@ async function handleClawkeInbound(
             });
             lastSentLength = text.length;
             lastFullText = text;
+            dispatchPartialTexts.set(dispatchSenderId, text);
             hasStreamedAny = true;
           }
         },
@@ -797,7 +883,7 @@ async function handleClawkeInbound(
           
           if (text.length > lastThinkingLength) {
             const delta = text.slice(lastThinkingLength);
-            sendToClawkeServer({
+            _sendToClawkeServer({
               type: GatewayMessageType.AgentThinkingDelta,
               message_id: thinkingMsgId,
               delta,
@@ -812,7 +898,7 @@ async function handleClawkeInbound(
         // Thinking 结束信号
         onReasoningEnd: () => {
           if (hasStreamedThinking) {
-            sendToClawkeServer({
+            _sendToClawkeServer({
               type: GatewayMessageType.AgentThinkingDone,
               message_id: thinkingMsgId,
               to: clawkeTo,
@@ -829,7 +915,7 @@ async function handleClawkeInbound(
           const toolName = payload.name || "tool";
           const toolCallId = `${streamMsgId}_tool_${++toolCallCounter}`;
           toolCalls.push({ name: toolName, startTime: Date.now(), id: toolCallId });
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentToolCall,
             message_id: streamMsgId,
             toolCallId,
@@ -840,7 +926,7 @@ async function handleClawkeInbound(
         },
         // P1-1.4: 上下文压缩通知 — 长对话上下文窗口满时通知客户端
         onCompactionStart: () => {
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentStatus,
             status: AgentStatus.Compacting,
             message_id: streamMsgId,
@@ -850,7 +936,7 @@ async function handleClawkeInbound(
           });
         },
         onCompactionEnd: () => {
-          sendToClawkeServer({
+          _sendToClawkeServer({
             type: GatewayMessageType.AgentStatus,
             status: AgentStatus.Thinking,
             message_id: streamMsgId,
@@ -879,7 +965,7 @@ async function handleClawkeInbound(
 
   // 发送本轮工具统计摘要给 Clawke Server（用于 Dashboard）
   if (toolCalls.length > 0) {
-    sendToClawkeServer({
+    _sendToClawkeServer({
       type: GatewayMessageType.AgentTurnStats,
       message_id: streamMsgId,
       toolCallCount: toolCalls.length,
@@ -888,6 +974,9 @@ async function handleClawkeInbound(
       conversation_id: senderId,
     });
   }
+
+  // 清理已完成 dispatch 的 partial text 缓存
+  dispatchPartialTexts.delete(dispatchSenderId);
 
   ctx.log?.info(`Dispatch complete: queuedFinal=${queuedFinal}, replies=${counts.final}, tools=${toolCalls.length}`);
 
@@ -902,7 +991,7 @@ async function handleClawkeInbound(
       ? `⚠️ 请求大模型接口失败：${(lastError as Error).message}` 
       : "⚠️ AI 未能生成回复，请重试。如果问题持续出现，尝试发送 /new 开始新会话。";
       
-    sendToClawkeServer({
+    _sendToClawkeServer({
       type: GatewayMessageType.AgentText,
       message_id: streamMsgId,
       text: fallbackText,
