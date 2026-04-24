@@ -121,6 +121,37 @@ test('TaskGatewayError maps status code message and details', async () => {
   });
 });
 
+test('returned gateway error responses produce HTTP errors', async () => {
+  const routes = await import('../dist/routes/tasks-routes.js');
+  routes.initTasksRoutes({
+    getConnectedAccountIds: () => ['mock'],
+    sendTaskRequest: async () => ({
+      type: 'task_mutation_response',
+      request_id: 'r',
+      ok: false,
+      error: 'tasks_unsupported',
+      message: 'Mock mode does not manage agent tasks.',
+      details: { mode: 'mock' },
+    }),
+  });
+
+  const res = fakeRes();
+  await routes.createTask(fakeReq({
+    body: {
+      account_id: 'mock',
+      schedule: '0 9 * * *',
+      prompt: 'summarize',
+    },
+  }), res);
+
+  assert.equal(res.statusCode, 501);
+  assert.deepEqual(res.body, {
+    error: 'tasks_unsupported',
+    message: 'Mock mode does not manage agent tasks.',
+    details: { mode: 'mock' },
+  });
+});
+
 function fakeReq({ query = {}, body = {}, params = {} } = {}) {
   return { query, body, params };
 }

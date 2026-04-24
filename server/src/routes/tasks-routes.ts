@@ -134,10 +134,31 @@ async function respond(
   try {
     const sender = deps?.sendTaskRequest || sendTaskGatewayRequest;
     const response = await sender(request);
+    if (response.ok === false || response.error) {
+      sendGatewayResponseError(res, response);
+      return;
+    }
     res.status(status).json(map(response));
   } catch (err) {
     sendError(res, err);
   }
+}
+
+function sendGatewayResponseError(res: Response, response: TaskGatewayResponse): void {
+  const error = response.error || 'gateway_error';
+  const status = responseStatus(response, error);
+  res.status(status).json({
+    error,
+    message: response.message || error,
+    details: response.details,
+  });
+}
+
+function responseStatus(response: TaskGatewayResponse, error: string): number {
+  const maybeStatus = (response as TaskGatewayResponse & { status?: unknown }).status;
+  if (typeof maybeStatus === 'number') return maybeStatus;
+  if (error === 'tasks_unsupported') return 501;
+  return 502;
 }
 
 function sendError(res: Response, err: unknown): void {
