@@ -14,7 +14,11 @@ class HermesTaskAdapter:
     agent = "hermes"
 
     def list_tasks(self, account_id: str) -> list[dict[str, Any]]:
-        jobs = self._jobs().list_jobs()
+        jobs_api = self._jobs()
+        try:
+            jobs = jobs_api.list_jobs(include_disabled=True)
+        except TypeError:
+            jobs = jobs_api.list_jobs()
         return [self._normalize_task(account_id, job) for job in jobs]
 
     def get_task(self, account_id: str, task_id: str) -> dict[str, Any] | None:
@@ -26,11 +30,11 @@ class HermesTaskAdapter:
     def create_task(self, account_id: str, draft: dict[str, Any]) -> dict[str, Any]:
         jobs = self._jobs()
         job = jobs.create_job(
-            draft.get("name") or draft.get("prompt", "Task"),
-            draft.get("schedule", ""),
-            draft.get("prompt", ""),
-            draft.get("deliver"),
-            draft.get("skills") or draft.get("skill_ids") or [],
+            prompt=draft.get("prompt", ""),
+            schedule=draft.get("schedule", ""),
+            name=draft.get("name") or None,
+            deliver=draft.get("deliver"),
+            skills=draft.get("skills") or draft.get("skill_ids") or [],
         )
         return self._normalize_task(account_id, job)
 
@@ -49,7 +53,7 @@ class HermesTaskAdapter:
         elif "skill_ids" in patch:
             supported["skill_ids"] = patch["skill_ids"]
 
-        job = self._jobs().update_job(task_id, **supported)
+        job = self._jobs().update_job(task_id, supported)
         if job is None:
             return None
         return self._normalize_task(account_id, job)
@@ -72,15 +76,23 @@ class HermesTaskAdapter:
         if not task_dir.is_dir():
             return []
 
-        runs = [self._run_summary(task_id, path) for path in task_dir.glob("*.txt")]
-        runs.sort(key=lambda run: run.get("started_at", ""), reverse=True)
+        paths = list(task_dir.glob("*.md")) + list(task_dir.glob("*.txt"))
+        runs = [self._run_summary(task_id, path) for path in paths]
+        runs.sort(
+            key=lambda run: (run.get("_mtime", 0.0), run.get("id", "")),
+            reverse=True,
+        )
+        for run in runs:
+            run.pop("_mtime", None)
         return runs
 
     def get_output(self, task_id: str, run_id: str) -> str:
-        path = self._output_dir() / task_id / f"{run_id}.txt"
-        if not path.is_file():
-            return ""
-        return path.read_text(encoding="utf-8", errors="replace")
+        task_dir = self._output_dir() / task_id
+        for suffix in (".md", ".txt"):
+            path = task_dir / f"{run_id}{suffix}"
+            if path.is_file():
+                return path.read_text(encoding="utf-8", errors="replace")
+        return ""
 
     def run_task(self, task_id: str) -> dict[str, Any]:
         job = self._jobs().get_job(task_id)
@@ -125,6 +137,7 @@ class HermesTaskAdapter:
             "finished_at": self._timestamp(stat.st_mtime),
             "status": "success",
             "output_preview": text[:200],
+            "_mtime": stat.st_mtime,
         }
 
     def _output_dir(self) -> Path:

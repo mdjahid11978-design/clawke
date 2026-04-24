@@ -37,12 +37,23 @@ def cron_jobs(monkeypatch, tmp_path):
         },
     ]
 
-    def list_jobs():
-        jobs_mod.calls.append(("list_jobs",))
-        return list(jobs_mod.jobs)
+    def list_jobs(include_disabled=False):
+        jobs_mod.calls.append(("list_jobs", include_disabled))
+        return [
+            job for job in jobs_mod.jobs
+            if include_disabled or job.get("enabled", True)
+        ]
 
-    def create_job(name, schedule, prompt, deliver=None, skill_ids=None):
-        jobs_mod.calls.append(("create_job", name, schedule, prompt, deliver, skill_ids))
+    def create_job(*, prompt, schedule, name=None, deliver=None, skills=None, skill=None, **kwargs):
+        jobs_mod.calls.append(("create_job", {
+            "prompt": prompt,
+            "schedule": schedule,
+            "name": name,
+            "deliver": deliver,
+            "skills": skills,
+            "skill": skill,
+            "extra": kwargs,
+        }))
         job = {
             "id": "job_new",
             "name": name,
@@ -50,16 +61,16 @@ def cron_jobs(monkeypatch, tmp_path):
             "prompt": prompt,
             "enabled": True,
             "deliver": deliver,
-            "skill_ids": skill_ids or [],
+            "skills": skills or ([skill] if skill else []),
         }
         jobs_mod.jobs.append(job)
         return job
 
-    def update_job(task_id, **kwargs):
-        jobs_mod.calls.append(("update_job", task_id, kwargs))
+    def update_job(task_id, updates):
+        jobs_mod.calls.append(("update_job", task_id, updates))
         for job in jobs_mod.jobs:
             if job["id"] == task_id:
-                job.update(kwargs)
+                job.update(updates)
                 return job
         return None
 
@@ -123,7 +134,7 @@ def test_list_tasks_maps_cron_jobs_to_normalized_tasks(adapter, cron_jobs):
     }
     assert tasks[1]["schedule"] == "0 17 * * 5"
     assert tasks[1]["status"] == "paused"
-    assert cron_jobs.calls[0] == ("list_jobs",)
+    assert cron_jobs.calls[0] == ("list_jobs", True)
 
 
 def test_get_task_returns_matching_task_or_none(adapter):
@@ -145,14 +156,15 @@ def test_create_update_delete_call_cron_jobs(adapter, cron_jobs):
 
     assert created["id"] == "job_new"
     assert created["account_id"] == "acct_1"
-    assert (
-        "create_job",
-        "New task",
-        "*/30 * * * *",
-        "Check status",
-        "chat",
-        ["ops"],
-    ) in cron_jobs.calls
+    assert ("create_job", {
+        "prompt": "Check status",
+        "schedule": "*/30 * * * *",
+        "name": "New task",
+        "deliver": "chat",
+        "skills": ["ops"],
+        "skill": None,
+        "extra": {},
+    }) in cron_jobs.calls
 
     updated = adapter.update_task(
         "acct_1",
@@ -201,7 +213,7 @@ def test_list_runs_and_get_output_read_output_files(adapter, cron_jobs):
     task_dir = Path(cron_jobs.OUTPUT_DIR) / "job_1"
     task_dir.mkdir()
     (task_dir / "run_a.txt").write_text("First run output", encoding="utf-8")
-    (task_dir / "run_b.txt").write_text("Second run output is longer", encoding="utf-8")
+    (task_dir / "run_b.md").write_text("Second run output is longer", encoding="utf-8")
 
     runs = adapter.list_runs("job_1")
 
@@ -210,6 +222,7 @@ def test_list_runs_and_get_output_read_output_files(adapter, cron_jobs):
     assert runs[0]["status"] == "success"
     assert runs[0]["output_preview"] == "Second run output is longer"
     assert adapter.get_output("job_1", "run_a") == "First run output"
+    assert adapter.get_output("job_1", "run_b") == "Second run output is longer"
     assert adapter.get_output("job_1", "missing") == ""
 
 
