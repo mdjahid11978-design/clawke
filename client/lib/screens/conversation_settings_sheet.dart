@@ -213,6 +213,7 @@ class _ConversationSettingsSheetState
           actions: [
             if (_isCreateMode)
               TextButton(
+                key: const ValueKey('ui_e2e_create_conversation_button'),
                 onPressed: _saving ? null : _save,
                 child: Text(
                   context.l10n.create,
@@ -321,6 +322,7 @@ class _ConversationSettingsSheetState
             const SizedBox(width: 12),
             Expanded(
               child: TextField(
+                key: const ValueKey('ui_e2e_conversation_name_field'),
                 controller: _nameController,
                 style: TextStyle(fontSize: 16, color: colorScheme.onSurface),
                 decoration: InputDecoration(

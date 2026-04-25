@@ -473,6 +473,7 @@ class NewConversationButton extends ConsumerWidget {
     final minDim = iconSize + 14;
     // 没有在线后端时也显示按钮（但禁用）
     return IconButton(
+      key: const ValueKey('ui_e2e_new_conversation_button'),
       icon: Icon(Icons.add, size: iconSize),
       tooltip: context.l10n.newConversation,
       onPressed: accounts.isEmpty ? null : () => _onTap(context, ref, accounts),

@@ -1873,6 +1873,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
               Expanded(
                 child: TextField(
+                  key: const ValueKey('ui_e2e_chat_input'),
                   focusNode: _focusNode,
                   controller: _controller,
                   enabled: connected,
@@ -1917,6 +1918,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     (waiting != null && waiting == convId) ||
                     (ref.watch(activeToolProvider)?.convId == convId);
                 return IconButton.filled(
+                  key: ValueKey(isMyStreaming ? 'ui_e2e_abort_button' : 'ui_e2e_send_button'),
                   onPressed: connected
                       ? (isMyStreaming
                           ? () => ref.read(wsMessageHandlerProvider).sendAbort()
