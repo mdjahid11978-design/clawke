@@ -8,6 +8,23 @@
 
 **Tech Stack:** Node.js built-ins, Server `ws` dependency via `createRequire`, Flutter `integration_test`, JSON case manifests, local run artifacts under `test/ui-e2e/runs/`.
 
+## Execution Status
+
+- [x] Task 1: Add Stable UI Keys
+- [x] Task 2: Add Persistent Case and Report Template
+- [x] Task 3: Add Scripted Mock Gateway
+- [x] Task 4: Add Flutter E2E Harness
+- [x] Task 5: Add Manual Runner
+- [x] Task 6: First Full Loop
+- [x] Task 7: Add README
+
+Verification:
+
+- `flutter test test/screens/chat_screen_test.dart test/screens/conversation_list_screen_test.dart`
+- `node --check test/ui-e2e/tools/mock-gateway.mjs`
+- `node --check test/ui-e2e/tools/runner.mjs`
+- `./test/ui-e2e/tools/run.sh --case p0-send-message` -> `PASS p0-send-message`
+
 ---
 
 ## File Structure

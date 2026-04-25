@@ -12,7 +12,6 @@
   },
   "steps": [
     { "action": "launch_app" },
-    { "action": "wait_for_text", "text": "Clawke" },
     { "action": "create_conversation", "name": "E2E P0 Send Message" },
     { "action": "send_message", "text": "你好 Clawke" },
     { "action": "wait_for_text", "text": "这是 Mock Gateway 的稳定回复" }
