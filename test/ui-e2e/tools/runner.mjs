@@ -214,6 +214,10 @@ function codeBlock(lines) {
   return `\`\`\`text\n${lines.join('\n')}\n\`\`\``;
 }
 
+function reportStatus(ok) {
+  return ok ? 'success' : 'fail';
+}
+
 function writeHumanReport({ ok, error, bugReportPath, screenshots }) {
   const branch = gitValue(['branch', '--show-current']);
   const commit = gitValue(['rev-parse', '--short', 'HEAD']);
@@ -233,18 +237,18 @@ function writeHumanReport({ ok, error, bugReportPath, screenshots }) {
   const screenshotMarkdown = screenshots.length === 0
     ? '当前 run 未采集到截图。'
     : screenshots.map((shot) => `![${shot}](${shot})`).join('\n\n');
-  const statusLabel = ok ? 'PASS' : 'FAIL';
+  const statusValue = reportStatus(ok);
+  const statusLabel = statusValue.toUpperCase();
   const markdown = `# UI E2E Report: ${testCase.id}
 
 ## Summary
 
-- status: ${statusLabel}
+- 测试结果: status: ${statusValue}
 - case: ${testCase.id}
 - title: ${testCase.title}
 - run_id: ${runId}
 - branch: ${branch}
 - commit: ${commit}
-- demo_fail: ${args['demo-fail'] ? 'true' : 'false'}
 
 ## Conclusion
 
@@ -323,7 +327,7 @@ ${markdownList([
     <tr><th>Run ID</th><td>${escapeHtml(runId)}</td></tr>
     <tr><th>Branch</th><td>${escapeHtml(branch)}</td></tr>
     <tr><th>Commit</th><td>${escapeHtml(commit)}</td></tr>
-    <tr><th>Demo Fail</th><td>${args['demo-fail'] ? 'true' : 'false'}</td></tr>
+    <tr><th>测试结果</th><td>status: ${escapeHtml(statusValue)}</td></tr>
   </table>
   <h2>Conclusion</h2>
   <p>${escapeHtml(ok ? '该 UI E2E 用例通过。' : `该 UI E2E 用例失败：${error?.message || String(error)}`)}</p>
