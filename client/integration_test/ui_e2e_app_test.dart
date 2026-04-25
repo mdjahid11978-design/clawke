@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:integration_test/integration_test.dart';
@@ -10,7 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:client/main.dart';
 
 void main() {
-  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final appBoundaryKey = GlobalKey();
 
   const caseFile = String.fromEnvironment('CLAWKE_E2E_CASE_FILE');
   const caseJsonBase64 = String.fromEnvironment('CLAWKE_E2E_CASE_JSON_BASE64');
@@ -26,7 +29,12 @@ void main() {
       );
       await _seedServerPrefs(httpUrl: httpUrl, wsUrl: wsUrl);
 
-      await tester.pumpWidget(const ProviderScope(child: ClawkeApp()));
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: appBoundaryKey,
+          child: const ProviderScope(child: ClawkeApp()),
+        ),
+      );
       await tester.pump(const Duration(seconds: 2));
 
       try {
@@ -36,8 +44,9 @@ void main() {
         for (final assertion in (testCase['assert'] as List)) {
           await _runAssert(tester, Map<String, dynamic>.from(assertion as Map));
         }
+        await _captureScreenshot(tester, appBoundaryKey, runDir, 'final');
       } catch (_) {
-        await _captureFailure(binding, runDir);
+        await _captureScreenshot(tester, appBoundaryKey, runDir, 'failure');
         rethrow;
       }
     });
@@ -81,7 +90,11 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
       await tester.pump(const Duration(seconds: 2));
       return;
     case 'wait_for_text':
-      await _waitForText(tester, step['text'] as String);
+      await _waitForText(
+        tester,
+        step['text'] as String,
+        timeout: _stepTimeout(step),
+      );
       return;
     case 'wait_for_absent_text':
       await _waitForAbsentText(
@@ -91,7 +104,11 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
       );
       return;
     case 'wait_for_key':
-      await _waitForKey(tester, step['key'] as String);
+      await _waitForKey(
+        tester,
+        step['key'] as String,
+        timeout: _stepTimeout(step),
+      );
       return;
     case 'tap_key':
       await _tapKey(tester, step['key'] as String);
@@ -241,16 +258,60 @@ Duration _stepDuration(Map<String, dynamic> step) {
   return Duration(milliseconds: durationMs);
 }
 
-Future<void> _captureFailure(
-  IntegrationTestWidgetsFlutterBinding binding,
+Duration _stepTimeout(Map<String, dynamic> step) {
+  final timeoutMs = step['timeoutMs'] as int?;
+  if (timeoutMs == null) return const Duration(seconds: 20);
+  return Duration(milliseconds: timeoutMs);
+}
+
+Future<void> _captureScreenshot(
+  WidgetTester tester,
+  GlobalKey boundaryKey,
   String runDir,
+  String name,
 ) async {
-  if (runDir.isEmpty) return;
-  final dir = Directory('$runDir/screenshots');
   try {
+    await tester.pump(const Duration(milliseconds: 100));
+    final boundary =
+        boundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null) {
+      throw StateError('Root repaint boundary not found');
+    }
+    final image = await boundary.toImage(pixelRatio: 1);
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (byteData == null) {
+      throw StateError('Screenshot byte data is null');
+    }
+    final bytes = byteData.buffer.asUint8List();
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}-$name.png';
+    final path = _tryWriteScreenshot(runDir, fileName, bytes);
+    // 优先写入 runner 目录 — Prefer writing into the runner directory
+    if (path != null) {
+      // 截图路径供 runner 收集 — Screenshot path for runner collection
+      // ignore: avoid_print
+      print('E2E_SCREENSHOT:$path');
+      return;
+    }
+    // 避开 macOS App 沙箱路径权限 — Avoid macOS app sandbox path permissions
+    // ignore: avoid_print
+    print('E2E_SCREENSHOT_BASE64:$fileName:${base64Encode(bytes)}');
+  } catch (error) {
+    // 截图失败不影响业务断言 — Screenshot failure must not mask test result
+    // ignore: avoid_print
+    print('E2E_SCREENSHOT_FAILED:$error');
+  }
+}
+
+String? _tryWriteScreenshot(String runDir, String fileName, List<int> bytes) {
+  if (runDir.isEmpty) return null;
+  try {
+    final dir = Directory('$runDir/screenshots');
     dir.createSync(recursive: true);
-    await binding.convertFlutterSurfaceToImage();
-    final bytes = await binding.takeScreenshot('failure');
-    File('${dir.path}/failure.png').writeAsBytesSync(bytes);
-  } catch (_) {}
+    final file = File('${dir.path}/$fileName');
+    file.writeAsBytesSync(bytes);
+    return file.path;
+  } catch (_) {
+    return null;
+  }
 }
