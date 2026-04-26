@@ -1,0 +1,87 @@
+{
+  "id": "p0-skills-management-lifecycle",
+  "title": "技能管理可完成新增、编辑、禁用、启用、删除托管技能",
+  "module": "技能管理",
+  "objective": "验证技能中心页面对 managed skill 的完整生命周期操作，包括新增、查看详情、编辑、禁用、启用和删除。",
+  "coverage": [
+    "进入技能中心并加载 Gateway 技能列表",
+    "新增 managed skill",
+    "查看技能详情并进入编辑",
+    "编辑描述和 SKILL.md 内容",
+    "禁用并通过筛选验证",
+    "启用并通过筛选验证",
+    "删除技能并确认列表中消失"
+  ],
+  "tags": ["p0", "skills", "crud", "ui"],
+  "setup": {
+    "serverMode": "openclaw",
+    "accountId": "e2e_mock",
+    "agentName": "E2E Mock Skills Gateway",
+    "gatewayType": "hermes",
+    "capabilities": ["chat", "skills", "models"],
+    "httpPort": 18780,
+    "upstreamPort": 18766,
+    "mediaPort": 18781
+  },
+  "steps": [
+    { "action": "launch_app" },
+    { "action": "tap_text", "text": "技能中心", "exact": true },
+    { "action": "wait_for_text", "text": "seed-skill" },
+    { "action": "tap_text", "text": "新建技能", "exact": true },
+    { "action": "wait_for_text", "text": "新建技能" },
+    { "action": "enter_text_field", "index": 0, "text": "e2e-skill-lifecycle" },
+    { "action": "enter_text_field", "index": 1, "text": "general" },
+    { "action": "enter_text_field", "index": 2, "text": "用于 E2E 生命周期验证" },
+    { "action": "enter_text_field", "index": 3, "text": "E2E 技能初始描述" },
+    { "action": "enter_text_field", "index": 4, "text": "## Purpose\n\n验证技能管理页面新增。" },
+    { "action": "tap_dialog_button", "text": "保存" },
+    { "action": "wait_for_text", "text": "技能已创建" },
+    { "action": "wait_for_text", "text": "e2e-skill-lifecycle" },
+    { "action": "wait_for_text", "text": "E2E 技能初始描述" },
+    { "action": "tap_card_button", "cardText": "e2e-skill-lifecycle", "buttonText": "详情" },
+    { "action": "wait_for_text", "text": "技能详情" },
+    { "action": "tap_dialog_button", "text": "编辑" },
+    { "action": "wait_for_text", "text": "编辑技能" },
+    { "action": "enter_text_field", "index": 3, "text": "E2E 技能编辑后描述" },
+    { "action": "enter_text_field", "index": 4, "text": "## Purpose\n\n验证技能管理页面编辑。" },
+    { "action": "tap_dialog_button", "text": "保存" },
+    { "action": "wait_for_text", "text": "技能已保存" },
+    { "action": "wait_for_text", "text": "E2E 技能编辑后描述" },
+    { "action": "tap_card_switch", "cardText": "e2e-skill-lifecycle" },
+    { "action": "pump", "durationMs": 600 },
+    { "action": "tap_filter_chip", "text": "已禁用" },
+    { "action": "wait_for_text", "text": "e2e-skill-lifecycle" },
+    { "action": "tap_card_switch", "cardText": "e2e-skill-lifecycle" },
+    { "action": "pump", "durationMs": 600 },
+    { "action": "tap_filter_chip", "text": "已启用" },
+    { "action": "wait_for_text", "text": "e2e-skill-lifecycle" },
+    { "action": "tap_card_button", "cardText": "e2e-skill-lifecycle", "buttonText": "删除" },
+    { "action": "wait_for_text", "text": "删除技能？" },
+    { "action": "tap_dialog_button", "text": "删除" },
+    { "action": "wait_for_text", "text": "技能已删除" },
+    { "action": "wait_for_absent_text", "text": "e2e-skill-lifecycle", "durationMs": 1500 }
+  ],
+  "mockGateway": {
+    "skills": [
+      {
+        "id": "general/seed-skill",
+        "name": "seed-skill",
+        "description": "用于验证技能列表加载的种子技能",
+        "category": "general",
+        "trigger": "需要种子技能时使用",
+        "enabled": true,
+        "source": "managed",
+        "sourceLabel": "Clawke managed",
+        "writable": true,
+        "deletable": true,
+        "path": "general/seed-skill/SKILL.md",
+        "root": "/tmp/clawke-e2e-skills",
+        "body": "## Purpose\n\nSeed skill for UI E2E."
+      }
+    ]
+  },
+  "assert": [
+    { "uiTextVisible": "seed-skill" },
+    { "uiTextAbsent": "e2e-skill-lifecycle" }
+  ]
+}

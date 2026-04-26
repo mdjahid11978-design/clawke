@@ -1,0 +1,110 @@
+{
+  "id": "p0-tasks-management-lifecycle",
+  "title": "任务管理可完成新增、查看、编辑、暂停、启用、立即执行和删除任务",
+  "module": "任务管理",
+  "objective": "验证任务管理页面对 Gateway 任务的核心生命周期操作，包括列表加载、新增、详情查看、编辑、暂停、启用、立即执行、执行记录和删除。",
+  "coverage": [
+    "进入任务管理并加载 Gateway 任务列表",
+    "新增 Gateway 托管任务",
+    "查看任务详情并编辑计划、交付方式和执行任务",
+    "立即执行任务并查看执行记录",
+    "暂停任务并通过筛选验证",
+    "启用任务并通过筛选验证",
+    "删除任务并确认列表中消失"
+  ],
+  "tags": ["p0", "tasks", "crud", "ui"],
+  "setup": {
+    "serverMode": "openclaw",
+    "accountId": "e2e_mock",
+    "agentName": "E2E Mock Tasks Gateway",
+    "gatewayType": "hermes",
+    "capabilities": ["chat", "tasks", "skills", "models"],
+    "httpPort": 18780,
+    "upstreamPort": 18766,
+    "mediaPort": 18781
+  },
+  "steps": [
+    { "action": "launch_app" },
+    { "action": "tap_text", "text": "任务管理", "exact": true },
+    { "action": "wait_for_text", "text": "seed-task" },
+    { "action": "tap_text", "text": "新建任务", "exact": true },
+    { "action": "wait_for_text", "text": "新建任务" },
+    { "action": "enter_text_field", "index": 0, "text": "e2e-task-lifecycle" },
+    { "action": "enter_text_field", "index": 1, "text": "*/15 * * * *" },
+    { "action": "enter_text_field", "index": 2, "text": "clawke-ui" },
+    { "action": "enter_text_field", "index": 3, "text": "general/seed-skill" },
+    { "action": "enter_text_field", "index": 4, "text": "E2E 任务初始执行内容：生成日报摘要。" },
+    { "action": "tap_dialog_button", "text": "保存修改" },
+    { "action": "wait_for_text", "text": "任务已创建" },
+    { "action": "wait_for_text", "text": "e2e-task-lifecycle" },
+    { "action": "wait_for_text", "text": "E2E 任务初始执行内容" },
+    { "action": "tap_text", "text": "编辑任务", "exact": true },
+    { "action": "wait_for_text", "text": "编辑任务" },
+    { "action": "enter_text_field", "index": 1, "text": "0 10 * * *" },
+    { "action": "enter_text_field", "index": 2, "text": "clawke-report" },
+    { "action": "enter_text_field", "index": 4, "text": "E2E 任务编辑后执行内容：生成更新后的任务摘要。" },
+    { "action": "tap_dialog_button", "text": "保存修改" },
+    { "action": "wait_for_text", "text": "任务已保存" },
+    { "action": "wait_for_text", "text": "0 10 * * *" },
+    { "action": "wait_for_text", "text": "E2E 任务编辑后执行内容" },
+    { "action": "tap_dialog_button", "text": "立即执行" },
+    { "action": "wait_for_text", "text": "已触发任务" },
+    { "action": "wait_for_text", "text": "成功" },
+    { "action": "tap_dialog_button", "text": "执行记录" },
+    { "action": "wait_for_text", "text": "执行记录" },
+    { "action": "wait_for_text", "text": "E2E 任务执行成功" },
+    { "action": "tap_text", "text": "返回详情", "exact": true },
+    { "action": "wait_for_text", "text": "任务定义" },
+    { "action": "tap_text", "text": "返回任务列表", "exact": true },
+    { "action": "wait_for_text", "text": "e2e-task-lifecycle" },
+    { "action": "tap_card_switch", "cardText": "e2e-task-lifecycle" },
+    { "action": "pump", "durationMs": 800 },
+    { "action": "tap_filter_chip", "text": "已暂停" },
+    { "action": "wait_for_text", "text": "e2e-task-lifecycle" },
+    { "action": "tap_card_switch", "cardText": "e2e-task-lifecycle" },
+    { "action": "pump", "durationMs": 800 },
+    { "action": "tap_filter_chip", "text": "已启用" },
+    { "action": "wait_for_text", "text": "e2e-task-lifecycle" },
+    { "action": "tap_card_tooltip", "cardText": "e2e-task-lifecycle", "tooltip": "删除" },
+    { "action": "wait_for_text", "text": "删除任务？" },
+    { "action": "tap_dialog_button", "text": "删除" },
+    { "action": "wait_for_text", "text": "任务已删除" },
+    { "action": "wait_for_absent_text", "text": "e2e-task-lifecycle", "durationMs": 1500 }
+  ],
+  "mockGateway": {
+    "skills": [
+      {
+        "id": "general/seed-skill",
+        "name": "seed-skill",
+        "description": "用于验证任务技能字段的种子技能",
+        "category": "general",
+        "trigger": "任务测试需要技能时使用",
+        "enabled": true,
+        "source": "managed",
+        "sourceLabel": "Clawke managed",
+        "writable": true,
+        "deletable": true,
+        "path": "general/seed-skill/SKILL.md",
+        "root": "/tmp/clawke-e2e-skills",
+        "body": "## Purpose\n\nSeed skill for task UI E2E."
+      }
+    ],
+    "tasks": [
+      {
+        "id": "task-seed-task",
+        "name": "seed-task",
+        "schedule": "0 9 * * *",
+        "schedule_text": "每天 09:00",
+        "prompt": "用于验证任务列表加载的种子任务",
+        "enabled": true,
+        "status": "active",
+        "skills": ["general/seed-skill"],
+        "deliver": "clawke-ui"
+      }
+    ]
+  },
+  "assert": [
+    { "uiTextVisible": "seed-task" },
+    { "uiTextAbsent": "e2e-task-lifecycle" }
+  ]
+}

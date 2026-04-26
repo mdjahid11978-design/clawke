@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _kHttpUrlKey = 'clawke_http_url';
 const _kWsUrlKey = 'clawke_ws_url';
 const _kTokenKey = 'clawke_token';
+const _kLoggedOutKey = 'clawke_logged_out';
 
 /// 旧 key（迁移用）
 const _kLegacyHostKey = 'clawke_server_host';
@@ -12,6 +13,67 @@ const _kLegacyHostKey = 'clawke_server_host';
 /// 默认 URL
 const kDefaultHttpUrl = 'http://127.0.0.1:8780';
 const kDefaultWsUrl = 'ws://127.0.0.1:8780/ws';
+
+String normalizeServerHttpUrl(String url) {
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return kDefaultHttpUrl;
+
+  var value = trimmed;
+  if (value.startsWith('ws://')) {
+    value = 'http://${value.substring('ws://'.length)}';
+  } else if (value.startsWith('wss://')) {
+    value = 'https://${value.substring('wss://'.length)}';
+  } else if (!value.startsWith('http://') && !value.startsWith('https://')) {
+    value = 'http://$value';
+  }
+
+  final uri = Uri.parse(value);
+  final scheme = uri.scheme == 'https' ? 'https' : 'http';
+  final path = _normalizeServerBasePath(uri.path);
+  return _uriWithOptionalPort(
+    scheme: scheme,
+    host: uri.host,
+    port: uri.hasPort ? uri.port : null,
+    path: path,
+  ).toString();
+}
+
+String deriveWsUrlFromServerAddress(String url) {
+  final httpUrl = normalizeServerHttpUrl(url);
+  final uri = Uri.parse(httpUrl);
+  final basePath = _normalizeServerBasePath(uri.path);
+  final wsPath = basePath.isEmpty ? '/ws' : '$basePath/ws';
+  return _uriWithOptionalPort(
+    scheme: uri.scheme == 'https' ? 'wss' : 'ws',
+    host: uri.host,
+    port: uri.hasPort ? uri.port : null,
+    path: wsPath,
+  ).toString();
+}
+
+String _normalizeServerBasePath(String path) {
+  var normalized = path;
+  if (normalized == '/ws') normalized = '';
+  if (normalized.endsWith('/ws')) {
+    normalized = normalized.substring(0, normalized.length - '/ws'.length);
+  }
+  while (normalized.length > 1 && normalized.endsWith('/')) {
+    normalized = normalized.substring(0, normalized.length - 1);
+  }
+  return normalized == '/' ? '' : normalized;
+}
+
+Uri _uriWithOptionalPort({
+  required String scheme,
+  required String host,
+  required String path,
+  int? port,
+}) {
+  if (port != null) {
+    return Uri(scheme: scheme, host: host, port: port, path: path);
+  }
+  return Uri(scheme: scheme, host: host, path: path);
+}
 
 /// Clawke 服务器连接配置
 ///
@@ -42,13 +104,20 @@ class ServerConfig {
 
 /// 服务器配置 Provider（持久化到 SharedPreferences）
 final serverConfigProvider =
-    StateNotifierProvider<ServerConfigNotifier, ServerConfig>((ref) {
-  return ServerConfigNotifier();
-});
+    StateNotifierProvider<ServerConfigNotifier, ServerConfig>(
+      (ref) => ServerConfigNotifier(),
+    );
 
 class ServerConfigNotifier extends StateNotifier<ServerConfig> {
-  ServerConfigNotifier() : super(const ServerConfig()) {
-    _load();
+  ServerConfigNotifier({
+    ServerConfig initialConfig = const ServerConfig(),
+    bool loadFromPrefs = true,
+  }) : super(initialConfig) {
+    if (loadFromPrefs) {
+      _load();
+    } else {
+      _loadCompleter.complete(state);
+    }
   }
 
   final Completer<ServerConfig> _loadCompleter = Completer<ServerConfig>();
@@ -84,16 +153,35 @@ class ServerConfigNotifier extends StateNotifier<ServerConfig> {
       await prefs.setString(_kWsUrlKey, migratedWsUrl);
     }
 
+    final normalizedHttpUrl = (httpUrl != null && httpUrl.isNotEmpty)
+        ? normalizeServerHttpUrl(httpUrl)
+        : kDefaultHttpUrl;
+    var normalizedWsUrl = (migratedWsUrl != null && migratedWsUrl.isNotEmpty)
+        ? migratedWsUrl.trim()
+        : deriveWsUrlFromServerAddress(normalizedHttpUrl);
+    if (normalizedWsUrl.startsWith('http://') ||
+        normalizedWsUrl.startsWith('https://') ||
+        normalizedWsUrl.contains('/ws/ws')) {
+      normalizedWsUrl = deriveWsUrlFromServerAddress(normalizedHttpUrl);
+    }
+
+    if (httpUrl != normalizedHttpUrl) {
+      await prefs.setString(_kHttpUrlKey, normalizedHttpUrl);
+    }
+    if (wsUrl != normalizedWsUrl) {
+      await prefs.setString(_kWsUrlKey, normalizedWsUrl);
+    }
+
     state = ServerConfig(
-      httpUrl: (httpUrl != null && httpUrl.isNotEmpty) ? httpUrl : kDefaultHttpUrl,
-      wsUrl: (migratedWsUrl != null && migratedWsUrl.isNotEmpty) ? migratedWsUrl : kDefaultWsUrl,
+      httpUrl: normalizedHttpUrl,
+      wsUrl: normalizedWsUrl,
       token: token,
     );
     _loadCompleter.complete(state);
   }
 
   Future<void> setHttpUrl(String url) async {
-    final trimmed = url.trim();
+    final trimmed = normalizeServerHttpUrl(url);
     if (trimmed.isEmpty) return;
     state = state.copyWith(httpUrl: trimmed);
     final prefs = await SharedPreferences.getInstance();
@@ -134,21 +222,13 @@ class ServerConfigNotifier extends StateNotifier<ServerConfig> {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return;
 
-    final httpUrl = trimmed;
-    String wsUrl;
-
-    if (trimmed.startsWith('https://')) {
-      wsUrl = '${trimmed.replaceFirst('https://', 'wss://')}/ws';
-    } else if (trimmed.startsWith('http://')) {
-      wsUrl = '${trimmed.replaceFirst('http://', 'ws://')}/ws';
-    } else {
-      // 没有协议前缀，默认 http
-      wsUrl = 'ws://$trimmed/ws';
-    }
-
+    final httpUrl = normalizeServerHttpUrl(trimmed);
+    final wsUrl = deriveWsUrlFromServerAddress(httpUrl);
     await setBoth(httpUrl: httpUrl, wsUrl: wsUrl);
     // A token belongs to a specific server/relay. Clear it on address changes
     // so manual local connections do not leak or reuse stale relay tokens.
     await setToken('');
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLoggedOutKey);
   }
 }

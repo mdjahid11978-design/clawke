@@ -10,8 +10,11 @@ final localeProvider = StateNotifierProvider<LocaleNotifier, Locale?>((ref) {
 });
 
 class LocaleNotifier extends StateNotifier<Locale?> {
-  LocaleNotifier() : super(null) {
-    _load();
+  LocaleNotifier({Locale? initialLocale, bool loadFromPrefs = true})
+    : super(initialLocale) {
+    if (loadFromPrefs) {
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -20,8 +23,8 @@ class LocaleNotifier extends StateNotifier<Locale?> {
     if (code != null) {
       state = Locale(code);
     } else {
-      // 未设置过语言时，默认使用英文
-      state = const Locale('en');
+      // 未设置过语言时，默认使用中文 — Default to Chinese when no locale is saved.
+      state = const Locale('zh');
     }
   }
 
