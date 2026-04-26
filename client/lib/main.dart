@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -69,6 +70,42 @@ TextTheme _scaledTextTheme(double scale) {
   );
 }
 
+enum AppPlatform { android, iOS, linux, macOS, windows, fuchsia }
+
+AppPlatform currentAppPlatform() => switch (defaultTargetPlatform) {
+  TargetPlatform.android => AppPlatform.android,
+  TargetPlatform.iOS => AppPlatform.iOS,
+  TargetPlatform.linux => AppPlatform.linux,
+  TargetPlatform.macOS => AppPlatform.macOS,
+  TargetPlatform.windows => AppPlatform.windows,
+  TargetPlatform.fuchsia => AppPlatform.fuchsia,
+};
+
+bool shouldEnableGlobalTextSelection({
+  required AppPlatform platform,
+  bool isWeb = kIsWeb,
+}) {
+  if (isWeb) return false;
+  return switch (platform) {
+    AppPlatform.linux || AppPlatform.macOS || AppPlatform.windows => true,
+    _ => false,
+  };
+}
+
+bool hasPersistedServerConfig(String? httpUrl) =>
+    httpUrl != null && httpUrl.isNotEmpty;
+
+Widget buildGlobalTextSelectionWrapper(BuildContext context, Widget? child) {
+  final content = child ?? const SizedBox.shrink();
+  if (!shouldEnableGlobalTextSelection(platform: currentAppPlatform())) {
+    return content;
+  }
+  // MaterialApp.builder sits above the Navigator's Overlay, while SelectionArea
+  // needs an Overlay for handles/toolbars. Provide a lightweight wrapper here
+  // so desktop-wide selection can stay global without breaking app startup.
+  return Overlay.wrap(child: SelectionArea(child: content));
+}
+
 class ClawkeApp extends ConsumerWidget {
   const ClawkeApp({super.key});
 
@@ -86,6 +123,7 @@ class ClawkeApp extends ConsumerWidget {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       locale: locale,
+      builder: buildGlobalTextSelectionWrapper,
       themeMode: themeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -194,10 +232,7 @@ class AuthGate extends ConsumerWidget {
     if (loggedOut) return false;
 
     final httpUrl = prefs.getString('clawke_http_url');
-    final hasConfig =
-        httpUrl != null &&
-        httpUrl.isNotEmpty &&
-        httpUrl != 'http://127.0.0.1:8780';
+    final hasConfig = hasPersistedServerConfig(httpUrl);
 
     if (!hasConfig) return false;
 

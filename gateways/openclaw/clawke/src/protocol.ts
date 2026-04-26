@@ -36,6 +36,7 @@ export const GatewayMessageType = {
   // 状态与统计
   AgentStatus:        "agent_status",
   AgentTurnStats:     "agent_turn_stats",
+  AgentUsage:         "agent_usage",
 
   // 任务管理
   TaskListResponse:     "task_list_response",
@@ -45,6 +46,11 @@ export const GatewayMessageType = {
   TaskRunsResponse:     "task_runs_response",
   TaskOutputResponse:   "task_output_response",
   TaskEvent:            "task_event",
+
+  // 技能管理
+  SkillListResponse:     "skill_list_response",
+  SkillGetResponse:      "skill_get_response",
+  SkillMutationResponse: "skill_mutation_response",
 } as const;
 
 export type GatewayMessageType = (typeof GatewayMessageType)[keyof typeof GatewayMessageType];
@@ -73,6 +79,14 @@ export const InboundMessageType = {
   TaskRun:        "task_run",
   TaskRuns:       "task_runs",
   TaskOutput:     "task_output",
+
+  // 技能管理
+  SkillList:       "skill_list",
+  SkillGet:        "skill_get",
+  SkillCreate:     "skill_create",
+  SkillUpdate:     "skill_update",
+  SkillDelete:     "skill_delete",
+  SkillSetEnabled: "skill_set_enabled",
 } as const;
 
 export type InboundMessageType = (typeof InboundMessageType)[keyof typeof InboundMessageType];

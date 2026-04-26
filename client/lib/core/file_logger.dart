@@ -16,14 +16,28 @@ class FileLogger {
   FileLogger._();
   static final FileLogger instance = FileLogger._();
 
+  @visibleForTesting
+  factory FileLogger.createForTesting() => FileLogger._();
+
   File? _logFile;
   bool _initialized = false;
+  Future<void>? _initializing;
 
   Future<void> init() async {
     if (_initialized) return;
+    final running = _initializing;
+    if (running != null) return running;
+
+    final initFuture = _initOnce();
+    _initializing = initFuture;
+    await initFuture;
+  }
+
+  Future<void> _initOnce() async {
     try {
       final appDir = await getApplicationDocumentsDirectory();
-      final logDir = Directory('${appDir.path}/logs');
+      final sandboxLogDir = Directory('${appDir.path}/logs');
+      final logDir = resolveDebugLogDirectory() ?? sandboxLogDir;
       if (!logDir.existsSync()) logDir.createSync(recursive: true);
       final date = DateTime.now().toIso8601String().substring(0, 10);
       _logFile = File('${logDir.path}/client-$date.log');
@@ -31,6 +45,8 @@ class FileLogger {
       debugPrint('[FileLogger] 📂 Log path: ${_logFile!.path}');
     } catch (e) {
       debugPrint('[FileLogger] ❌ Init failed: $e');
+    } finally {
+      _initializing = null;
     }
   }
 
@@ -51,4 +67,44 @@ class FileLogger {
     await init();
     return _logFile?.path;
   }
+}
+
+@visibleForTesting
+Directory? resolveDebugLogDirectory({
+  Directory? startDirectory,
+  bool debugMode = kDebugMode,
+}) {
+  if (!debugMode) return null;
+
+  for (final start in _debugSearchStarts(startDirectory)) {
+    final clientDir = _findClientDirectory(start);
+    if (clientDir == null) continue;
+    return Directory('${clientDir.parent.path}/.runtime/logs');
+  }
+
+  return null;
+}
+
+List<Directory> _debugSearchStarts(Directory? startDirectory) {
+  if (startDirectory != null) return [startDirectory];
+  return [Directory.current, File(Platform.resolvedExecutable).parent];
+}
+
+Directory? _findClientDirectory(Directory start) {
+  var current = start.absolute;
+  for (var depth = 0; depth < 24; depth += 1) {
+    final directClient = Directory('${current.path}/client');
+    if (_isFlutterClientDirectory(directClient)) return directClient;
+    if (_isFlutterClientDirectory(current)) return current;
+
+    final parent = current.parent;
+    if (parent.path == current.path) break;
+    current = parent;
+  }
+  return null;
+}
+
+bool _isFlutterClientDirectory(Directory dir) {
+  final name = dir.path.split(Platform.pathSeparator).last;
+  return name == 'client' && File('${dir.path}/pubspec.yaml').existsSync();
 }

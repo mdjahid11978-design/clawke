@@ -1,0 +1,16 @@
+CREATE TABLE skill_localizations (
+  user_id                TEXT    NOT NULL,
+  gateway_id             TEXT    NOT NULL,
+  skill_id               TEXT    NOT NULL,
+  locale                 TEXT    NOT NULL,
+  source_hash            TEXT    NOT NULL,
+  translated_name        TEXT,
+  translated_description TEXT,
+  translated_trigger     TEXT,
+  translated_body        TEXT,
+  status                 TEXT    NOT NULL,
+  error_code             TEXT,
+  error_message          TEXT,
+  updated_at             INTEGER NOT NULL,
+  PRIMARY KEY (user_id, gateway_id, skill_id, locale)
+);

@@ -8,4 +8,5 @@ export { ConversationStore } from './conversation-store.js';
 export type { Conversation } from './conversation-store.js';
 export { ConversationConfigStore } from './conversation-config-store.js';
 export type { ConversationConfig } from './conversation-config-store.js';
+export { SkillTranslationStore } from './skill-translation-store.js';
 export { DATA_DIR, UPLOAD_DIR, THUMB_DIR, BIN_DIR, ensureDirectories } from './clawke-home.js';

@@ -11,6 +11,8 @@ import { WebSocketServer } from 'ws';
 import multer from 'multer';
 import { mediaUpload, serveMedia, serveThumbnail } from './routes/media-routes.js';
 import { getModels, getSkills, getConvConfig, putConvConfig } from './routes/config-routes.js';
+import { createSkill, deleteSkill, getSkill, listSkillScopes, listSkills, setSkillEnabled, updateSkill } from './routes/skills-routes.js';
+import { listGateways, renameGateway } from './routes/gateway-routes.js';
 import { listConversations, createConversation, updateConversation, deleteConversation } from './routes/conversation-routes.js';
 import {
   createTask,
@@ -28,6 +30,28 @@ import type { Server } from 'http';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
+export function isLoopbackAddress(remoteAddress?: string | null): boolean {
+  if (!remoteAddress) return false;
+  const address = remoteAddress.trim().toLowerCase();
+  if (address === '::1') return true;
+  if (address.startsWith('127.')) return true;
+  if (address.startsWith('::ffff:127.')) return true;
+  return false;
+}
+
+export function isAuthorizedRequest({
+  serverToken,
+  clientToken,
+  remoteAddress,
+}: {
+  serverToken: string;
+  clientToken: string;
+  remoteAddress?: string | null;
+}): boolean {
+  if (isLoopbackAddress(remoteAddress)) return true;
+  return serverToken === clientToken;
+}
+
 export function startUnifiedServer(port: number = 8780): { server: Server; wss: WebSocketServer } {
   const config = loadConfig();
   const app = express();
@@ -44,7 +68,11 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
       const headerToken = (req.headers.authorization || '').replace('Bearer ', '');
       const clientToken = queryToken || headerToken;
 
-      if (serverToken !== clientToken) {
+      if (!isAuthorizedRequest({
+        serverToken,
+        clientToken,
+        remoteAddress: req.socket.remoteAddress,
+      })) {
         const cMask = clientToken ? clientToken.slice(0, 8) + '...' : '(empty)';
         const sMask = serverToken ? serverToken.slice(0, 8) + '...' : '(empty)';
         console.warn(`[WS] 🔒 Connection rejected: token mismatch (client=${cMask}, expected=${sMask})`);
@@ -69,11 +97,32 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
     next();
   });
 
+  // API 服务根路径说明，避免浏览器直开时显示 Express 默认的 Cannot GET /。
+  app.get('/', (_req, res) => {
+    res.json({
+      service: 'clawke-cs',
+      kind: 'api',
+      message: 'Clawke HTTP server is an API service. Open the Flutter app for the product UI, or docs/ui-preview.html for the static preview.',
+      endpoints: [
+        '/health',
+        '/api/gateways',
+        '/api/skills',
+        '/api/config/skills',
+        '/api/config/models',
+        '/api/conversations',
+      ],
+    });
+  });
+
   // Token 认证中间件
   app.use((req, res, next) => {
     if (req.path === '/health') return next();
     const clientToken = (req.headers.authorization || '').replace('Bearer ', '');
-    if (serverToken !== clientToken) {
+    if (!isAuthorizedRequest({
+      serverToken,
+      clientToken,
+      remoteAddress: req.socket.remoteAddress,
+    })) {
       console.warn(`[HTTP] 🔒 Unauthorized: ${req.method} ${req.originalUrl} (token mismatch)`);
       res.status(401).json({ error: 'unauthorized' });
       return;
@@ -113,6 +162,7 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
         '/health',
         '/api/media/upload',
         '/api/media/:filename',
+        '/api/gateways',
         '/api/config/models',
         '/api/config/skills',
         '/api/conversations',
@@ -126,6 +176,19 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
   app.get('/api/config/skills', getSkills as any);
   app.get('/api/conv/:id/config', getConvConfig as any);
   app.put('/api/conv/:id/config', putConvConfig as any);
+
+  // Skills 管理 API
+  app.get('/api/gateways', listGateways as any);
+  app.patch('/api/gateways/:gatewayId', renameGateway as any);
+
+  // Skills 管理 API
+  app.get('/api/skills/scopes', listSkillScopes as any);
+  app.get('/api/skills', listSkills as any);
+  app.get('/api/skills/:category/:name', getSkill as any);
+  app.post('/api/skills', createSkill as any);
+  app.put('/api/skills/:category/:name/enabled', setSkillEnabled as any);
+  app.put('/api/skills/:category/:name', updateSkill as any);
+  app.delete('/api/skills/:category/:name', deleteSkill as any);
 
   // 会话 CRUD API
   app.get('/api/conversations', listConversations as any);
@@ -156,7 +219,7 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  server.listen(port, () => {
+  server.listen(port, '127.0.0.1', () => {
     console.log(`[Server] 📂 Unified Server on http://127.0.0.1:${port}`);
     console.log(`[Server]    HTTP: /api/media/upload, /api/media/:filename, /api/tasks, /health`);
     console.log(`[Server]    WS:   ws://127.0.0.1:${port}/ws`);

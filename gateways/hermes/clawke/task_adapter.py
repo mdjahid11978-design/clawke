@@ -37,6 +37,12 @@ class HermesTaskAdapter:
             deliver=draft.get("deliver"),
             skills=draft.get("skills") or draft.get("skill_ids") or [],
         )
+        raw = self._as_dict(job)
+        if draft.get("enabled") is False:
+            task_id = str(raw.get("id") or raw.get("job_id") or "")
+            if task_id:
+                raw.update(self._as_dict(jobs.pause_job(task_id)))
+            job = raw
         return self._normalize_task(account_id, job)
 
     def update_task(
@@ -57,6 +63,13 @@ class HermesTaskAdapter:
         job = self._jobs().update_job(task_id, supported)
         if job is None:
             return None
+        if isinstance(patch.get("enabled"), bool):
+            jobs = self._jobs()
+            raw = self._as_dict(job)
+            enabled = bool(patch["enabled"])
+            changed = jobs.resume_job(task_id) if enabled else jobs.pause_job(task_id)
+            raw.update(self._as_dict(changed))
+            job = raw
         return self._normalize_task(account_id, job)
 
     def delete_task(self, task_id: str) -> bool:

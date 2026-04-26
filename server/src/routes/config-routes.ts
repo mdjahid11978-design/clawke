@@ -23,6 +23,8 @@ export function initConfigRoutes(deps: {
   configStore = deps.configStore;
   queryModelsFunc = deps.queryModels;
   querySkillsFunc = deps.querySkills;
+  modelCache.clear();
+  skillsCache.clear();
 }
 
 // ─── Models ───
@@ -78,7 +80,7 @@ export async function getSkills(req: Request, res: Response): Promise<void> {
     const forceRefresh = req.query.refresh === '1';
     const cached = skillsCache.get(accountId);
     if (!forceRefresh && cached && Date.now() < cached.expiresAt) {
-      res.json({ skills: cached.skills });
+      res.json({ skills: filterRuntimeSkills(cached.skills, accountId) });
       return;
     }
 
@@ -91,11 +93,16 @@ export async function getSkills(req: Request, res: Response): Promise<void> {
     if (skills.length > 0) {
       skillsCache.set(accountId, { skills, expiresAt: Date.now() + SKILLS_CACHE_TTL });
     }
-    res.json({ skills });
+    res.json({ skills: filterRuntimeSkills(skills, accountId) });
   } catch (err: any) {
     console.error('[ConfigAPI] getSkills error:', err.message);
     res.status(500).json({ error: err.message });
   }
+}
+
+function filterRuntimeSkills<T extends { name: string; description: string }>(skills: T[], accountId: string): T[] {
+  void accountId;
+  return skills;
 }
 
 // ─── Conversation Config ───

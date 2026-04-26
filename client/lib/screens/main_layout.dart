@@ -38,6 +38,10 @@ class MainLayout extends ConsumerStatefulWidget {
   ConsumerState<MainLayout> createState() => _MainLayoutState();
 }
 
+Widget buildLazyIndexedChild({required bool isActive, required Widget child}) {
+  return isActive ? child : const SizedBox.shrink();
+}
+
 class _MainLayoutState extends ConsumerState<MainLayout> {
   double _sidebarWidth = _kDefaultSidebarWidth;
 
@@ -198,7 +202,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         : _buildDesktopLayout(context);
 
     return Stack(
-      children: [content, _buildFloatingAlert(context, ref, ws, aiState)],
+      children: [content, _buildFloatingAlert(context, ref, ws)],
     );
   }
 
@@ -207,15 +211,13 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     BuildContext context,
     WidgetRef ref,
     WsState ws,
-    AiBackendState aiState,
   ) {
-    // 健康状态：ws 已连接且 AI 已连接
-    final isHealthy =
-        ws == WsState.connected && aiState == AiBackendState.connected;
-
-    // 显示条件：已尝试过连接、不在宽限期、不健康、且未被用户关闭
+    // 显示条件：已尝试过连接、不在宽限期、WS 未连接、且未被用户关闭
     final showAlert =
-        _hasEverAttempted && !_inGracePeriod && !_alertDismissed && !isHealthy;
+        _hasEverAttempted &&
+        !_inGracePeriod &&
+        !_alertDismissed &&
+        ws != WsState.connected;
 
     if (!showAlert) return const SizedBox.shrink();
 
@@ -226,8 +228,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     final alertText = switch (ws) {
       WsState.disconnected => context.l10n.serverDisconnected,
       WsState.connecting => context.l10n.connecting,
-      WsState.connected when aiState == AiBackendState.disconnected =>
-        context.l10n.aiBackendDisconnected,
       _ => '',
     };
 
@@ -366,11 +366,20 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                   // 1: 仪表盘
                   _buildMobileDashboard(context, sduiCache, colorScheme),
                   // 2: 任务管理
-                  const TasksManagementScreen(showAppBar: true),
+                  buildLazyIndexedChild(
+                    isActive: _mobileTabIndex == 2,
+                    child: const TasksManagementScreen(showAppBar: true),
+                  ),
                   // 3: 技能中心
-                  const SkillsManagementScreen(showAppBar: true),
+                  buildLazyIndexedChild(
+                    isActive: _mobileTabIndex == 3,
+                    child: const SkillsManagementScreen(showAppBar: true),
+                  ),
                   // 4: 我的
-                  const ProfileScreen(),
+                  buildLazyIndexedChild(
+                    isActive: _mobileTabIndex == 4,
+                    child: const ProfileScreen(),
+                  ),
                 ],
               ),
             ),
@@ -571,13 +580,19 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                       // 1: 仪表盘
                       _buildSduiPage(NavPage.dashboard, sduiCache, colorScheme),
                       // 2: 任务管理
-                      const TasksManagementScreen(),
+                      buildLazyIndexedChild(
+                        isActive: activePage == NavPage.tasks,
+                        child: const TasksManagementScreen(),
+                      ),
                       // 3: 定时任务（旧 SDUI 页，导航暂隐藏）
                       _buildSduiPage(NavPage.cron, sduiCache, colorScheme),
                       // 4: 频道管理
                       _buildSduiPage(NavPage.channels, sduiCache, colorScheme),
                       // 5: 技能中心
-                      const SkillsManagementScreen(),
+                      buildLazyIndexedChild(
+                        isActive: activePage == NavPage.skills,
+                        child: const SkillsManagementScreen(),
+                      ),
                     ],
                   ),
                 ),

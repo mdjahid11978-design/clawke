@@ -19,6 +19,7 @@ This document describes how to build a **Gateway Plugin** that connects Clawke S
 The Gateway Plugin connects to Clawke Server's **upstream WebSocket port** (default 8766) and acts as a bidirectional bridge:
 - **Inbound**: Receives user messages from Clawke Server, forwards them to the AI provider
 - **Outbound**: Streams AI responses back to Clawke Server using the standard message protocol
+- **Skills Management**: Owns skills on the gateway host. Clawke Server must not scan the gateway host's filesystem directly.
 
 ## Connection Lifecycle
 
@@ -93,6 +94,69 @@ Your gateway should stop generating and clean up any in-progress AI calls.
 ## Response Protocol
 
 Send AI responses back as JSON messages over the same WebSocket. All messages must include `account_id`.
+
+## Skills Management RPC
+
+Gateway-side skills are managed over request/response WebSocket commands. Each request includes a `request_id`; the gateway must echo that `request_id` in the response.
+
+The gateway owns these local paths on its host:
+
+```text
+~/.clawke/skills
+~/.clawke/disabled-skills
+~/.clawke/skills-state.json
+```
+
+Clawke Server only forwards REST requests from the client to the selected gateway. It does not scan `~/.hermes`, `~/.openclaw`, `~/.agents`, or any gateway-local directory.
+
+### Commands
+
+| Request type | Response type | Purpose |
+|--------------|---------------|---------|
+| `skill_list` | `skill_list_response` | List skills visible to this gateway |
+| `skill_get` | `skill_get_response` | Read one skill, including `content` and `body` |
+| `skill_create` | `skill_mutation_response` | Create a managed skill in gateway `~/.clawke/skills` |
+| `skill_update` | `skill_mutation_response` | Update a managed skill |
+| `skill_delete` | `skill_mutation_response` | Delete a managed skill |
+| `skill_set_enabled` | `skill_mutation_response` | Enable or disable a skill |
+
+Example request:
+
+```json
+{
+  "type": "skill_list",
+  "request_id": "req_123",
+  "account_id": "hermes-work"
+}
+```
+
+Example response:
+
+```json
+{
+  "type": "skill_list_response",
+  "request_id": "req_123",
+  "ok": true,
+  "skills": [
+    {
+      "id": "apple/apple-notes",
+      "name": "apple-notes",
+      "description": "Manage Apple Notes",
+      "category": "apple",
+      "enabled": true,
+      "source": "managed",
+      "sourceLabel": "Gateway managed",
+      "writable": true,
+      "deletable": true,
+      "path": "apple-notes/SKILL.md",
+      "absolutePath": "/Users/me/.clawke/skills/apple-notes/SKILL.md",
+      "root": "/Users/me/.clawke/skills",
+      "updatedAt": 1777000000000,
+      "hasConflict": false
+    }
+  ]
+}
+```
 
 ### Text Streaming (Preferred)
 
@@ -523,4 +587,3 @@ async def main():
 
 asyncio.run(main())
 ```
-

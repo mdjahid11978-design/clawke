@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:client/core/ws_service.dart';
 import 'package:client/data/database/app_database.dart';
+import 'package:client/models/gateway_info.dart';
 import 'package:client/providers/chat_provider.dart';
+import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/models/message_model.dart';
 import 'package:client/screens/chat_screen.dart';
 import '../helpers/provider_overrides.dart';
@@ -157,12 +159,71 @@ void main() {
       );
       expect(sendButton.onPressed, isNull);
     });
+
+    testWidgets('disables composer when current gateway is disconnected', (
+      tester,
+    ) async {
+      await _pumpChatScreen(
+        tester,
+        selectedConvId: 'conv_hermes',
+        selectedAccountId: 'hermes',
+        messages: [],
+        wsState: WsState.connected,
+        connectedAccounts: const [
+          ConnectedAccount(accountId: 'OpenClaw', agentName: 'OpenClaw'),
+        ],
+      );
+
+      expect(find.text('输入消息...'), findsOneWidget);
+      expect(find.text('当前网关未连接'), findsNothing);
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+      expect(textField.enabled, isFalse);
+
+      final sendButton = tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.send),
+      );
+      expect(sendButton.onPressed, isNull);
+    });
+
+    testWidgets('shows dismissible gateway issue banner when selected gateway is disconnected', (
+      tester,
+    ) async {
+      await _pumpChatScreen(
+        tester,
+        selectedConvId: 'conv_hermes',
+        selectedAccountId: 'hermes',
+        messages: [],
+        wsState: WsState.connected,
+        connectedAccounts: const [
+          ConnectedAccount(accountId: 'OpenClaw', agentName: 'OpenClaw'),
+        ],
+        gateways: const [
+          GatewayInfo(
+            gatewayId: 'hermes',
+            displayName: 'Hermes',
+            gatewayType: 'hermes',
+            status: GatewayConnectionStatus.disconnected,
+          ),
+        ],
+      );
+
+      expect(find.text('当前网关未连接：Hermes'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('关闭'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('当前网关未连接：Hermes'), findsNothing);
+    });
   });
 }
 
 Future<void> _pumpChatScreen(
   WidgetTester tester, {
   required String? selectedConvId,
+  String? selectedAccountId,
+  List<ConnectedAccount>? connectedAccounts,
+  List<GatewayInfo>? gateways,
   List<Message>? messages,
   WsState wsState = WsState.disconnected,
   TextMessage? streamingMsg,
@@ -178,6 +239,9 @@ Future<void> _pumpChatScreen(
   final overrides = [
     ...chatScreenOverrides(
       selectedConvId: selectedConvId,
+      selectedAccountId: selectedAccountId,
+      connectedAccounts: connectedAccounts,
+      gateways: gateways,
       messages: messages,
       wsState: wsState,
     ),

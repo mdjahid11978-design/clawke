@@ -90,10 +90,18 @@ def cron_jobs(monkeypatch, tmp_path):
 
     def pause_job(task_id):
         jobs_mod.calls.append(("pause_job", task_id))
+        for job in jobs_mod.jobs:
+            if job["id"] == task_id:
+                job["enabled"] = False
+                return dict(job)
         return {"id": task_id, "enabled": False}
 
     def resume_job(task_id):
         jobs_mod.calls.append(("resume_job", task_id))
+        for job in jobs_mod.jobs:
+            if job["id"] == task_id:
+                job["enabled"] = True
+                return dict(job)
         return {"id": task_id, "enabled": True}
 
     def get_job(task_id):
@@ -216,6 +224,39 @@ def test_create_update_delete_call_cron_jobs(adapter, cron_jobs):
 
     assert adapter.delete_task("job_new") is True
     assert ("remove_job", "job_new") in cron_jobs.calls
+
+
+def test_create_task_respects_disabled_draft(adapter, cron_jobs):
+    created = adapter.create_task(
+        "acct_1",
+        {
+            "name": "Disabled task",
+            "schedule": "0 0 1 1 *",
+            "prompt": "Do not run",
+            "enabled": False,
+        },
+    )
+
+    assert created["id"] == "job_new"
+    assert created["enabled"] is False
+    assert created["status"] == "paused"
+    assert ("pause_job", "job_new") in cron_jobs.calls
+
+
+def test_update_task_respects_enabled_patch(adapter, cron_jobs):
+    updated = adapter.update_task(
+        "acct_1",
+        "job_1",
+        {
+            "name": "Paused by edit",
+            "enabled": False,
+        },
+    )
+
+    assert updated["name"] == "Paused by edit"
+    assert updated["enabled"] is False
+    assert updated["status"] == "paused"
+    assert ("pause_job", "job_1") in cron_jobs.calls
 
 
 def test_set_enabled_pauses_and_resumes(adapter, cron_jobs):

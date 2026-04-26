@@ -1,102 +1,294 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { OpenClawTaskAdapter } from "./task-adapter.js";
+import { OpenClawTaskAdapter, type OpenClawGatewayRpc } from "./task-adapter.ts";
 
-test("OpenClawTaskAdapter manages tasks and run output in gateway storage", async () => {
-  const root = await mkdtemp(join(tmpdir(), "openclaw-task-adapter-"));
-  try {
-    const adapter = new OpenClawTaskAdapter(root);
+type RpcCall = {
+  method: string;
+  params?: unknown;
+};
 
-    const created = await adapter.createTask("acct_1", {
-      name: "Morning check",
-      schedule: "0 9 * * *",
-      prompt: "Summarize overnight changes",
-      enabled: true,
-      skills: ["summarizer"],
-      deliver: "clawke",
-    });
+function createAdapter(handler: OpenClawGatewayRpc) {
+  const calls: RpcCall[] = [];
+  const rpc: OpenClawGatewayRpc = async (method, params, options) => {
+    calls.push({ method, params });
+    return handler(method, params, options);
+  };
+  return { adapter: new OpenClawTaskAdapter({ rpc }), calls };
+}
 
-    assert.equal(created.account_id, "acct_1");
-    assert.equal(created.agent, "openclaw");
-    assert.equal(created.status, "active");
-    assert.equal(created.name, "Morning check");
-    assert.equal(created.schedule, "0 9 * * *");
-    assert.equal(created.prompt, "Summarize overnight changes");
-    assert.deepEqual(created.skills, ["summarizer"]);
-    assert.equal(created.deliver, "clawke");
-    assert.match(created.id, /^[a-zA-Z0-9_-]+$/);
+test("OpenClawTaskAdapter lists agent cron jobs through OpenClaw Gateway RPC", async () => {
+  const { adapter, calls } = createAdapter(async (method, params) => {
+    assert.equal(method, "cron.list");
+    assert.deepEqual(params, { includeDisabled: true });
+    return {
+      jobs: [
+        {
+          id: "job_daily",
+          name: "Daily report",
+          enabled: true,
+          createdAtMs: 1776395104970,
+          updatedAtMs: 1777071981245,
+          schedule: { kind: "cron", expr: "0 7 * * *", tz: "Asia/Shanghai" },
+          payload: { kind: "agentTurn", message: "Create daily report" },
+          delivery: { mode: "announce", channel: "clawke", to: "conv_1" },
+          state: {
+            nextRunAtMs: 1777158000000,
+            lastRunAtMs: 1777071600006,
+            lastRunStatus: "ok",
+          },
+        },
+      ],
+    };
+  });
 
-    const listed = await adapter.listTasks("acct_1");
-    assert.equal(listed.length, 1);
-    assert.equal(listed[0].id, created.id);
+  const listed = await adapter.listTasks("OpenClaw");
 
-    const fetched = await adapter.getTask("acct_1", created.id);
-    assert.equal(fetched.id, created.id);
-
-    const updated = await adapter.updateTask("acct_1", created.id, {
-      name: "Updated check",
-      enabled: false,
-    });
-    assert.equal(updated.name, "Updated check");
-    assert.equal(updated.enabled, false);
-    assert.equal(updated.status, "paused");
-    assert.notEqual(updated.updated_at, created.updated_at);
-
-    const enabled = await adapter.setEnabled("acct_1", created.id, true);
-    assert.equal(enabled.enabled, true);
-    assert.equal(enabled.status, "active");
-
-    const run = await adapter.runTask("acct_1", created.id);
-    assert.equal(run.task_id, created.id);
-    assert.equal(run.status, "running");
-    assert.match(run.output_preview ?? "", /triggered from Clawke/);
-
-    const runs = await adapter.listRuns(created.id);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0].id, run.id);
-
-    const output = await adapter.getOutput(created.id, run.id);
-    assert.equal(typeof output, "string");
-    assert.match(output ?? "", /Task was triggered from Clawke/);
-    assert.doesNotMatch(output ?? "", /executed the prompt/i);
-
-    await assert.rejects(
-      () => adapter.getTask("acct_1", "../escape"),
-      /Invalid task id/,
-    );
-    await assert.rejects(
-      () => adapter.getOutput(created.id, "../escape"),
-      /Invalid run id/,
-    );
-
-    assert.equal(await adapter.deleteTask("acct_1", created.id), true);
-    assert.equal(await adapter.getTask("acct_1", created.id), null);
-    assert.deepEqual(await adapter.listTasks("acct_1"), []);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  assert.equal(calls.length, 1);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].id, "job_daily");
+  assert.equal(listed[0].account_id, "OpenClaw");
+  assert.equal(listed[0].name, "Daily report");
+  assert.equal(listed[0].schedule, "0 7 * * *");
+  assert.equal(listed[0].schedule_text, "每天 07:00 Asia/Shanghai");
+  assert.equal(listed[0].prompt, "Create daily report");
+  assert.equal(listed[0].enabled, true);
+  assert.equal(listed[0].next_run_at, "2026-04-25T23:00:00.000Z");
+  assert.equal(listed[0].last_run?.status, "success");
 });
 
-test("OpenClawTaskAdapter ignores malformed task files while listing", async () => {
-  const root = await mkdtemp(join(tmpdir(), "openclaw-task-adapter-"));
+test("OpenClawTaskAdapter mutates tasks through OpenClaw cron RPC methods", async () => {
+  let job = {
+    id: "job_new",
+    name: "Morning check",
+    enabled: true,
+    createdAtMs: 1776395104970,
+    updatedAtMs: 1776395104970,
+    schedule: { kind: "cron", expr: "0 9 * * *" },
+    payload: { kind: "agentTurn", message: "Summarize overnight changes" },
+    delivery: { mode: "none" },
+    state: {},
+  };
+
+  const { adapter, calls } = createAdapter(async (method, params) => {
+    if (method === "cron.add") {
+      assert.deepEqual(params, {
+        name: "Morning check",
+        schedule: { kind: "cron", expr: "0 9 * * *" },
+        payload: { kind: "agentTurn", message: "Summarize overnight changes" },
+        enabled: true,
+        wakeMode: "next-heartbeat",
+        sessionTarget: "isolated",
+        delivery: { mode: "none" },
+      });
+      return job;
+    }
+    if (method === "cron.list") {
+      return { jobs: [job] };
+    }
+    if (method === "cron.update") {
+      const patch = (params as { patch: Record<string, unknown> }).patch;
+      job = {
+        ...job,
+        ...patch,
+        payload: (patch.payload as typeof job.payload | undefined) ?? job.payload,
+        schedule: (patch.schedule as typeof job.schedule | undefined) ?? job.schedule,
+        updatedAtMs: 1776395200000,
+      };
+      return job;
+    }
+    if (method === "cron.remove") {
+      assert.deepEqual(params, { id: "job_new" });
+      return { removed: true };
+    }
+    if (method === "cron.run") {
+      assert.deepEqual(params, { id: "job_new", mode: "force" });
+      return { runId: "run_1", queued: true };
+    }
+    if (method === "cron.runs") {
+      assert.deepEqual(params, { id: "job_new", limit: 50 });
+      return {
+        entries: [
+          {
+            runId: "run_1",
+            jobId: "job_new",
+            status: "ok",
+            startedAtMs: 1776395300000,
+            completedAtMs: 1776395310000,
+            summary: "done",
+          },
+        ],
+      };
+    }
+    throw new Error(`Unexpected method: ${method}`);
+  });
+
+  const created = await adapter.createTask("acct_1", {
+    name: "Morning check",
+    schedule: "0 9 * * *",
+    prompt: "Summarize overnight changes",
+    enabled: true,
+  });
+  assert.equal(created.id, "job_new");
+  assert.equal(created.status, "active");
+
+  const fetched = await adapter.getTask("acct_1", "job_new");
+  assert.equal(fetched?.id, "job_new");
+
+  const updated = await adapter.updateTask("acct_1", "job_new", {
+    name: "Updated check",
+    schedule: "30 8 * * *",
+    prompt: "Updated prompt",
+    enabled: false,
+  });
+  assert.equal(updated?.name, "Updated check");
+  assert.equal(updated?.schedule, "30 8 * * *");
+  assert.equal(updated?.prompt, "Updated prompt");
+  assert.equal(updated?.status, "paused");
+
+  const enabled = await adapter.setEnabled("acct_1", "job_new", true);
+  assert.equal(enabled?.enabled, true);
+
+  const run = await adapter.runTask("acct_1", "job_new");
+  assert.equal(run.id, "run_1");
+  assert.equal(run.task_id, "job_new");
+  assert.equal(run.status, "running");
+
+  const runs = await adapter.listRuns("acct_1", "job_new");
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].id, "run_1");
+  assert.equal(runs[0].status, "success");
+
+  const output = await adapter.getOutput("acct_1", "job_new", "run_1");
+  assert.equal(output, "done");
+
+  await assert.rejects(
+    () => adapter.getTask("acct_1", "../escape"),
+    /Invalid taskId/,
+  );
+  await assert.rejects(
+    () => adapter.getOutput("acct_1", "job_new", "../escape"),
+    /Invalid runId/,
+  );
+
+  assert.equal(await adapter.deleteTask("acct_1", "job_new"), true);
+  assert.equal(calls.some((call) => call.method === "cron.add"), true);
+  assert.equal(calls.some((call) => call.method === "cron.update"), true);
+  assert.equal(calls.some((call) => call.method === "cron.remove"), true);
+  assert.equal(calls.some((call) => call.method === "cron.run"), true);
+});
+
+test("OpenClawTaskAdapter maps cron run log timestamps without epoch fallback", async () => {
+  const logTimestamp = 1777071981245;
+  const { adapter } = createAdapter(async (method) => {
+    assert.equal(method, "cron.runs");
+    return {
+      entries: [
+        {
+          ts: logTimestamp,
+          jobId: "job_new",
+          action: "finished",
+          status: "ok",
+          summary: "done",
+        },
+      ],
+    };
+  });
+
+  const runs = await adapter.listRuns("acct_1", "job_new");
+
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].started_at, new Date(logTimestamp).toISOString());
+  assert.notEqual(runs[0].started_at, "1970-01-01T00:00:00.000Z");
+});
+
+test("OpenClawTaskAdapter default RPC connects to the OpenClaw gateway origin endpoint", async () => {
+  const originalWebSocket = globalThis.WebSocket;
+  const originalPort = process.env.OPENCLAW_GATEWAY_PORT;
+  let capturedUrl = "";
+  let connectParams: Record<string, unknown> | undefined;
+
+  class FakeWebSocket {
+    readyState = 1;
+    onmessage?: (event: { data: string }) => void;
+    onerror?: (event: unknown) => void;
+    onclose?: () => void;
+
+    constructor(url: string) {
+      capturedUrl = url;
+      queueMicrotask(() => {
+        this.onmessage?.({
+          data: JSON.stringify({
+            type: "event",
+            event: "connect.challenge",
+            payload: { nonce: "nonce_1" },
+          }),
+        });
+      });
+    }
+
+    send(data: string) {
+      const message = JSON.parse(data);
+      if (message.method === "connect") {
+        connectParams = message.params;
+        queueMicrotask(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: "res",
+              id: message.id,
+              ok: true,
+              payload: { type: "hello-ok" },
+            }),
+          });
+        });
+        return;
+      }
+      if (message.method === "cron.list") {
+        queueMicrotask(() => {
+          this.onmessage?.({
+            data: JSON.stringify({
+              type: "res",
+              id: message.id,
+              ok: true,
+              payload: { jobs: [] },
+            }),
+          });
+        });
+      }
+    }
+
+    close() {
+      this.onclose?.();
+    }
+  }
+
   try {
-    const adapter = new OpenClawTaskAdapter(root);
-    const created = await adapter.createTask("acct_1", {
-      name: "Valid task",
-      schedule: "0 9 * * *",
-      prompt: "hello",
+    process.env.OPENCLAW_GATEWAY_PORT = "18789";
+    Object.defineProperty(globalThis, "WebSocket", {
+      configurable: true,
+      value: FakeWebSocket,
     });
 
-    const corruptDir = join(root, "accounts", "acct_1", "corrupt_task");
-    await mkdir(corruptDir, { recursive: true });
-    await writeFile(join(corruptDir, "task.json"), "{not valid json", "utf-8");
+    const tasks = await new OpenClawTaskAdapter().listTasks("OpenClaw");
 
-    const listed = await adapter.listTasks("acct_1");
-    assert.deepEqual(listed.map((task) => task.id), [created.id]);
+    assert.deepEqual(tasks, []);
+    assert.equal(capturedUrl, "ws://127.0.0.1:18789");
+    assert.equal(connectParams?.nonce, undefined);
+    assert.deepEqual(connectParams?.client, {
+      id: "openclaw-tui",
+      displayName: "Clawke Plugin",
+      version: "1.0.2",
+      platform: "openclaw-plugin",
+      mode: "ui",
+    });
   } finally {
-    await rm(root, { recursive: true, force: true });
+    if (originalPort === undefined) {
+      delete process.env.OPENCLAW_GATEWAY_PORT;
+    } else {
+      process.env.OPENCLAW_GATEWAY_PORT = originalPort;
+    }
+    Object.defineProperty(globalThis, "WebSocket", {
+      configurable: true,
+      value: originalWebSocket,
+    });
   }
 });

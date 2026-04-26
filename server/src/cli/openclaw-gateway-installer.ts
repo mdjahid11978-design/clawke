@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync, spawnSync } from 'child_process';
+import { registerGatewayInClawkeConfig } from './clawke-config-writer.js';
 
 const OPENCLAW_HOME = path.join(os.homedir(), '.openclaw');
 const OPENCLAW_CONFIG = path.join(OPENCLAW_HOME, 'openclaw.json');
@@ -59,6 +60,7 @@ export async function installOpenClawGateway(): Promise<void> {
 
   // Step 4: 合并 OpenClaw 配置
   mergeOpenClawConfig();
+  mergeClawkeConfig();
 
   // Step 5: 重启 OpenClaw
   restartOpenClaw();
@@ -111,6 +113,14 @@ function mergeOpenClawConfig(): void {
 
   fs.writeFileSync(OPENCLAW_CONFIG, JSON.stringify(config, null, 2) + '\n');
   console.log(`[clawke] ✅ Config updated: ${OPENCLAW_CONFIG}`);
+}
+
+function mergeClawkeConfig(): void {
+  registerGatewayInClawkeConfig({
+    gatewayType: 'openclaw',
+    gatewayId: 'OpenClaw',
+  });
+  console.log('[clawke] ✅ Registered OpenClaw gateway in ~/.clawke/clawke.json');
 }
 
 function restartOpenClaw(): void {

@@ -63,6 +63,9 @@ class GatewayMessageType:
 
     ApprovalRequest = "approval_request"
     ClarifyRequest = "clarify_request"
+    SkillListResponse = "skill_list_response"
+    SkillGetResponse = "skill_get_response"
+    SkillMutationResponse = "skill_mutation_response"
 
 
 class InboundMessageType:
@@ -82,6 +85,12 @@ class InboundMessageType:
     TaskRun = "task_run"
     TaskRuns = "task_runs"
     TaskOutput = "task_output"
+    SkillList = "skill_list"
+    SkillGet = "skill_get"
+    SkillCreate = "skill_create"
+    SkillUpdate = "skill_update"
+    SkillDelete = "skill_delete"
+    SkillSetEnabled = "skill_set_enabled"
 
 
 class AgentStatusValue:
@@ -247,6 +256,7 @@ class ClawkeHermesGateway:
         self._pending_approvals: dict[str, dict] = {}
         self._pending_clarifies: dict[str, dict] = {}
         self._task_adapter: Any = None
+        self._skill_adapter: Any = None
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -325,6 +335,9 @@ class ClawkeHermesGateway:
             await ws.send(json.dumps({
                 "type": GatewayMessageType.Identify,
                 "accountId": self.config.account_id,
+                "agentName": "Hermes",
+                "gatewayType": "hermes",
+                "capabilities": ["chat", "tasks", "skills", "models"],
             }))
             logger.info("Identified as account=%s", self.config.account_id)
 
@@ -337,7 +350,10 @@ class ClawkeHermesGateway:
 
                 msg_type = msg.get("type")
 
-                if isinstance(msg_type, str) and msg_type.startswith("task_"):
+                if isinstance(msg_type, str) and msg_type.startswith("skill_"):
+                    await self._handle_skill_command(msg)
+
+                elif isinstance(msg_type, str) and msg_type.startswith("task_"):
                     await self._handle_task_command(msg)
 
                 elif msg_type == InboundMessageType.Chat:
@@ -1000,6 +1016,62 @@ class ClawkeHermesGateway:
             self._task_adapter = HermesTaskAdapter()
         return self._task_adapter
 
+    # ── Skill Command Handler ───────────────────────────────────────────
+
+    async def _handle_skill_command(self, msg: dict) -> None:
+        """Route Clawke skill commands to the gateway-host skill adapter."""
+        msg_type = str(msg.get("type") or "")
+        request_id = msg.get("request_id", "")
+        response: dict[str, Any] = {
+            "type": self._skill_response_type(msg_type),
+            "request_id": request_id,
+        }
+
+        try:
+            adapter = self._get_skill_adapter()
+            skill_id = msg.get("skill_id", "")
+
+            if msg_type == InboundMessageType.SkillList:
+                response.update({"ok": True, "skills": adapter.list_skills()})
+            elif msg_type == InboundMessageType.SkillGet:
+                response.update({"ok": True, "skill": adapter.get_skill(skill_id)})
+            elif msg_type == InboundMessageType.SkillCreate:
+                response.update({"ok": True, "skill": adapter.create_skill(msg.get("skill") or {})})
+            elif msg_type == InboundMessageType.SkillUpdate:
+                response.update({"ok": True, "skill": adapter.update_skill(skill_id, msg.get("skill") or {})})
+            elif msg_type == InboundMessageType.SkillDelete:
+                response.update({"ok": True, "deleted": adapter.delete_skill(skill_id)})
+            elif msg_type == InboundMessageType.SkillSetEnabled:
+                response.update({"ok": True, "skill": adapter.set_enabled(skill_id, bool(msg.get("enabled")))})
+            else:
+                raise ValueError(f"Unsupported skill command: {msg_type}")
+        except Exception as e:
+            logger.warning("Skill command failed: type=%s error=%s", msg_type, e)
+            response.update({
+                "ok": False,
+                "error": "skill_error",
+                "message": str(e),
+            })
+
+        await self._send(response)
+
+    @staticmethod
+    def _skill_response_type(msg_type: str) -> str:
+        if msg_type == InboundMessageType.SkillList:
+            return GatewayMessageType.SkillListResponse
+        if msg_type == InboundMessageType.SkillGet:
+            return GatewayMessageType.SkillGetResponse
+        return GatewayMessageType.SkillMutationResponse
+
+    def _get_skill_adapter(self):
+        """Lazily instantiate the Hermes skill adapter."""
+        if self._skill_adapter is None:
+            from skill_adapter import HermesSkillAdapter
+            self._skill_adapter = HermesSkillAdapter()
+            if not self._skill_adapter.ensure_hermes_extra_dir():
+                logger.warning("Unable to ensure Hermes config includes Clawke skills root")
+        return self._skill_adapter
+
     # ── Query Handlers ───────────────────────────────────────────────────
 
     async def _handle_query_models(self) -> None:
@@ -1108,60 +1180,8 @@ class ClawkeHermesGateway:
         logger.info("📤 Models response: %d models", len(models))
 
     async def _handle_query_skills(self) -> None:
-        """Return available Hermes skills.
-
-        Strategy (mirrors hermes-webui):
-        1. tools.skills_tool.skills_list() — native Hermes API (respects disabled skills)
-        2. Manual scan ~/.hermes/skills/ — fallback if import fails
-        """
-        skills: list[dict] = []
-
-        # 1. Try Hermes native skills_list() — same as hermes-webui uses
-        try:
-            from tools.skills_tool import skills_list as _skills_list
-            import json as _json
-            raw = _skills_list()
-            data = _json.loads(raw) if isinstance(raw, str) else raw
-            raw_skills = data.get("skills", []) if isinstance(data, dict) else data
-            for s in raw_skills:
-                if isinstance(s, dict):
-                    skills.append({
-                        "name": s.get("name", ""),
-                        "description": s.get("description", s.get("name", "")),
-                    })
-            logger.info("skills_list() returned %d skills", len(skills))
-        except ImportError:
-            logger.warning("tools.skills_tool not importable, falling back to manual scan")
-        except Exception as e:
-            logger.warning("skills_list() failed: %s, falling back to manual scan", e)
-
-        # 2. Fallback: recursive scan ~/.hermes/skills/
-        #    Hermes skills 使用嵌套结构：category/skill/SKILL.md
-        #    需要递归查找所有 SKILL.md 文件
-        if not skills:
-            try:
-                import re
-                hermes_home = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
-                skills_dir = hermes_home / "skills"
-                if skills_dir.is_dir():
-                    # 递归查找所有 SKILL.md
-                    for skill_md in skills_dir.rglob("SKILL.md"):
-                        skill_dir = skill_md.parent
-                        content = skill_md.read_text(errors="ignore")
-                        name = skill_dir.name
-                        desc = skill_dir.name
-                        fm_match = re.search(r"^---\s*\n([\s\S]*?)\n---", content)
-                        if fm_match:
-                            name_match = re.search(r"name:\s*(.+)", fm_match.group(1), re.I)
-                            if name_match:
-                                name = name_match.group(1).strip()
-                            desc_match = re.search(r"description:\s*(.+)", fm_match.group(1), re.I)
-                            if desc_match:
-                                desc = desc_match.group(1).strip()
-                        skills.append({"name": name, "description": desc})
-                    logger.info("Manual scan found %d skills in %s", len(skills), skills_dir)
-            except Exception as e:
-                logger.warning("Skills manual scan failed: %s", e)
+        """Return enabled skills visible to Hermes runtime."""
+        skills = self._get_skill_adapter().list_runtime_skills()
 
         await self._send({
             "type": GatewayMessageType.SkillsResponse,

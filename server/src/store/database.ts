@@ -74,6 +74,56 @@ export class Database {
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS gateway_metadata (
+          gateway_id TEXT PRIMARY KEY,
+          display_name TEXT,
+          gateway_type TEXT,
+          status TEXT NOT NULL DEFAULT 'disconnected',
+          capabilities_json TEXT NOT NULL DEFAULT '[]',
+          last_error_code TEXT,
+          last_error_message TEXT,
+          last_connected_at INTEGER,
+          last_seen_at INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS skill_translation_cache (
+          gateway_type TEXT NOT NULL,
+          gateway_id TEXT NOT NULL,
+          skill_id TEXT NOT NULL,
+          locale TEXT NOT NULL,
+          field_set TEXT NOT NULL,
+          source_hash TEXT NOT NULL,
+          translated_name TEXT,
+          translated_description TEXT,
+          translated_trigger TEXT,
+          translated_body TEXT,
+          status TEXT NOT NULL,
+          error_code TEXT,
+          error_message TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
+        );
+
+        CREATE TABLE IF NOT EXISTS skill_translation_jobs (
+          job_id TEXT PRIMARY KEY,
+          gateway_type TEXT NOT NULL,
+          gateway_id TEXT NOT NULL,
+          skill_id TEXT NOT NULL,
+          locale TEXT NOT NULL,
+          field_set TEXT NOT NULL,
+          source_hash TEXT NOT NULL,
+          source_json TEXT,
+          status TEXT NOT NULL,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          last_error TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
+        );
       `);
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
       console.log(`[DB] Schema v${SCHEMA_VERSION} initialized`);
@@ -113,6 +163,58 @@ export class Database {
     // 回填：旧数据 conversation_id = account_id
     this.db.exec(`UPDATE messages SET conversation_id = account_id WHERE conversation_id IS NULL;`);
     this.db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, seq);`);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS gateway_metadata (
+        gateway_id TEXT PRIMARY KEY,
+        display_name TEXT,
+        gateway_type TEXT,
+        status TEXT NOT NULL DEFAULT 'disconnected',
+        capabilities_json TEXT NOT NULL DEFAULT '[]',
+        last_error_code TEXT,
+        last_error_message TEXT,
+        last_connected_at INTEGER,
+        last_seen_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_translation_cache (
+        gateway_type TEXT NOT NULL,
+        gateway_id TEXT NOT NULL,
+        skill_id TEXT NOT NULL,
+        locale TEXT NOT NULL,
+        field_set TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        translated_name TEXT,
+        translated_description TEXT,
+        translated_trigger TEXT,
+        translated_body TEXT,
+        status TEXT NOT NULL,
+        error_code TEXT,
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
+      );
+
+      CREATE TABLE IF NOT EXISTS skill_translation_jobs (
+        job_id TEXT PRIMARY KEY,
+        gateway_type TEXT NOT NULL,
+        gateway_id TEXT NOT NULL,
+        skill_id TEXT NOT NULL,
+        locale TEXT NOT NULL,
+        field_set TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        source_json TEXT,
+        status TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
+      );
+    `);
   }
 
   /** 立即执行 7 天消息清理 */

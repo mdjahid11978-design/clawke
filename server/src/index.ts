@@ -39,6 +39,12 @@ import { createMockActionHandler } from './mock/mock-action-handler.js';
 import { handleReadFile } from './mock/mock-file-handler.js';
 import { CronService } from './services/cron-service.js';
 import { initLogger } from './logger.js';
+import { initSkillsRoutes } from './routes/skills-routes.js';
+import { initGatewayRoutes } from './routes/gateway-routes.js';
+import { GatewayStore } from './store/gateway-store.js';
+import { SkillTranslationStore } from './store/skill-translation-store.js';
+import { SkillTranslationService, startSkillTranslationWorker } from './services/skill-translation-service.js';
+import { createConfiguredSkillTranslator } from './services/skill-translator.js';
 
 const serverDir = path.join(__dirname, '..');
 
@@ -153,6 +159,15 @@ async function main() {
   const messageStore = new MessageStore(db);
   const configStore = new ConversationConfigStore(db);  // 必须先于 ConversationStore（后者引用 conversation_configs 表）
   const conversationStore = new ConversationStore(db);
+  const gatewayStore = new GatewayStore(db);
+  const skillTranslationStore = new SkillTranslationStore(db);
+  const skillTranslationService = new SkillTranslationService({
+    store: skillTranslationStore,
+    translator: createConfiguredSkillTranslator(),
+  });
+  const stopSkillTranslationWorker = startSkillTranslationWorker(skillTranslationService, {
+    onError: (error) => console.warn(`[SkillTranslation] Worker error: ${error instanceof Error ? error.message : String(error)}`),
+  });
   db.startCleanupScheduler();
 
   // ━━━ Protocol 层 ━━━
@@ -164,7 +179,6 @@ async function main() {
   const versionChecker = new VersionChecker(configDir);
   versionChecker.startPeriodicCheck();
   statsCollector.startPeriodicSave();
-
   // ━━━ 通信层 ━━━
   const { server: unifiedServer, wss: clientWss } = startUnifiedServer(HTTP_PORT);
   const mediaServer = startMediaServer(MEDIA_PORT);
@@ -244,11 +258,39 @@ async function main() {
     const { initConversationRoutes } = await import('./routes/conversation-routes.js');
     const { initConfigRoutes } = await import('./routes/config-routes.js');
     const { initTasksRoutes } = await import('./routes/tasks-routes.js');
+    initGatewayRoutes({
+      gatewayStore,
+      listConfiguredGateways: () => [],
+      getConnectedGateways: () => [{
+        gateway_id: 'mock',
+        display_name: 'Mock Agent',
+        gateway_type: 'mock',
+        status: 'online',
+        capabilities: ['chat'],
+      }],
+    });
     initConversationRoutes({ conversationStore });
     initConfigRoutes({
       configStore,
       queryModels: async () => (['mock-model']),
       querySkills: async () => ([]),
+    });
+    initSkillsRoutes({
+      getConnectedAccountIds: () => ['mock'],
+      translationService: skillTranslationService,
+      sendSkillRequest: async (payload) => {
+        const requestId = payload.request_id || 'mock';
+        if (payload.type === 'skill_list') {
+          return { type: 'skill_list_response', request_id: requestId, ok: true, skills: [] };
+        }
+        return {
+          type: payload.type === 'skill_get' ? 'skill_get_response' : 'skill_mutation_response',
+          request_id: requestId,
+          ok: false,
+          error: 'skills_unsupported',
+          message: 'Mock mode does not manage gateway skills.',
+        };
+      },
     });
     initTasksRoutes({
       getConnectedAccountIds: () => ['mock'],
@@ -268,12 +310,13 @@ async function main() {
     });
 
   } else if (MODE === 'openclaw') {
-    const { startOpenClawListener, sendToOpenClaw, isUpstreamConnected, getConnectedAccountIds, queryGatewayModels, queryGatewaySkills } =
+    const { startOpenClawListener, sendToOpenClaw, isUpstreamConnected, getConnectedAccountIds, getConnectedGateways, queryGatewayModels, queryGatewaySkills } =
       await import('./upstream/openclaw-listener.js');
     const { initConfigRoutes } = await import('./routes/config-routes.js');
     const { initConversationRoutes } = await import('./routes/conversation-routes.js');
     const { initTasksRoutes } = await import('./routes/tasks-routes.js');
     const { sendTaskGatewayRequest } = await import('./upstream/task-gateway-client.js');
+    const { sendSkillGatewayRequest } = await import('./upstream/skill-gateway-client.js');
 
     // 初始化配置路由（models/skills 查询路由到对应 Gateway）
     initConfigRoutes({
@@ -284,6 +327,19 @@ async function main() {
 
     // 初始化会话路由
     initConversationRoutes({ conversationStore });
+
+    // 初始化 Gateway 路由。Gateway ID 只来自 clawke.json，连接只更新状态。
+    initGatewayRoutes({
+      gatewayStore,
+      getConnectedGateways,
+    });
+
+    // 初始化 Skills 路由。Skills 真相和文件操作均归 Gateway 侧。
+    initSkillsRoutes({
+      getConnectedAccountIds,
+      sendSkillRequest: sendSkillGatewayRequest,
+      translationService: skillTranslationService,
+    });
 
     // 初始化任务路由。任务真相和执行均归 Gateway/Agent 侧。
     initTasksRoutes({
@@ -357,13 +413,15 @@ async function main() {
 
     // 客户端连接 → 补发 ai_connected
     clientWss.on('connection', (ws: unknown) => {
-      const accounts = getConnectedAccountIds();
-      for (const accountId of accounts) {
+      const gateways = getConnectedGateways();
+      for (const gateway of gateways) {
         sendToClient(ws, {
           payload_type: 'system_status',
           status: 'ai_connected',
-          agent_name: 'OpenClaw',
-          account_id: accountId,
+          agent_name: gateway.display_name,
+          gateway_type: gateway.gateway_type,
+          capabilities: gateway.capabilities,
+          account_id: gateway.gateway_id,
         });
       }
     });
@@ -379,6 +437,7 @@ async function main() {
     const shutdownOC = () => {
       console.log('\n[Server] Shutting down...');
       if (frpcManager) frpcManager.stop();
+      stopSkillTranslationWorker();
       statsCollector.saveNow();
       statsCollector.stopPeriodicSave();
       versionChecker.stopPeriodicCheck();
@@ -410,6 +469,7 @@ async function main() {
   const shutdown = () => {
     console.log('\n[Server] Shutting down...');
     if (frpcManager) frpcManager.stop();
+    stopSkillTranslationWorker();
     statsCollector.saveNow();
     statsCollector.stopPeriodicSave();
     versionChecker.stopPeriodicCheck();

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:client/data/database/app_database.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
+import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/l10n/l10n.dart';
 import 'package:client/screens/conversation_settings_sheet.dart';
@@ -20,6 +21,7 @@ class ConversationListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final conversationsAsync = ref.watch(conversationListProvider);
+    final gateways = ref.watch(gatewayListProvider).valueOrNull ?? const [];
     final selectedId = ref.watch(selectedConversationIdProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -68,6 +70,7 @@ class ConversationListScreen extends ConsumerWidget {
             itemCount: conversations.length,
             itemBuilder: (context, index) {
               final conv = conversations[index];
+              final gatewayIssue = conversationGatewayIssue(conv, gateways);
               return Dismissible(
                 key: Key(conv.conversationId),
                 direction: DismissDirection.endToStart,
@@ -85,6 +88,7 @@ class ConversationListScreen extends ConsumerWidget {
                 ),
                 child: _ConversationTile(
                   conversation: conv,
+                  gatewayIssue: gatewayIssue,
                   isSelected: conv.conversationId == selectedId,
                   onTap: () {
                     ref.read(selectedConversationIdProvider.notifier).state =
@@ -150,11 +154,13 @@ class ConversationListScreen extends ConsumerWidget {
 
 class _ConversationTile extends ConsumerWidget {
   final Conversation conversation;
+  final ConversationGatewayIssue? gatewayIssue;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _ConversationTile({
     required this.conversation,
+    required this.gatewayIssue,
     required this.isSelected,
     required this.onTap,
   });
@@ -232,6 +238,18 @@ class _ConversationTile extends ConsumerWidget {
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant),
                 ),
               ),
+              if (gatewayIssue != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Tooltip(
+                    message: gatewayIssue!.tooltip,
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                ),
               if (conversation.unseenCount > 0)
                 Container(
                   margin: const EdgeInsets.only(left: 8),

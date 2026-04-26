@@ -7,7 +7,17 @@ import 'package:path/path.dart' as p;
 
 part 'app_database.g.dart';
 
-@DriftDatabase(include: {'tables/conversations.drift', 'tables/messages.drift', 'tables/metadata.drift'})
+@DriftDatabase(
+  include: {
+    'tables/conversations.drift',
+    'tables/messages.drift',
+    'tables/metadata.drift',
+    'tables/gateways.drift',
+    'tables/task_cache.drift',
+    'tables/skill_cache.drift',
+    'tables/skill_localizations.drift',
+  },
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(String uid) : super(_openConnection(uid)) {
     // 多账号切换时会短暂共存两个 DB 实例（指向不同文件），
@@ -16,24 +26,25 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// 用于测试的构造函数
-  AppDatabase.forTesting(super.e);
+  AppDatabase.forTesting(super.e) {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  }
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 10;
 
   /// 获取 metadata 值
   Future<String?> getMetadata(String key) async {
-    final row = await (select(metadata)..where((t) => t.key.equals(key))).getSingleOrNull();
+    final row = await (select(
+      metadata,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
   /// 设置 metadata 值
   Future<void> setMetadata(String key, String value) {
     return into(metadata).insertOnConflictUpdate(
-      MetadataCompanion(
-        key: Value(key),
-        value: Value(value),
-      ),
+      MetadataCompanion(key: Value(key), value: Value(value)),
     );
   }
 
@@ -115,7 +126,9 @@ class AppDatabase extends _$AppDatabase {
 
         // messages 表也需要重建：FK 从 account_id → conversation_id
         // SQLite 不支持 ALTER FOREIGN KEY，必须用 create-copy-drop-rename
-        await m.database.customStatement('DROP INDEX IF EXISTS idx_msg_acct_created');
+        await m.database.customStatement(
+          'DROP INDEX IF EXISTS idx_msg_acct_created',
+        );
         await m.database.customStatement('''
           CREATE TABLE messages_new (
             message_id       TEXT    NOT NULL PRIMARY KEY,
@@ -169,6 +182,16 @@ class AppDatabase extends _$AppDatabase {
             value TEXT NOT NULL
           )
         ''');
+      }
+      if (from < 8) {
+        await m.createTable(gateways);
+      }
+      if (from < 9) {
+        await m.createTable(taskCache);
+      }
+      if (from < 10) {
+        await m.createTable(skillCache);
+        await m.createTable(skillLocalizations);
       }
     },
   );

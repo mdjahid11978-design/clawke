@@ -1,0 +1,31 @@
+CREATE TABLE task_cache (
+  user_id       TEXT    NOT NULL,
+  gateway_id    TEXT    NOT NULL,
+  task_id       TEXT    NOT NULL,
+  name          TEXT    NOT NULL,
+  schedule      TEXT    NOT NULL,
+  schedule_text TEXT,
+  prompt        TEXT    NOT NULL,
+  enabled       BOOLEAN NOT NULL,
+  status        TEXT    NOT NULL,
+  skills_json   TEXT    NOT NULL DEFAULT '[]',
+  deliver       TEXT,
+  created_at    TEXT,
+  updated_at    TEXT,
+  synced_at     INTEGER NOT NULL,
+  PRIMARY KEY (user_id, gateway_id, task_id)
+);
+
+watchTasks:
+  SELECT * FROM task_cache
+  WHERE user_id = :userId AND gateway_id = :gatewayId
+  ORDER BY name COLLATE NOCASE ASC, task_id ASC;
+
+getTasks:
+  SELECT * FROM task_cache
+  WHERE user_id = :userId AND gateway_id = :gatewayId
+  ORDER BY name COLLATE NOCASE ASC, task_id ASC;
+
+getTask:
+  SELECT * FROM task_cache
+  WHERE user_id = :userId AND gateway_id = :gatewayId AND task_id = :taskId;

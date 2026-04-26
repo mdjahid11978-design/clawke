@@ -15,6 +15,7 @@ import 'package:client/providers/chat_provider.dart';
 import 'package:client/providers/chat_limit_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
+import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/reply_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/core/ws_service.dart';
@@ -38,6 +39,8 @@ import 'package:client/widgets/highlighted_code_builder.dart';
 import 'package:client/providers/mermaid_provider.dart';
 import 'package:client/providers/approval_provider.dart';
 import 'package:client/widgets/approval_card.dart';
+
+final dismissedGatewayIssueKeyProvider = StateProvider<String?>((ref) => null);
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -175,8 +178,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ) &&
           _controller.value.composing == TextRange.empty) {
         // Enter（无 Shift）→ 发送（仅在已连接且非流式状态下）
-        final connected =
-            ref.read(wsStateProvider).valueOrNull == WsState.connected;
+        final connected = _canUseCurrentGateway(
+          ref.read(wsStateProvider).valueOrNull,
+          watch: false,
+        );
         final currentConvId = ref.read(selectedConversationIdProvider);
         final waitingConvId = ref.read(waitingForReplyProvider);
         final isStreaming =
@@ -196,6 +201,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     }
     return KeyEventResult.ignored;
+  }
+
+  bool _canUseCurrentGateway(WsState? state, {required bool watch}) {
+    if (state != WsState.connected) return false;
+
+    final conv = watch
+        ? ref.watch(selectedConversationProvider)
+        : ref.read(selectedConversationProvider);
+    if (conv == null) return false;
+
+    final accounts = watch
+        ? ref.watch(connectedAccountsProvider)
+        : ref.read(connectedAccountsProvider);
+    return accounts.any((account) => account.accountId == conv.accountId);
   }
 
   void _onScroll() {
@@ -219,6 +238,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _handleSend() async {
     final convId = ref.read(selectedConversationIdProvider);
     if (convId == null) return;
+    if (!_canUseCurrentGateway(
+      ref.read(wsStateProvider).valueOrNull,
+      watch: false,
+    )) {
+      return;
+    }
     final text = _controller.text.trim();
     final attachments = List<StagedAttachment>.of(ref.read(stagedAttachmentsProvider));
 
@@ -1766,9 +1791,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _buildInputArea(WsState? state) {
-    final aiState = ref.watch(aiBackendStateProvider);
-    final connected =
-        state == WsState.connected && aiState == AiBackendState.connected;
+    final serverConnected = state == WsState.connected;
+    final connected = _canUseCurrentGateway(state, watch: true);
+    final selectedConversation = ref.watch(selectedConversationProvider);
+    final gateways = ref.watch(gatewayListProvider).valueOrNull ?? const [];
+    final gatewayIssue = selectedConversation == null
+        ? null
+        : conversationGatewayIssue(selectedConversation, gateways);
+    final dismissedIssueKey = ref.watch(dismissedGatewayIssueKeyProvider);
+    final activeGatewayIssue =
+        gatewayIssue != null && dismissedIssueKey != gatewayIssue.key
+            ? gatewayIssue
+            : null;
+    final hintText = !serverConnected
+        ? context.l10n.notConnected
+        : context.l10n.typeMessage;
     final replyingTo = ref.watch(replyingToProvider);
     final editingMsg = ref.watch(editingMessageProvider);
     final colorScheme = Theme.of(context).colorScheme;
@@ -1827,6 +1864,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         // 附件预览条
         const StagedAttachmentsPreview(),
+        if (activeGatewayIssue != null)
+          _GatewayIssueBanner(
+            issue: activeGatewayIssue,
+            onDismiss: () {
+              ref.read(dismissedGatewayIssueKeyProvider.notifier).state =
+                  activeGatewayIssue.key;
+            },
+          ),
         // 输入栏
         Container(
           padding: const EdgeInsets.all(12),
@@ -1838,6 +1883,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             children: [
               // 附件按钮
               PopupMenuButton<String>(
+                enabled: connected,
                 icon: const Icon(Icons.attach_file),
                 tooltip: context.l10n.sendAttachment,
                 onSelected: (value) {
@@ -1880,9 +1926,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   minLines: 1,
                   textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
-                    hintText: connected
-                        ? context.l10n.typeMessage
-                        : context.l10n.notConnected,
+                    hintText: hintText,
                     filled: true,
                     fillColor: colorScheme.surfaceContainerLowest,
                     border: OutlineInputBorder(
@@ -1932,6 +1976,60 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GatewayIssueBanner extends StatelessWidget {
+  final ConversationGatewayIssue issue;
+  final VoidCallback onDismiss;
+
+  const _GatewayIssueBanner({
+    required this.issue,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        border: Border(
+          top: BorderSide(color: colorScheme.error.withValues(alpha: 0.35)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              issue.message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onErrorContainer,
+                  ),
+            ),
+          ),
+          IconButton(
+            tooltip: '关闭',
+            onPressed: onDismiss,
+            icon: Icon(
+              Icons.close,
+              size: 18,
+              color: colorScheme.onErrorContainer,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

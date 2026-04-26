@@ -8,9 +8,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
+import { registerGatewayInClawkeConfig } from './clawke-config-writer.js';
 
-const CLAWKE_HOME = path.join(os.homedir(), '.clawke');
-const CLAWKE_CONFIG = path.join(CLAWKE_HOME, 'clawke.json');
 const HERMES_HOME = path.join(os.homedir(), '.hermes');
 
 /** 获取仓库中 Gateway 源路径 */
@@ -110,50 +109,15 @@ function checkAIAgent(pythonExe: string): boolean {
 
 /** 合并 gateway 配置到 clawke.json */
 function mergeGatewayConfig(startShell: string): void {
-  let config: Record<string, any> = {};
-
-  // 读取现有配置
-  if (fs.existsSync(CLAWKE_CONFIG)) {
-    try {
-      config = JSON.parse(fs.readFileSync(CLAWKE_CONFIG, 'utf-8'));
-    } catch (err: any) {
-      console.error(`[clawke] ⚠️  Could not parse ${CLAWKE_CONFIG}: ${err.message}`);
-    }
-
-    // 备份
-    try {
-      fs.copyFileSync(CLAWKE_CONFIG, CLAWKE_CONFIG + '.bak');
-      console.log(`[clawke] 📋 Config backed up: ${CLAWKE_CONFIG}.bak`);
-    } catch {}
-  }
-
-  // 确保 gateways 结构存在
-  if (!config.gateways) {
-    config.gateways = {};
-  }
-  if (!config.gateways.hermes) {
-    config.gateways.hermes = [];
-  }
-
-  // 检查是否已注册
-  const existing = config.gateways.hermes.find((gw: any) => gw.id === 'hermes');
-  if (existing) {
-    // 更新 start_shell（路径可能变了）
-    existing.start_shell = startShell;
-    console.log('[clawke] 🔄 Updated existing hermes gateway config');
-  } else {
-    config.gateways.hermes.push({
-      id: 'hermes',
+  registerGatewayInClawkeConfig({
+    gatewayType: 'hermes',
+    gatewayId: 'hermes',
+    values: {
       start_shell: startShell,
       hermes_home: HERMES_HOME,
-    });
-    console.log('[clawke] ✅ Registered hermes gateway');
-  }
-
-  // 写回
-  fs.mkdirSync(CLAWKE_HOME, { recursive: true });
-  fs.writeFileSync(CLAWKE_CONFIG, JSON.stringify(config, null, 2) + '\n');
-  console.log(`[clawke] ✅ Config written: ${CLAWKE_CONFIG}`);
+    },
+  });
+  console.log('[clawke] ✅ Registered hermes gateway in ~/.clawke/clawke.json');
 }
 
 

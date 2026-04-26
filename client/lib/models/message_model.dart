@@ -49,6 +49,8 @@ class SystemMessage extends MessageModel {
   final String? agentName;
   final String? message;
   final String? accountId;
+  final String? gatewayType;
+  final List<String> capabilities;
 
   const SystemMessage({
     required super.messageId,
@@ -57,6 +59,8 @@ class SystemMessage extends MessageModel {
     this.agentName,
     this.message,
     this.accountId,
+    this.gatewayType,
+    this.capabilities = const [],
   });
 }
 

@@ -8,6 +8,8 @@ import type { ResolvedClawkeAccount } from "./config.js";
 import { GatewayMessageType, InboundMessageType, AgentStatus } from "./protocol.js";
 import { getClawkeRuntime } from "./runtime.js";
 import { OpenClawTaskAdapter, type OpenClawTaskDraft, type OpenClawTaskPatch } from "./task-adapter.js";
+import { OpenClawSkillAdapter, type OpenClawSkillDraft } from "./skill-adapter.js";
+import { GatewayBoundaryFinalizer } from "./gateway-stream-finalizer.js";
 
 // 模块级状态（生命周期级，非请求级）
 // ws/gatewayCtx: 在 startClawkeGateway 建立连接时设置，在整个 gateway 生命周期内共享
@@ -21,6 +23,7 @@ let pendingUsage: Record<string, number> | null = null;
 let pendingModel = '';
 let pendingProvider = '';
 const taskAdapter = new OpenClawTaskAdapter();
+const skillAdapter = new OpenClawSkillAdapter();
 
 /** 由 index.ts llm_output hook 调用，累加 usage 数据（多轮工具调用时合计） */
 export function addPendingUsage(usage: Record<string, number> | null, model?: string, provider?: string): void {
@@ -276,11 +279,17 @@ export async function startClawkeGateway(
 
       ws.on("open", () => {
         ctx.log?.info(`Connected to Clawke Server`);
+        if (!skillAdapter.ensureOpenClawExtraDir()) {
+          ctx.log?.warn("Unable to ensure OpenClaw skills.load.extraDirs includes Clawke skills root");
+        }
         reconnectAttempt = 0;
         // 握手：告知 Clawke Server 我的 accountId
         ws!.send(JSON.stringify({
           type: GatewayMessageType.Identify,
           accountId: ctx.accountId,
+          agentName: "OpenClaw",
+          gatewayType: "openclaw",
+          capabilities: ["chat", "tasks", "skills", "models"],
         }));
         ctx.setStatus({
           accountId: ctx.accountId,
@@ -293,7 +302,19 @@ export async function startClawkeGateway(
       ws.on("message", (raw) => {
         try {
           const msg = JSON.parse(raw.toString());
-          if (isTaskCommand(msg.type)) {
+          if (isSkillCommand(msg.type)) {
+            handleSkillCommand(ctx, msg)
+              .then((response) => ws?.send(JSON.stringify(response)))
+              .catch((err: any) => {
+                ws?.send(JSON.stringify({
+                  type: responseTypeForSkillCommand(msg.type),
+                  request_id: msg.request_id,
+                  ok: false,
+                  error: "skill_error",
+                  message: err?.message || String(err),
+                }));
+              });
+          } else if (isTaskCommand(msg.type)) {
             handleTaskCommand(ctx, msg)
               .then((response) => ws?.send(JSON.stringify(response)))
               .catch((err: any) => {
@@ -401,9 +422,15 @@ export async function startClawkeGateway(
             ctx.log?.info(`📤 Models response: ${models.length} models`);
           } else if (msg.type === InboundMessageType.QuerySkills) {
             // 查询可用 Skills 列表
-            const skills = getAvailableSkills(ctx);
-            ws!.send(JSON.stringify({ type: GatewayMessageType.SkillsResponse, skills }));
-            ctx.log?.info(`📤 Skills response: ${skills.length} skills`);
+            skillAdapter.listRuntimeSkills()
+              .then((skills) => {
+                ws!.send(JSON.stringify({ type: GatewayMessageType.SkillsResponse, skills }));
+                ctx.log?.info(`📤 Skills response: ${skills.length} skills`);
+              })
+              .catch((err: any) => {
+                ctx.log?.error(`Skills query failed: ${err?.message || String(err)}`);
+                ws!.send(JSON.stringify({ type: GatewayMessageType.SkillsResponse, skills: [] }));
+              });
           }
         } catch (err: any) {
           ctx.log?.error(`Failed to parse inbound message: ${err.message}. Raw: ${raw.toString().slice(0, 50)}...`);
@@ -495,9 +522,9 @@ async function handleTaskCommand(
       return { ...base, runs: [run] };
     }
     case InboundMessageType.TaskRuns:
-      return { ...base, runs: await taskAdapter.listRuns(requireTaskId(msg)) };
+      return { ...base, runs: await taskAdapter.listRuns(accountId, requireTaskId(msg)) };
     case InboundMessageType.TaskOutput:
-      return { ...base, output: await taskAdapter.getOutput(requireTaskId(msg), requireRunId(msg)) };
+      return { ...base, output: await taskAdapter.getOutput(accountId, requireTaskId(msg), requireRunId(msg)) };
     default:
       throw new Error(`Unsupported task command: ${msg.type}`);
   }
@@ -516,6 +543,71 @@ function requireRunId(msg: TaskCommandMessage): string {
 function requireDraft(msg: TaskCommandMessage): OpenClawTaskDraft {
   const draft = msg.task ?? msg.draft;
   if (!draft) throw new Error("task draft is required");
+  return draft;
+}
+
+type SkillCommandMessage = {
+  type: string;
+  request_id?: string;
+  account_id?: string;
+  skill_id?: string;
+  skill?: OpenClawSkillDraft;
+  draft?: OpenClawSkillDraft;
+  enabled?: boolean;
+};
+
+function isSkillCommand(type: unknown): type is string {
+  return typeof type === "string" && type.startsWith("skill_");
+}
+
+function responseTypeForSkillCommand(type: string): GatewayMessageType {
+  switch (type) {
+    case InboundMessageType.SkillList:
+      return GatewayMessageType.SkillListResponse;
+    case InboundMessageType.SkillGet:
+      return GatewayMessageType.SkillGetResponse;
+    default:
+      return GatewayMessageType.SkillMutationResponse;
+  }
+}
+
+async function handleSkillCommand(
+  _ctx: ChannelGatewayContext<ResolvedClawkeAccount>,
+  msg: SkillCommandMessage,
+): Promise<Record<string, unknown>> {
+  const base = {
+    type: responseTypeForSkillCommand(msg.type),
+    request_id: msg.request_id,
+    ok: true,
+  };
+
+  switch (msg.type) {
+    case InboundMessageType.SkillList:
+      return { ...base, skills: await skillAdapter.listSkills() };
+    case InboundMessageType.SkillGet:
+      return { ...base, skill: await skillAdapter.getSkill(requireSkillId(msg)) };
+    case InboundMessageType.SkillCreate:
+      return { ...base, skill: await skillAdapter.createSkill(requireSkillDraft(msg)) };
+    case InboundMessageType.SkillUpdate:
+      return { ...base, skill: await skillAdapter.updateSkill(requireSkillId(msg), requireSkillDraft(msg)) };
+    case InboundMessageType.SkillDelete:
+      return { ...base, skill_id: requireSkillId(msg), deleted: await skillAdapter.deleteSkill(requireSkillId(msg)) };
+    case InboundMessageType.SkillSetEnabled:
+      if (typeof msg.enabled !== "boolean") throw new Error("enabled must be boolean");
+      return { ...base, skill: await skillAdapter.setEnabled(requireSkillId(msg), msg.enabled) };
+    default:
+      throw new Error(`Unsupported skill command: ${msg.type}`);
+  }
+}
+
+function requireSkillId(msg: SkillCommandMessage): string {
+  if (!msg.skill_id) throw new Error("skill_id is required");
+  return msg.skill_id;
+}
+
+function requireSkillDraft(msg: SkillCommandMessage): OpenClawSkillDraft {
+  const draft = msg.skill ?? msg.draft;
+  if (!draft) throw new Error("skill draft is required");
   return draft;
 }
 
@@ -861,6 +953,7 @@ async function handleClawkeInbound(
 
   // P1: 投递去重追踪器 — 防止同一内容被意外发送两次
   const deliveredTexts = new Set<string>();
+  const boundaryFinalizer = new GatewayBoundaryFinalizer();
 
   const { dispatcher, replyOptions, markDispatchIdle } =
     core.channel.reply.createReplyDispatcherWithTyping({
@@ -920,6 +1013,26 @@ async function handleClawkeInbound(
           pendingModel = '';
           pendingProvider = '';
         } else if (replyText.trim()) {
+          if (boundaryFinalizer.consumeDuplicateFinal(replyText)) {
+            ctx.log?.info(`⏭️ deliver SKIP boundary duplicate: ${replyText.slice(0, 60)}`);
+            if (pendingUsage || pendingModel) {
+              _sendToClawkeServer({
+                type: GatewayMessageType.AgentUsage,
+                message_id: streamMsgId,
+                to: clawkeTo,
+                account_id: ctx.accountId,
+                conversation_id: senderId,
+                usage: pendingUsage ?? undefined,
+                model: pendingModel,
+                provider: pendingProvider,
+              });
+            }
+            pendingUsage = null;
+            pendingModel = '';
+            pendingProvider = '';
+            return;
+          }
+
           // 没有流式输出（fallback），直接发完整文本
           _sendToClawkeServer({
             type: GatewayMessageType.AgentText,
@@ -1016,14 +1129,16 @@ async function handleClawkeInbound(
         onAssistantMessageStart: () => {
           // 结束上一段流式（如果有）
           if (hasStreamedAny) {
+            const finalizedText = lastFullText;
             _sendToClawkeServer({
               type: GatewayMessageType.AgentTextDone,
               message_id: streamMsgId,
-              fullText: lastFullText,
+              fullText: finalizedText,
               to: clawkeTo,
               account_id: ctx.accountId,
               conversation_id: senderId,
             });
+            boundaryFinalizer.recordBoundaryFinalized(finalizedText);
           }
           // 重置流式状态，准备接收新的 assistant message
           streamMsgId = `reply_${Date.now()}_${++msgCounter}`;

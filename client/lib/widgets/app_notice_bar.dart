@@ -90,9 +90,14 @@ class AppNoticeBar extends StatelessWidget {
         icon: Icons.warning_amber_rounded,
       ),
       AppNoticeSeverity.error => _NoticePalette(
-        background: colorScheme.errorContainer,
-        foreground: colorScheme.onErrorContainer,
-        border: colorScheme.error.withValues(alpha: 0.35),
+        background: Color.alphaBlend(
+          colorScheme.error.withValues(
+            alpha: colorScheme.brightness == Brightness.dark ? 0.18 : 0.1,
+          ),
+          colorScheme.surfaceContainerHighest,
+        ),
+        foreground: colorScheme.onSurface,
+        border: colorScheme.error.withValues(alpha: 0.55),
         icon: Icons.error_outline,
       ),
     };

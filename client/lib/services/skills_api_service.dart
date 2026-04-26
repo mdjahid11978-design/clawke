@@ -35,10 +35,13 @@ class SkillsApiService {
         .toList();
   }
 
-  Future<List<ManagedSkill>> listSkills({SkillScope? scope}) async {
+  Future<List<ManagedSkill>> listSkills({
+    SkillScope? scope,
+    String? locale,
+  }) async {
     final response = await _dio.get(
       '/api/skills',
-      queryParameters: _scopeQuery(scope),
+      queryParameters: _query(scope, locale: locale),
     );
     final data = _asMap(response.data);
     final list = data['skills'] as List? ?? [];
@@ -50,10 +53,14 @@ class SkillsApiService {
         .toList();
   }
 
-  Future<ManagedSkill> getSkill(String id, {SkillScope? scope}) async {
+  Future<ManagedSkill> getSkill(
+    String id, {
+    SkillScope? scope,
+    String? locale,
+  }) async {
     final response = await _dio.get(
       _skillPath(id),
-      queryParameters: _scopeQuery(scope),
+      queryParameters: _query(scope, locale: locale),
     );
     final data = _asMap(response.data);
     return ManagedSkill.fromJson(
@@ -61,8 +68,16 @@ class SkillsApiService {
     );
   }
 
-  Future<ManagedSkill> createSkill(SkillDraft draft) async {
-    final response = await _dio.post('/api/skills', data: draft.toJson());
+  Future<ManagedSkill> createSkill(
+    SkillDraft draft, {
+    SkillScope? scope,
+    String? locale,
+  }) async {
+    final response = await _dio.post(
+      '/api/skills',
+      queryParameters: _query(scope, locale: locale),
+      data: draft.toJson(),
+    );
     final data = _asMap(response.data);
     return ManagedSkill.fromJson(
       Map<String, dynamic>.from(data['skill'] as Map),
@@ -73,10 +88,11 @@ class SkillsApiService {
     String id,
     SkillDraft draft, {
     SkillScope? scope,
+    String? locale,
   }) async {
     final response = await _dio.put(
       _skillPath(id),
-      queryParameters: _scopeQuery(scope),
+      queryParameters: _query(scope, locale: locale),
       data: draft.toJson(),
     );
     final data = _asMap(response.data);
@@ -88,13 +104,13 @@ class SkillsApiService {
   Future<void> setEnabled(String id, bool enabled, {SkillScope? scope}) async {
     await _dio.put(
       _enabledPath(id),
-      queryParameters: _scopeQuery(scope),
+      queryParameters: _query(scope),
       data: {'enabled': enabled},
     );
   }
 
   Future<void> deleteSkill(String id, {SkillScope? scope}) async {
-    await _dio.delete(_skillPath(id), queryParameters: _scopeQuery(scope));
+    await _dio.delete(_skillPath(id), queryParameters: _query(scope));
   }
 
   String _skillPath(String id) {
@@ -107,18 +123,16 @@ class SkillsApiService {
 
   String _enabledPath(String id) => '${_skillPath(id)}/enabled';
 
-  Map<String, dynamic>? _scopeQuery(SkillScope? scope) {
-    if (scope == null) return null;
-    final scopeType = scope.isGateway
-        ? 'gateway'
-        : scope.isAllGateways
-        ? 'all'
-        : 'library';
-    return {
-      'scope': scopeType,
-      if (scope.gatewayId != null && scope.gatewayId!.isNotEmpty)
-        'gateway_id': scope.gatewayId,
-    };
+  Map<String, dynamic>? _query(SkillScope? scope, {String? locale}) {
+    final query = <String, dynamic>{};
+    final gatewayId = scope?.gatewayId;
+    if (gatewayId != null && gatewayId.isNotEmpty) {
+      query['gateway_id'] = gatewayId;
+    }
+    if (locale != null && locale.isNotEmpty) {
+      query['locale'] = locale;
+    }
+    return query.isEmpty ? null : query;
   }
 
   Map<String, dynamic> _asMap(Object? data) {

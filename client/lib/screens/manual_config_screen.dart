@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:client/providers/server_host_provider.dart';
+import 'package:client/core/ws_service.dart';
+import 'package:client/services/media_resolver.dart';
 import 'package:client/l10n/l10n.dart';
 
 /// Full-screen manual server configuration page.
@@ -26,12 +28,18 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
   @override
   void initState() {
     super.initState();
-    // 从已保存的配置预填（与设置页共享 SharedPreferences）
-    final config = ref.read(serverConfigProvider);
-    if (config.httpUrl != kDefaultHttpUrl) {
+    _loadSavedConfig();
+  }
+
+  Future<void> _loadSavedConfig() async {
+    final config = await ref.read(serverConfigProvider.notifier).ensureLoaded();
+    if (!mounted) return;
+
+    if (_urlController.text.trim().isEmpty &&
+        config.httpUrl != kDefaultHttpUrl) {
       _urlController.text = config.httpUrl;
     }
-    if (config.token.isNotEmpty) {
+    if (_tokenController.text.trim().isEmpty && config.token.isNotEmpty) {
       _tokenController.text = config.token;
     }
   }
@@ -88,10 +96,12 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
                   keyboardType: TextInputType.url,
                   decoration: InputDecoration(
                     labelText: context.l10n.serverAddress,
-                    hintText: 'http://192.168.1.100:8780',
+                    hintText: 'http://127.0.0.1:8780',
 
                     prefixIcon: const Icon(Icons.dns_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     filled: true,
                     fillColor: colorScheme.surfaceContainerLow,
                   ),
@@ -109,7 +119,9 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
                     labelText: context.l10n.tokenOptional,
                     hintText: context.l10n.tokenHint,
                     prefixIcon: const Icon(Icons.key_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     filled: true,
                     fillColor: colorScheme.surfaceContainerLow,
                   ),
@@ -128,12 +140,21 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline, color: colorScheme.error, size: 20),
+                        Icon(
+                          Icons.error_outline,
+                          color: colorScheme.error,
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             _error!,
-                            style: TextStyle(color: colorScheme.error, fontSize: Theme.of(context).textTheme.bodySmall!.fontSize),
+                            style: TextStyle(
+                              color: colorScheme.error,
+                              fontSize: Theme.of(
+                                context,
+                              ).textTheme.bodySmall!.fontSize,
+                            ),
                           ),
                         ),
                       ],
@@ -152,15 +173,22 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Icon(Icons.link),
                     label: Text(
-                      _isConnecting ? context.l10n.connectingStatus : context.l10n.manualConfigConnect,
+                      _isConnecting
+                          ? context.l10n.connectingStatus
+                          : context.l10n.manualConfigConnect,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                     style: FilledButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -176,31 +204,33 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
 
   Future<void> _handleConnect() async {
     final l10n = context.l10n;
-    final url = _urlController.text.trim();
-    if (url.isEmpty) {
-      setState(() => _error = l10n.enterServerAddressError);
-      return;
+    final savedConfig = await ref
+        .read(serverConfigProvider.notifier)
+        .ensureLoaded();
+    final rawUrl = _urlController.text.trim();
+    final url = normalizeServerHttpUrl(
+      rawUrl.isEmpty ? kDefaultHttpUrl : rawUrl,
+    );
+    final typedToken = _tokenController.text.trim();
+    var token = typedToken;
+    if (token.isEmpty && url == savedConfig.httpUrl) {
+      token = savedConfig.token;
+    }
+    if (rawUrl.isNotEmpty) {
+      _urlController.text = url;
+    }
+    if (_tokenController.text.trim().isEmpty && token.isNotEmpty) {
+      _tokenController.text = token;
     }
 
-    setState(() { _isConnecting = true; _error = null; });
+    setState(() {
+      _isConnecting = true;
+      _error = null;
+    });
 
     try {
-      // Derive WS URL from HTTP URL
-      String wsUrl;
-      if (url.startsWith('https://')) {
-        wsUrl = '${url.replaceFirst('https://', 'wss://')}/ws';
-      } else if (url.startsWith('http://')) {
-        wsUrl = '${url.replaceFirst('http://', 'ws://')}/ws';
-      } else {
-        wsUrl = 'ws://$url/ws';
-      }
-
-      // Append token as query param (same as ws_service.dart)
-      final token = _tokenController.text.trim();
-      final wsUri = Uri.parse(wsUrl);
-      final connectUri = token.isNotEmpty
-          ? wsUri.replace(queryParameters: {...wsUri.queryParameters, 'token': token})
-          : wsUri;
+      final wsUrl = deriveWsUrlFromServerAddress(url);
+      final connectUri = _buildConnectUri(wsUrl: wsUrl, token: token);
 
       // Test WebSocket connection with timeout
       final channel = WebSocketChannel.connect(connectUri);
@@ -213,18 +243,58 @@ class _ManualConfigScreenState extends ConsumerState<ManualConfigScreen> {
       // Connection successful — save config and navigate
       await ref.read(serverConfigProvider.notifier).setServerAddress(url);
       await ref.read(serverConfigProvider.notifier).setToken(token);
+      final updatedConfig = ref.read(serverConfigProvider);
+      WsService.setUrl(updatedConfig.wsUrl);
+      WsService.setToken(updatedConfig.token);
+      MediaResolver.setBaseUrl(updatedConfig.httpUrl);
+      MediaResolver.setToken(updatedConfig.token);
 
       if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil('/main', (route) => false);
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil('/main', (route) => false);
       }
     } on TimeoutException catch (e) {
-      if (mounted) setState(() => _error = e.message ?? l10n.connectionTimeoutShort);
+      if (mounted) {
+        setState(() => _error = e.message ?? l10n.connectionTimeoutShort);
+      }
     } on SocketException catch (e) {
       if (mounted) setState(() => _error = l10n.connectionFailed(e.message));
     } catch (e) {
-      if (mounted) setState(() => _error = l10n.connectionFailed(e.toString()));
+      if (mounted) {
+        final message = e.toString();
+        final error =
+            (message.contains('401') ||
+                message.contains('Unauthorized') ||
+                (message.contains('not upgraded') && token.isEmpty))
+            ? l10n.relayConnectionRefused
+            : l10n.connectionFailed(message);
+        setState(() => _error = error);
+      }
     } finally {
       if (mounted) setState(() => _isConnecting = false);
     }
+  }
+
+  Uri _buildConnectUri({required String wsUrl, required String token}) {
+    final uri = Uri.parse(wsUrl);
+    final params = Map<String, String>.from(uri.queryParameters);
+    if (token.isNotEmpty) params['token'] = token;
+
+    if (uri.hasPort) {
+      return Uri(
+        scheme: uri.scheme,
+        host: uri.host,
+        port: uri.port,
+        path: uri.path,
+        queryParameters: params.isEmpty ? null : params,
+      );
+    }
+    return Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      path: uri.path,
+      queryParameters: params.isEmpty ? null : params,
+    );
   }
 }

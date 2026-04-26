@@ -42,6 +42,10 @@ class CupParser {
             agentName: json['agent_name'] as String?,
             message: json['message'] as String?,
             accountId: json['account_id'] as String?,
+            gatewayType: json['gateway_type'] as String?,
+            capabilities: (json['capabilities'] as List? ?? const [])
+                .map((item) => item.toString())
+                .toList(),
           );
         default:
           return null;

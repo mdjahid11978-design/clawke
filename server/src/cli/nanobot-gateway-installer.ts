@@ -6,6 +6,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { registerGatewayInClawkeConfig } from './clawke-config-writer.js';
 
 const NANOBOT_HOME = path.join(os.homedir(), '.nanobot');
 const NANOBOT_CONFIG = path.join(NANOBOT_HOME, 'config.json');
@@ -50,6 +51,7 @@ export async function installNanobotGateway(): Promise<void> {
 
   // Step 3: 合并 nanobot 配置
   mergeNanobotConfig();
+  mergeClawkeConfig();
 
   console.log(`
 [clawke] ✅ Installation complete!
@@ -111,6 +113,14 @@ function mergeNanobotConfig(): void {
 
   fs.writeFileSync(NANOBOT_CONFIG, JSON.stringify(config, null, 2) + '\n');
   console.log(`[clawke] ✅ Config updated: ${NANOBOT_CONFIG}`);
+}
+
+function mergeClawkeConfig(): void {
+  registerGatewayInClawkeConfig({
+    gatewayType: 'nanobot',
+    gatewayId: 'nanobot',
+  });
+  console.log('[clawke] ✅ Registered nanobot gateway in ~/.clawke/clawke.json');
 }
 
 function printRemoteGuide(): void {

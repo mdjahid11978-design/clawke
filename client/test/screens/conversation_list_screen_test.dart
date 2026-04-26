@@ -3,6 +3,7 @@ import 'package:client/l10n/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:client/data/database/app_database.dart';
+import 'package:client/models/gateway_info.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/screens/conversation_list_screen.dart';
 import '../helpers/provider_overrides.dart';
@@ -78,6 +79,39 @@ void main() {
       expect(find.byIcon(Icons.push_pin), findsNothing);
     });
 
+    testWidgets('shows gateway issue icon with tooltip when gateway is disconnected', (
+      tester,
+    ) async {
+      final convs = [
+        makeConversation(
+          conversationId: 'c1',
+          accountId: 'hermes',
+          name: 'Hermes Chat',
+        ),
+      ];
+
+      await _pumpScreen(
+        tester,
+        conversations: convs,
+        gateways: const [
+          GatewayInfo(
+            gatewayId: 'hermes',
+            displayName: 'Hermes',
+            gatewayType: 'hermes',
+            status: GatewayConnectionStatus.disconnected,
+          ),
+        ],
+      );
+
+      final issueIcon = find.byIcon(Icons.warning_amber_rounded);
+      expect(issueIcon, findsOneWidget);
+
+      final tooltip = tester.widget<Tooltip>(
+        find.ancestor(of: issueIcon, matching: find.byType(Tooltip)),
+      );
+      expect(tooltip.message, contains('Hermes'));
+    });
+
     testWidgets('shows loading indicator while loading', (tester) async {
       final (wsOvr, _) = wsOverrides();
       final overrides = [
@@ -116,6 +150,7 @@ void main() {
 Future<void> _pumpScreen(
   WidgetTester tester, {
   required List<Conversation> conversations,
+  List<GatewayInfo>? gateways,
   String? selectedId,
 }) async {
   tester.view.physicalSize = const Size(1280, 800);
@@ -127,6 +162,7 @@ Future<void> _pumpScreen(
 
   final overrides = conversationListOverrides(
     conversations: conversations,
+    gateways: gateways,
     selectedId: selectedId,
   );
 

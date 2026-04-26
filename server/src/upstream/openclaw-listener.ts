@@ -5,9 +5,11 @@
  */
 import { WebSocketServer, WebSocket } from 'ws';
 import { broadcastToClients } from '../downstream/client-server.js';
+import type { GatewayInfo } from '../types/gateways.js';
 
 // accountId → WebSocket 路由表
 const upstreamConnections = new Map<string, WebSocket>();
+const upstreamGatewayInfo = new Map<string, GatewayInfo>();
 const activeStreamingIds = new Set<string>();
 const TRANSIENT_GATEWAY_RESPONSE_TYPES = new Set([
   'models_response',
@@ -18,6 +20,9 @@ const TRANSIENT_GATEWAY_RESPONSE_TYPES = new Set([
   'task_run_response',
   'task_runs_response',
   'task_output_response',
+  'skill_list_response',
+  'skill_get_response',
+  'skill_mutation_response',
 ]);
 
 export function isTransientGatewayResponseType(type: unknown): boolean {
@@ -55,16 +60,38 @@ export function startOpenClawListener(
         const remote = (ws as any)._socket?.remoteAddress || 'unknown';
         const remotePort = (ws as any)._socket?.remotePort || '?';
         console.log(`[Gateway] ✅ Gateway connected by account_id=${accountId} remote=${remote}:${remotePort} (total: ${upstreamConnections.size})`);
+        const displayName = typeof payload.agentName === 'string' && payload.agentName.trim()
+          ? payload.agentName.trim()
+          : 'OpenClaw';
+        const gatewayType = typeof payload.gatewayType === 'string' && payload.gatewayType.trim()
+          ? payload.gatewayType.trim()
+          : 'openclaw';
+        const capabilities = Array.isArray(payload.capabilities)
+          ? payload.capabilities.map((item: unknown) => String(item)).filter(Boolean)
+          : ['chat', 'tasks', 'skills', 'models'];
+        const now = Date.now();
+
+        upstreamGatewayInfo.set(accountId!, {
+          gateway_id: accountId!,
+          display_name: displayName,
+          gateway_type: gatewayType,
+          status: 'online',
+          capabilities,
+          last_connected_at: now,
+          last_seen_at: now,
+        });
 
         // 通知 server 层处理自动创建会话等逻辑
         if (onGatewayIdentified) {
-          onGatewayIdentified(accountId!, 'OpenClaw');
+          onGatewayIdentified(accountId!, displayName);
         }
 
         broadcastToClients({
           payload_type: 'system_status',
           status: 'ai_connected',
-          agent_name: 'OpenClaw',
+          agent_name: displayName,
+          gateway_type: gatewayType,
+          capabilities,
           account_id: accountId,
         });
         return;
@@ -96,6 +123,7 @@ export function startOpenClawListener(
       }
       if (upstreamConnections.get(accountId) === ws) {
         upstreamConnections.delete(accountId);
+        upstreamGatewayInfo.delete(accountId);
         console.log(`[Gateway] OpenClaw Gateway disconnected: account=${accountId} (remaining: ${upstreamConnections.size})`);
         finalizeAllStreaming();
         broadcastToClients({
@@ -165,6 +193,24 @@ export function getConnectedAccountIds(): string[] {
     if (ws.readyState === 1) ids.push(id);
   }
   return ids;
+}
+
+export function getConnectedGateways(): GatewayInfo[] {
+  const gateways: GatewayInfo[] = [];
+  for (const [id, ws] of upstreamConnections) {
+    if (ws.readyState !== 1) continue;
+    const info = upstreamGatewayInfo.get(id);
+    gateways.push(info || {
+      gateway_id: id,
+      display_name: id,
+      gateway_type: 'unknown',
+      status: 'online',
+      capabilities: ['chat'],
+      last_connected_at: null,
+      last_seen_at: Date.now(),
+    });
+  }
+  return gateways;
 }
 
 export function trackStreamingId(msgId: string): void {

@@ -311,6 +311,45 @@ void main() {
       expect(container.read(streamingThinkingProvider), isNull);
     });
 
+    test('连续 text_done 不会把同一条流式回复写入两次', () async {
+      container.read(wsMessageHandlerProvider);
+
+      messageStreamController.add({
+        'payload_type': 'thinking_delta',
+        'message_id': 'think_1',
+        'content': '思考...',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      messageStreamController.add({
+        'payload_type': 'text_delta',
+        'message_id': 'msg_1',
+        'account_id': 'conv_test',
+        'conversation_id': 'conv_test',
+        'content': '回答',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      messageStreamController.add({
+        'payload_type': 'text_done',
+        'message_id': 'done_1',
+        'account_id': 'conv_test',
+        'conversation_id': 'conv_test',
+      });
+      messageStreamController.add({
+        'payload_type': 'text_done',
+        'message_id': 'done_2',
+        'account_id': 'conv_test',
+        'conversation_id': 'conv_test',
+      });
+
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      verify(() => mockMsgDao.insertMessage(any())).called(1);
+      expect(container.read(streamingMessageProvider), isNull);
+      expect(container.read(streamingThinkingProvider), isNull);
+    });
+
     test('thinking_delta 不影响 streamingMessageProvider', () async {
       container.read(wsMessageHandlerProvider);
 

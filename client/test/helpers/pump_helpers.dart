@@ -9,6 +9,7 @@ Future<void> pumpApp(
   Widget child, {
   List<Override> overrides = const [],
   Size screenSize = const Size(1280, 800),
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = screenSize;
   tester.view.devicePixelRatio = 1.0;
@@ -21,6 +22,7 @@ Future<void> pumpApp(
     ProviderScope(
       overrides: overrides,
       child: MaterialApp(
+        theme: theme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),

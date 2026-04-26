@@ -26,6 +26,7 @@ server/.env
 server/clawke.db
 server/db.sqlite
 server/data/
+.runtime/
 
 # iOS
 client/ios/Pods/

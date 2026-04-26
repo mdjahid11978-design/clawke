@@ -657,6 +657,326 @@ setup_config() {
     log_success "Configuration directory ready: ~/.clawke/"
 }
 
+install_builtin_skills() {
+    log_info "Installing built-in skills..."
+
+    local registry_path="$INSTALL_DIR/skills-registry.json"
+    if [ ! -f "$registry_path" ]; then
+        log_info "No skills registry found at $registry_path; skipping built-in skills"
+        return 0
+    fi
+
+    local node_bin
+    if [ -n "${NODE_CMD:-}" ]; then
+        node_bin="$NODE_CMD"
+    elif [ -x "$CLAWKE_HOME/node/bin/node" ]; then
+        node_bin="$CLAWKE_HOME/node/bin/node"
+    elif command -v node &> /dev/null; then
+        node_bin="$(command -v node)"
+    else
+        log_warn "Node.js not found; skipping built-in skills"
+        return 0
+    fi
+
+    INSTALL_DIR="$INSTALL_DIR" CLAWKE_HOME="$CLAWKE_HOME" "$node_bin" <<'NODE_HELPER'
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const installDir = process.env.INSTALL_DIR;
+const clawkeHome = process.env.CLAWKE_HOME;
+const registryPath = path.join(installDir, 'skills-registry.json');
+const reposDir = path.join(clawkeHome, 'skill-repos');
+const skillsDir = path.join(clawkeHome, 'skills');
+const disabledDir = path.join(clawkeHome, 'disabled-skills');
+const lockPath = path.join(clawkeHome, 'skills-lock.json');
+
+const stats = {
+  installed: 0,
+  updated: 0,
+  skipped: 0,
+  conflicts: 0,
+};
+
+function info(message) {
+  console.log(`→ ${message}`);
+}
+
+function warn(message) {
+  console.log(`⚠ ${message}`);
+}
+
+function success(message) {
+  console.log(`✓ ${message}`);
+}
+
+function runGit(args, cwd) {
+  execFileSync('git', args, {
+    cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function gitOutput(args, cwd) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function gitRefExists(ref, cwd) {
+  try {
+    runGit(['rev-parse', '--verify', '--quiet', ref], cwd);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function readJson(filePath, fallback) {
+  if (!fs.existsSync(filePath)) {
+    return fallback;
+  }
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
+function writeJson(filePath, data) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`);
+}
+
+function safeSegment(value) {
+  return String(value)
+    .replace(/\.git$/i, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(-48) || 'repo';
+}
+
+function repoKey(url) {
+  const hash = crypto.createHash('sha256').update(url).digest('hex').slice(0, 16);
+  const parsed = safeSegment(path.basename(url));
+  return `${parsed}-${hash}`;
+}
+
+function assertSafeRelativePath(value, label) {
+  if (!value || path.isAbsolute(value) || value.split(/[\\/]+/).includes('..')) {
+    throw new Error(`${label} must be a safe relative path`);
+  }
+}
+
+function assertSafePathSegment(value, label) {
+  if (!value || value === '.' || value === '..' || /[\\/]/.test(value)) {
+    throw new Error(`${label} must be a single safe path segment`);
+  }
+}
+
+function hashDirectory(dirPath) {
+  const hash = crypto.createHash('sha256');
+
+  function walk(current, relativeBase) {
+    const entries = fs.readdirSync(current, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+      const absolute = path.join(current, entry.name);
+      const relative = path.join(relativeBase, entry.name).split(path.sep).join('/');
+      const stat = fs.lstatSync(absolute);
+
+      if (entry.isDirectory()) {
+        hash.update(`dir\0${relative}\0${stat.mode & 0o777}\0`);
+        walk(absolute, relative);
+      } else if (entry.isSymbolicLink()) {
+        hash.update(`link\0${relative}\0${fs.readlinkSync(absolute)}\0`);
+      } else if (entry.isFile()) {
+        hash.update(`file\0${relative}\0${stat.mode & 0o777}\0`);
+        hash.update(fs.readFileSync(absolute));
+        hash.update('\0');
+      }
+    }
+  }
+
+  walk(dirPath, '');
+  return hash.digest('hex');
+}
+
+function normalizeLock(rawLock) {
+  const lock = rawLock && typeof rawLock === 'object' ? rawLock : {};
+  if (!lock.version) {
+    lock.version = 1;
+  }
+  if (!lock.skills || Array.isArray(lock.skills) || typeof lock.skills !== 'object') {
+    lock.skills = {};
+  }
+  return lock;
+}
+
+function validateSkill(skill) {
+  if (!skill || typeof skill !== 'object') {
+    throw new Error('skill entry must be an object');
+  }
+  for (const key of ['id', 'category', 'name']) {
+    if (!skill[key] || typeof skill[key] !== 'string') {
+      throw new Error(`skill.${key} is required`);
+    }
+  }
+  if (!skill.source || skill.source.type !== 'git') {
+    throw new Error(`skill ${skill.name} source.type must be git`);
+  }
+  for (const key of ['url', 'ref', 'path']) {
+    if (!skill.source[key] || typeof skill.source[key] !== 'string') {
+      throw new Error(`skill ${skill.name} source.${key} is required`);
+    }
+  }
+  assertSafePathSegment(skill.name, `skill ${skill.name} name`);
+  assertSafeRelativePath(skill.source.path, `skill ${skill.name} source.path`);
+}
+
+function ensureRepo(source) {
+  const cachePath = path.join(reposDir, repoKey(source.url));
+
+  if (fs.existsSync(cachePath)) {
+    if (!fs.existsSync(path.join(cachePath, '.git'))) {
+      throw new Error(`repo cache exists but is not a git repo: ${cachePath}`);
+    }
+    runGit(['fetch', '--tags', '--prune', 'origin'], cachePath);
+  } else {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    runGit(['clone', source.url, cachePath], installDir);
+  }
+
+  let checkoutRef = source.ref;
+  if (source.ref === 'HEAD' && gitRefExists('refs/remotes/origin/HEAD', cachePath)) {
+    checkoutRef = 'origin/HEAD';
+  } else if (gitRefExists(`refs/remotes/origin/${source.ref}`, cachePath)) {
+    checkoutRef = `origin/${source.ref}`;
+  }
+
+  runGit(['checkout', '--detach', checkoutRef], cachePath);
+
+  const resolvedCommit = gitOutput(['rev-parse', 'HEAD'], cachePath);
+
+  return { cachePath, resolvedCommit };
+}
+
+function copySkill(sourcePath, targetPath) {
+  const tmpPath = `${targetPath}.tmp-${process.pid}`;
+  fs.rmSync(tmpPath, { recursive: true, force: true });
+  fs.cpSync(sourcePath, tmpPath, {
+    recursive: true,
+    preserveTimestamps: true,
+    filter: (source) => path.basename(source) !== '.git',
+  });
+  fs.rmSync(targetPath, { recursive: true, force: true });
+  fs.renameSync(tmpPath, targetPath);
+}
+
+function main() {
+  const registry = readJson(registryPath, null);
+  if (!registry || registry.version !== 1 || !Array.isArray(registry.skills)) {
+    throw new Error('skills-registry.json must contain version=1 and skills[]');
+  }
+
+  fs.mkdirSync(reposDir, { recursive: true });
+  fs.mkdirSync(skillsDir, { recursive: true });
+  fs.mkdirSync(disabledDir, { recursive: true });
+
+  const lock = normalizeLock(readJson(lockPath, { version: 1, skills: {} }));
+  const duplicateNames = new Set();
+  const seenNames = new Set();
+
+  for (const skill of registry.skills) {
+    if (skill && typeof skill.name === 'string') {
+      if (seenNames.has(skill.name)) {
+        duplicateNames.add(skill.name);
+      }
+      seenNames.add(skill.name);
+    }
+  }
+
+  for (const skill of registry.skills) {
+    try {
+      validateSkill(skill);
+
+      if (duplicateNames.has(skill.name)) {
+        warn(`Conflict: duplicate built-in skill name "${skill.name}" in registry`);
+        stats.conflicts += 1;
+        continue;
+      }
+
+      const targetPath = path.join(skillsDir, skill.name);
+      const disabledPath = path.join(disabledDir, skill.name);
+      const locked = lock.skills[skill.name];
+
+      if (fs.existsSync(disabledPath)) {
+        warn(`Skipped disabled skill "${skill.name}" (left in disabled-skills)`);
+        stats.skipped += 1;
+        continue;
+      }
+
+      const targetExists = fs.existsSync(targetPath);
+      let action = 'installed';
+      if (targetExists) {
+        const currentChecksum = hashDirectory(targetPath);
+        if (!locked || locked.checksum !== currentChecksum) {
+          warn(`Conflict: skill "${skill.name}" has local changes; skipping`);
+          stats.conflicts += 1;
+          continue;
+        }
+        action = 'updated';
+      }
+
+      const { cachePath, resolvedCommit } = ensureRepo(skill.source);
+      const sourcePath = path.resolve(cachePath, skill.source.path);
+      if (
+        sourcePath !== cachePath &&
+        !sourcePath.startsWith(`${cachePath}${path.sep}`)
+      ) {
+        throw new Error(`source path escapes repo for ${skill.name}: ${skill.source.path}`);
+      }
+      if (!fs.existsSync(sourcePath)) {
+        throw new Error(`source path not found for ${skill.name}: ${skill.source.path}`);
+      }
+      if (!fs.statSync(sourcePath).isDirectory()) {
+        throw new Error(`source path is not a directory for ${skill.name}: ${skill.source.path}`);
+      }
+      if (!fs.existsSync(path.join(sourcePath, 'SKILL.md'))) {
+        throw new Error(`source path missing SKILL.md for ${skill.name}: ${skill.source.path}`);
+      }
+
+      copySkill(sourcePath, targetPath);
+      const checksum = hashDirectory(targetPath);
+
+      lock.skills[skill.name] = {
+        category: skill.category,
+        name: skill.name,
+        sourceUrl: skill.source.url,
+        ref: skill.source.ref,
+        resolvedCommit,
+        sourcePath: skill.source.path,
+        installedPath: targetPath,
+        checksum,
+        installedAt: new Date().toISOString(),
+      };
+
+      stats[action] += 1;
+      success(`${action === 'installed' ? 'Installed' : 'Updated'} skill "${skill.name}"`);
+    } catch (error) {
+      warn(`Conflict: ${error.message}`);
+      stats.conflicts += 1;
+    }
+  }
+
+  writeJson(lockPath, lock);
+  info(`Built-in skills summary: installed=${stats.installed}, updated=${stats.updated}, skipped=${stats.skipped}, conflicts=${stats.conflicts}`);
+}
+
+main();
+NODE_HELPER
+}
+
 # ============================================================================
 # Output
 # ============================================================================
@@ -732,6 +1052,7 @@ main() {
     install_deps
     setup_clawke_command
     setup_config
+    install_builtin_skills
 
     print_success
 }

@@ -4,12 +4,14 @@ import 'package:client/core/ws_service.dart';
 import 'package:client/data/database/app_database.dart';
 import 'package:client/data/repositories/conversation_repository.dart';
 import 'package:client/data/repositories/message_repository.dart';
+import 'package:client/models/gateway_info.dart';
 import 'package:client/services/config_api_service.dart';
 import 'package:client/data/database/dao/conversation_dao.dart';
 import 'package:client/data/database/dao/message_dao.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/conversation_provider.dart';
+import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/chat_provider.dart';
 
 class MockWsService extends Mock implements WsService {}
@@ -103,6 +105,7 @@ Message makeMessage({
 /// ConversationListScreen 测试 overrides
 List<Override> conversationListOverrides({
   List<Conversation>? conversations,
+  List<GatewayInfo>? gateways,
   String? selectedId,
 }) {
   final (wsOvr, _) = wsOverrides();
@@ -110,6 +113,9 @@ List<Override> conversationListOverrides({
     ...wsOvr,
     conversationListProvider.overrideWith(
       (ref) => Stream.value(conversations ?? []),
+    ),
+    gatewayListProvider.overrideWith(
+      (ref) => Stream.value(gateways ?? const <GatewayInfo>[]),
     ),
     if (selectedId != null)
       selectedConversationIdProvider.overrideWith((ref) => selectedId),
@@ -121,6 +127,9 @@ List<Override> chatScreenOverrides({
   MockWsService? mockWs,
   List<Message>? messages,
   String? selectedConvId,
+  String? selectedAccountId,
+  List<ConnectedAccount>? connectedAccounts,
+  List<GatewayInfo>? gateways,
   WsState wsState = WsState.disconnected,
 }) {
   final ws = mockWs ?? MockWsService();
@@ -158,6 +167,21 @@ List<Override> chatScreenOverrides({
     wsServiceProvider.overrideWithValue(ws),
     wsStateProvider.overrideWith((ref) => Stream.value(wsState)),
     selectedConversationIdProvider.overrideWith((ref) => selectedConvId),
+    conversationListProvider.overrideWith(
+      (ref) => Stream.value(
+        selectedConvId == null
+            ? const <Conversation>[]
+            : [
+                makeConversation(
+                  conversationId: selectedConvId,
+                  accountId: selectedAccountId ?? selectedConvId,
+                ),
+              ],
+      ),
+    ),
+    gatewayListProvider.overrideWith(
+      (ref) => Stream.value(gateways ?? const <GatewayInfo>[]),
+    ),
     conversationDaoProvider.overrideWithValue(mockConvDao),
     messageDaoProvider.overrideWithValue(mockMsgDao),
     conversationRepositoryProvider.overrideWithValue(
@@ -177,5 +201,15 @@ List<Override> chatScreenOverrides({
     // 当 ws 连上时，默认也认为 AI 后端已连接
     if (wsState == WsState.connected)
       aiBackendStateProvider.overrideWith((ref) => AiBackendState.connected),
+    if (wsState == WsState.connected)
+      connectedAccountsProvider.overrideWith(
+        (ref) => connectedAccounts ??
+            [
+              ConnectedAccount(
+                accountId: selectedAccountId ?? selectedConvId ?? 'default',
+                agentName: selectedAccountId ?? selectedConvId ?? 'default',
+              ),
+            ],
+      ),
   ];
 }

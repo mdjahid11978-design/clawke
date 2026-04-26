@@ -1,0 +1,87 @@
+import 'skill_localizations.drift';
+
+CREATE TABLE skill_cache (
+  user_id         TEXT    NOT NULL,
+  gateway_id      TEXT    NOT NULL,
+  skill_id        TEXT    NOT NULL,
+  name            TEXT    NOT NULL,
+  description     TEXT    NOT NULL,
+  category        TEXT    NOT NULL,
+  enabled         BOOLEAN NOT NULL,
+  source          TEXT    NOT NULL,
+  source_label    TEXT    NOT NULL,
+  writable        BOOLEAN NOT NULL,
+  deletable       BOOLEAN NOT NULL,
+  path            TEXT    NOT NULL,
+  root            TEXT    NOT NULL,
+  updated_at      REAL    NOT NULL DEFAULT 0,
+  has_conflict    BOOLEAN NOT NULL DEFAULT FALSE,
+  "trigger"       TEXT,
+  body            TEXT,
+  content         TEXT,
+  source_hash     TEXT    NOT NULL DEFAULT '',
+  detail_fetched_at INTEGER,
+  synced_at       INTEGER NOT NULL,
+  PRIMARY KEY (user_id, gateway_id, skill_id)
+);
+
+watchSkills:
+  SELECT
+    s.*,
+    l.locale AS localization_locale,
+    l.status AS localization_status,
+    l.translated_name,
+    l.translated_description,
+    l.translated_trigger,
+    l.translated_body
+  FROM skill_cache s
+  LEFT JOIN skill_localizations l
+    ON l.user_id = s.user_id
+    AND l.gateway_id = s.gateway_id
+    AND l.skill_id = s.skill_id
+    AND l.locale = :locale
+    AND l.source_hash = s.source_hash
+    AND l.status = 'ready'
+  WHERE s.user_id = :userId AND s.gateway_id = :gatewayId
+  ORDER BY s.name COLLATE NOCASE ASC, s.skill_id ASC;
+
+getSkills:
+  SELECT
+    s.*,
+    l.locale AS localization_locale,
+    l.status AS localization_status,
+    l.translated_name,
+    l.translated_description,
+    l.translated_trigger,
+    l.translated_body
+  FROM skill_cache s
+  LEFT JOIN skill_localizations l
+    ON l.user_id = s.user_id
+    AND l.gateway_id = s.gateway_id
+    AND l.skill_id = s.skill_id
+    AND l.locale = :locale
+    AND l.source_hash = s.source_hash
+    AND l.status = 'ready'
+  WHERE s.user_id = :userId AND s.gateway_id = :gatewayId
+  ORDER BY s.name COLLATE NOCASE ASC, s.skill_id ASC;
+
+getSkill:
+  SELECT
+    s.*,
+    l.locale AS localization_locale,
+    l.status AS localization_status,
+    l.translated_name,
+    l.translated_description,
+    l.translated_trigger,
+    l.translated_body
+  FROM skill_cache s
+  LEFT JOIN skill_localizations l
+    ON l.user_id = s.user_id
+    AND l.gateway_id = s.gateway_id
+    AND l.skill_id = s.skill_id
+    AND l.locale = :locale
+    AND l.source_hash = s.source_hash
+    AND l.status = 'ready'
+  WHERE s.user_id = :userId
+    AND s.gateway_id = :gatewayId
+    AND s.skill_id = :skillId;

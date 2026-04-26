@@ -1,0 +1,26 @@
+CREATE TABLE gateways (
+    gateway_id          TEXT    NOT NULL PRIMARY KEY,
+    display_name        TEXT    NOT NULL,
+    gateway_type        TEXT    NOT NULL,
+    status              TEXT    NOT NULL DEFAULT 'disconnected',
+    capabilities_json   TEXT    NOT NULL DEFAULT '[]',
+    last_error_code     TEXT,
+    last_error_message  TEXT,
+    last_connected_at   INTEGER,
+    last_seen_at        INTEGER,
+    created_at          INTEGER NOT NULL,
+    updated_at          INTEGER NOT NULL
+);
+
+watchAllGateways:
+  SELECT * FROM gateways
+  ORDER BY display_name COLLATE NOCASE, gateway_id;
+
+watchOnlineGateways:
+  SELECT * FROM gateways
+  WHERE status = 'online'
+  ORDER BY display_name COLLATE NOCASE, gateway_id;
+
+getGateway:
+  SELECT * FROM gateways
+  WHERE gateway_id = :gatewayId;

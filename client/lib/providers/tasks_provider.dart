@@ -1,16 +1,20 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:client/data/repositories/task_cache_repository.dart';
 import 'package:client/models/managed_task.dart';
+import 'package:client/providers/database_providers.dart';
 import 'package:client/services/tasks_api_service.dart';
 
-final tasksApiServiceProvider = Provider<TasksApiService>((ref) {
-  return TasksApiService();
-});
+export 'package:client/providers/database_providers.dart'
+    show taskCacheRepositoryProvider, tasksApiServiceProvider;
 
 final tasksControllerProvider =
     StateNotifierProvider<TasksController, TasksState>((ref) {
-      return TasksController(ref.read(tasksApiServiceProvider));
+      return TasksController(
+        ref.watch(tasksApiServiceProvider),
+        cache: ref.watch(taskCacheRepositoryProvider),
+      );
     });
 
 @immutable
@@ -98,26 +102,41 @@ class TasksState {
 }
 
 class TasksController extends StateNotifier<TasksState> {
-  TasksController(this._api) : super(const TasksState());
+  TasksController(this._api, {TaskCacheRepository? cache})
+    : _cache = cache,
+      super(const TasksState());
 
   final TasksApiService _api;
+  final TaskCacheRepository? _cache;
+  int _loadGeneration = 0;
 
   Future<void> syncAccounts(List<TaskAccount> accounts) async {
     final nextSelected = _resolveAccount(accounts, state.selectedAccountId);
+    final selectionChanged = nextSelected != state.selectedAccountId;
     final sameAccounts = listEquals(
       accounts.map((a) => '${a.accountId}:${a.agentName}').toList(),
       state.accounts.map((a) => '${a.accountId}:${a.agentName}').toList(),
     );
     if (sameAccounts && nextSelected == state.selectedAccountId) return;
 
+    if (selectionChanged) _loadGeneration += 1;
+
     state = state.copyWith(
       accounts: accounts,
       selectedAccountId: nextSelected,
       clearSelectedAccount: nextSelected == null,
-      tasks: nextSelected == null ? const [] : state.tasks,
+      tasks: selectionChanged ? const [] : state.tasks,
       clearSelectedTask: true,
       runs: const [],
       clearRunOutput: true,
+      isLoading: selectionChanged ? false : state.isLoading,
+      isSaving: selectionChanged ? false : state.isSaving,
+      isLoadingRuns: selectionChanged ? false : state.isLoadingRuns,
+      busyTaskIds: selectionChanged ? const <String>{} : state.busyTaskIds,
+      togglingTaskIds: selectionChanged
+          ? const <String>{}
+          : state.togglingTaskIds,
+      clearError: selectionChanged,
     );
 
     if (nextSelected != null) {
@@ -133,22 +152,39 @@ class TasksController extends StateNotifier<TasksState> {
         selected == state.selectedAccountId) {
       return;
     }
+    final switchingAccount = selected != state.selectedAccountId;
+    final requestAccountId = selected;
+    final requestGeneration = ++_loadGeneration;
     state = state.copyWith(
-      selectedAccountId: selected,
+      selectedAccountId: requestAccountId,
+      tasks: switchingAccount ? const [] : state.tasks,
       isLoading: true,
+      isSaving: switchingAccount ? false : state.isSaving,
+      isLoadingRuns: false,
+      busyTaskIds: switchingAccount ? const <String>{} : state.busyTaskIds,
+      togglingTaskIds: switchingAccount
+          ? const <String>{}
+          : state.togglingTaskIds,
       clearSelectedTask: true,
       runs: const [],
       clearRunOutput: true,
       clearError: true,
     );
+    final cached = await _getCachedTasks(requestAccountId);
+    if (requestGeneration != _loadGeneration) return;
+    if (cached.isNotEmpty) {
+      state = state.copyWith(tasks: cached);
+    }
     try {
-      final tasks = await _api.listTasks(accountId: selected);
+      final tasks = await _syncTasks(requestAccountId);
+      if (requestGeneration != _loadGeneration) return;
       state = state.copyWith(tasks: tasks, isLoading: false);
     } catch (e) {
+      if (requestGeneration != _loadGeneration) return;
       state = state.copyWith(
         isLoading: false,
-        errorMessage: _taskErrorMessage(e, accountId: selected),
-        errorAccountId: selected,
+        errorMessage: _taskErrorMessage(e, accountId: requestAccountId),
+        errorAccountId: requestAccountId,
       );
     }
   }
@@ -165,10 +201,42 @@ class TasksController extends StateNotifier<TasksState> {
     await load(accountId: accountId, force: true);
   }
 
+  void selectUnavailableAccount(
+    List<TaskAccount> accounts,
+    String accountId,
+    String message,
+  ) {
+    if (!accounts.any((account) => account.accountId == accountId)) return;
+    _loadGeneration += 1;
+    state = state.copyWith(
+      accounts: accounts,
+      selectedAccountId: accountId,
+      tasks: const [],
+      runs: const [],
+      clearSelectedTask: true,
+      clearRunOutput: true,
+      isLoading: false,
+      isSaving: false,
+      isLoadingRuns: false,
+      busyTaskIds: const <String>{},
+      togglingTaskIds: const <String>{},
+      errorMessage: message,
+      errorAccountId: accountId,
+    );
+  }
+
   Future<void> create(TaskDraft draft) async {
+    final requestAccountId = draft.accountId;
+    final requestGeneration = _loadGeneration;
     state = state.copyWith(isSaving: true, clearError: true);
     try {
-      final task = await _api.createTask(draft);
+      final task = await _createTask(draft);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(isSaving: false);
+        }
+        return;
+      }
       state = state.copyWith(
         isSaving: false,
         selectedAccountId: task.accountId,
@@ -176,35 +244,57 @@ class TasksController extends StateNotifier<TasksState> {
         tasks: [...state.tasks, task]..sort(_sortTasks),
       );
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(isSaving: false);
+        }
+        return;
+      }
       state = state.copyWith(
         isSaving: false,
-        errorMessage: _taskErrorMessage(e, accountId: draft.accountId),
-        errorAccountId: draft.accountId,
+        errorMessage: _taskErrorMessage(e, accountId: requestAccountId),
+        errorAccountId: requestAccountId,
       );
       rethrow;
     }
   }
 
   Future<void> update(String id, TaskDraft draft) async {
+    final requestAccountId = draft.accountId;
+    final requestGeneration = _loadGeneration;
     _setBusy(id, true, clearError: true);
     try {
-      final task = await _api.updateTask(id, draft);
+      final task = await _updateTask(id, draft);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(id));
+        }
+        return;
+      }
       state = state.copyWith(
         busyTaskIds: _withoutBusy(id),
         selectedTask: task,
         tasks: _replaceTask(state.tasks, task)..sort(_sortTasks),
       );
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(id));
+        }
+        return;
+      }
       state = state.copyWith(
         busyTaskIds: _withoutBusy(id),
-        errorMessage: _taskErrorMessage(e, accountId: draft.accountId),
-        errorAccountId: draft.accountId,
+        errorMessage: _taskErrorMessage(e, accountId: requestAccountId),
+        errorAccountId: requestAccountId,
       );
       rethrow;
     }
   }
 
   Future<void> setEnabled(ManagedTask task, bool enabled) async {
+    final requestAccountId = task.accountId;
+    final requestGeneration = _loadGeneration;
     final before = state.tasks;
     _setToggling(task.id, true, clearError: true);
     state = state.copyWith(
@@ -214,7 +304,13 @@ class TasksController extends StateNotifier<TasksState> {
           : state.selectedTask,
     );
     try {
-      final updated = await _api.setEnabled(task.id, task.accountId, enabled);
+      final updated = await _setTaskEnabled(task, enabled);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(togglingTaskIds: _withoutToggling(task.id));
+        }
+        return;
+      }
       state = state.copyWith(
         togglingTaskIds: _withoutToggling(task.id),
         tasks: updated == null
@@ -225,6 +321,12 @@ class TasksController extends StateNotifier<TasksState> {
             : state.selectedTask,
       );
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(togglingTaskIds: _withoutToggling(task.id));
+        }
+        return;
+      }
       state = state.copyWith(
         tasks: before,
         togglingTaskIds: _withoutToggling(task.id),
@@ -236,9 +338,17 @@ class TasksController extends StateNotifier<TasksState> {
   }
 
   Future<void> delete(ManagedTask task) async {
+    final requestAccountId = task.accountId;
+    final requestGeneration = _loadGeneration;
     _setBusy(task.id, true, clearError: true);
     try {
-      await _api.deleteTask(task.id, task.accountId);
+      await _deleteTask(task);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(task.id));
+        }
+        return;
+      }
       state = state.copyWith(
         busyTaskIds: _withoutBusy(task.id),
         clearSelectedTask: state.selectedTask?.id == task.id,
@@ -247,6 +357,12 @@ class TasksController extends StateNotifier<TasksState> {
         tasks: state.tasks.where((item) => item.id != task.id).toList(),
       );
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(task.id));
+        }
+        return;
+      }
       state = state.copyWith(
         busyTaskIds: _withoutBusy(task.id),
         errorMessage: _taskErrorMessage(e, accountId: task.accountId),
@@ -257,9 +373,17 @@ class TasksController extends StateNotifier<TasksState> {
   }
 
   Future<void> runNow(ManagedTask task) async {
+    final requestAccountId = task.accountId;
+    final requestGeneration = _loadGeneration;
     _setBusy(task.id, true, clearError: true);
     try {
       final run = await _api.runTask(task.id, task.accountId);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(task.id));
+        }
+        return;
+      }
       final next = run == null ? task : task.copyWith(lastRun: run);
       state = state.copyWith(
         busyTaskIds: _withoutBusy(task.id),
@@ -268,6 +392,12 @@ class TasksController extends StateNotifier<TasksState> {
         runs: run == null ? state.runs : [run, ...state.runs],
       );
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(busyTaskIds: _withoutBusy(task.id));
+        }
+        return;
+      }
       state = state.copyWith(
         busyTaskIds: _withoutBusy(task.id),
         errorMessage: _taskErrorMessage(e, accountId: task.accountId),
@@ -278,6 +408,8 @@ class TasksController extends StateNotifier<TasksState> {
   }
 
   Future<void> loadRuns(ManagedTask task) async {
+    final requestAccountId = task.accountId;
+    final requestGeneration = _loadGeneration;
     state = state.copyWith(
       selectedTask: task,
       isLoadingRuns: true,
@@ -286,8 +418,20 @@ class TasksController extends StateNotifier<TasksState> {
     );
     try {
       final runs = await _api.listRuns(task.id, task.accountId);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(isLoadingRuns: false);
+        }
+        return;
+      }
       state = state.copyWith(runs: runs, isLoadingRuns: false);
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        if (state.selectedAccountId == requestAccountId) {
+          state = state.copyWith(isLoadingRuns: false);
+        }
+        return;
+      }
       state = state.copyWith(
         isLoadingRuns: false,
         errorMessage: _taskErrorMessage(e, accountId: task.accountId),
@@ -299,11 +443,19 @@ class TasksController extends StateNotifier<TasksState> {
   Future<void> loadOutput(TaskRun run) async {
     final task = state.selectedTask;
     if (task == null) return;
+    final requestAccountId = task.accountId;
+    final requestGeneration = _loadGeneration;
     state = state.copyWith(selectedRunOutput: '', clearError: true);
     try {
       final output = await _api.getRunOutput(task.id, run.id, task.accountId);
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        return;
+      }
       state = state.copyWith(selectedRunOutput: output);
     } catch (e) {
+      if (!_isCurrentAccountRequest(requestAccountId, requestGeneration)) {
+        return;
+      }
       state = state.copyWith(
         errorMessage: _taskErrorMessage(e, accountId: task.accountId),
         errorAccountId: task.accountId,
@@ -317,6 +469,11 @@ class TasksController extends StateNotifier<TasksState> {
       return current;
     }
     return accounts.first.accountId;
+  }
+
+  bool _isCurrentAccountRequest(String accountId, int generation) {
+    return generation == _loadGeneration &&
+        state.selectedAccountId == accountId;
   }
 
   void _setBusy(String id, bool busy, {bool clearError = false}) {
@@ -356,6 +513,44 @@ class TasksController extends StateNotifier<TasksState> {
     final nextCompare = nextA.compareTo(nextB);
     if (nextCompare != 0) return nextCompare;
     return a.name.compareTo(b.name);
+  }
+
+  Future<List<ManagedTask>> _getCachedTasks(String accountId) {
+    final cache = _cache;
+    if (cache == null) return Future.value(const <ManagedTask>[]);
+    return cache.getTasks(accountId);
+  }
+
+  Future<List<ManagedTask>> _syncTasks(String accountId) {
+    final cache = _cache;
+    if (cache == null) return _api.listTasks(accountId: accountId);
+    return cache.syncGateway(accountId);
+  }
+
+  Future<ManagedTask> _createTask(TaskDraft draft) {
+    final cache = _cache;
+    if (cache == null) return _api.createTask(draft);
+    return cache.create(draft);
+  }
+
+  Future<ManagedTask> _updateTask(String id, TaskDraft draft) {
+    final cache = _cache;
+    if (cache == null) return _api.updateTask(id, draft);
+    return cache.update(id, draft);
+  }
+
+  Future<void> _deleteTask(ManagedTask task) {
+    final cache = _cache;
+    if (cache == null) return _api.deleteTask(task.id, task.accountId);
+    return cache.delete(task);
+  }
+
+  Future<ManagedTask?> _setTaskEnabled(ManagedTask task, bool enabled) {
+    final cache = _cache;
+    if (cache == null) {
+      return _api.setEnabled(task.id, task.accountId, enabled);
+    }
+    return cache.setEnabled(task, enabled);
   }
 }
 
