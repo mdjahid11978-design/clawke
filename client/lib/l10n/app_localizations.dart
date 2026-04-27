@@ -1418,6 +1418,54 @@ abstract class AppLocalizations {
   /// **'当前 Gateway 不支持指定 Skill'**
   String get gatewayNoSkillSupport;
 
+  /// No description provided for @gatewayList.
+  ///
+  /// In zh, this message translates to:
+  /// **'Gateway 列表'**
+  String get gatewayList;
+
+  /// No description provided for @noGateways.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无 Gateway'**
+  String get noGateways;
+
+  /// No description provided for @switchGateway.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换 Gateway'**
+  String get switchGateway;
+
+  /// No description provided for @gatewayRenameAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'重命名'**
+  String get gatewayRenameAction;
+
+  /// No description provided for @gatewayRenameTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'重命名 Gateway'**
+  String get gatewayRenameTitle;
+
+  /// No description provided for @gatewayDisconnectedMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'Gateway 未连接，无法显示相关信息。'**
+  String get gatewayDisconnectedMessage;
+
+  /// No description provided for @gatewayUnsupportedPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前 Gateway 不支持此页面功能。'**
+  String get gatewayUnsupportedPage;
+
+  /// No description provided for @gatewayUnavailableMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'Gateway 异常，无法显示相关信息。'**
+  String get gatewayUnavailableMessage;
+
   /// No description provided for @clickRefreshToRetry.
   ///
   /// In zh, this message translates to:

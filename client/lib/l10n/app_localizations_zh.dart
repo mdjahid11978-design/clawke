@@ -702,6 +702,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get gatewayNoSkillSupport => '当前 Gateway 不支持指定 Skill';
 
   @override
+  String get gatewayList => 'Gateway 列表';
+
+  @override
+  String get noGateways => '暂无 Gateway';
+
+  @override
+  String get switchGateway => '切换 Gateway';
+
+  @override
+  String get gatewayRenameAction => '重命名';
+
+  @override
+  String get gatewayRenameTitle => '重命名 Gateway';
+
+  @override
+  String get gatewayDisconnectedMessage => 'Gateway 未连接，无法显示相关信息。';
+
+  @override
+  String get gatewayUnsupportedPage => '当前 Gateway 不支持此页面功能。';
+
+  @override
+  String get gatewayUnavailableMessage => 'Gateway 异常，无法显示相关信息。';
+
+  @override
   String get clickRefreshToRetry => '点击右上角刷新按钮重试';
 
   @override

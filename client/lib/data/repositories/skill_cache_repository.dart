@@ -55,11 +55,9 @@ class SkillCacheRepository {
     SkillScope scope,
     String locale,
   ) async {
-    final skill = await _api.getSkill(id, scope: scope, locale: locale);
-    await _upsertSkill(skill, gatewayId: _gatewayId(scope), locale: locale);
-    return _fromRow(
-      (await _dao.getSkill(_userId, _gatewayId(scope), id, locale: locale))!,
-    );
+    final gatewayId = _gatewayId(scope);
+    final row = await _dao.getSkill(_userId, gatewayId, id, locale: locale);
+    return row == null ? null : _fromRow(row);
   }
 
   Future<ManagedSkill> create(

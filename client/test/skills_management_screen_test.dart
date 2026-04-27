@@ -112,9 +112,7 @@ class _ApiBackedSkillCacheRepository implements SkillCacheRepository {
     SkillScope scope,
     String locale,
   ) async {
-    final skill = await api.getSkill(id, scope: scope, locale: locale);
-    cached = _replaceCached(skill);
-    return skill;
+    return cached.where((skill) => skill.id == id).firstOrNull;
   }
 
   @override
@@ -198,6 +196,8 @@ class _FakeSkillsApiService extends SkillsApiService {
     root: '/tmp/skills',
     updatedAt: 0,
     hasConflict: false,
+    trigger: 'Use when web lookup is needed',
+    body: '## Existing body\n',
   );
 
   static const deployHelper = ManagedSkill(
@@ -214,6 +214,8 @@ class _FakeSkillsApiService extends SkillsApiService {
     root: '/tmp/hermes-skills',
     updatedAt: 0,
     hasConflict: false,
+    trigger: 'Use before deployment',
+    body: '## Deploy body\n',
   );
 
   @override
@@ -1025,8 +1027,8 @@ void main() {
     await tester.tap(find.text('web-search').first);
     await tester.pumpAndSettle();
 
-    expect(api.detailId, 'general/web-search');
-    expect(api.detailScopeId, 'gateway:hermes-work');
+    expect(api.detailId, isNull);
+    expect(api.detailScopeId, isNull);
     expect(find.byType(Dialog), findsNothing);
     expect(find.text('技能详情'), findsOneWidget);
     final detailEditAction = find.byKey(const ValueKey('skill_app_bar_action'));
@@ -1116,7 +1118,7 @@ void main() {
 
     expect(find.text('Skill Detail'), findsOneWidget);
     expect(find.widgetWithText(TextButton, 'Edit'), findsNothing);
-    expect(api.detailId, 'general/web-search');
+    expect(api.detailId, isNull);
   });
 
   testWidgets('creating after viewing a skill does not reuse selected detail', (
@@ -1149,7 +1151,7 @@ void main() {
     expect(find.widgetWithText(TextButton, 'Create'), findsOneWidget);
   });
 
-  testWidgets('skill detail opens immediately while body refreshes', (
+  testWidgets('skill detail uses cached body without remote detail request', (
     tester,
   ) async {
     final api = _SlowSkillsApiService();
@@ -1166,22 +1168,12 @@ void main() {
     await tester.tap(find.text('web-search').first);
     await tester.pump();
 
-    expect(api.detailId, 'general/web-search');
+    expect(api.detailId, isNull);
     expect(find.text('Skill Detail'), findsOneWidget);
     expect(find.text('Search the web'), findsWidgets);
-    expect(find.text('Loading SKILL.md...'), findsOneWidget);
-
-    api.detailCompleter.complete(
-      _FakeSkillsApiService.webSearch.copyWith(
-        trigger: 'Use when web lookup is needed',
-        body: '## Loaded body\n',
-      ),
-    );
-    await tester.pumpAndSettle();
-
     expect(find.text('Loading SKILL.md...'), findsNothing);
     expect(find.text('Use when web lookup is needed'), findsOneWidget);
-    expect(find.text('## Loaded body\n'), findsOneWidget);
+    expect(find.text('## Existing body\n'), findsOneWidget);
   });
 
   testWidgets('editing from list returns to list with one back action', (
@@ -1609,8 +1601,8 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Save'));
     await tester.pumpAndSettle();
 
-    expect(api.detailId, 'general/web-search');
-    expect(api.detailScopeId, 'gateway:hermes-work');
+    expect(api.detailId, isNull);
+    expect(api.detailScopeId, isNull);
     expect(api.updatedId, 'general/web-search');
     expect(api.updatedScopeId, 'gateway:hermes-work');
     expect(api.updatedDraft?.description, 'Updated search description');
@@ -1715,7 +1707,7 @@ void main() {
     await tester.tap(find.text('web-search').first);
     await tester.pump();
 
-    expect(api.detailId, 'general/web-search');
+    expect(api.detailId, isNull);
     expect(find.text('Skill Detail'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Edit'), findsNothing);
     expect(find.widgetWithText(TextButton, 'Edit'), findsOneWidget);

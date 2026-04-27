@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:client/l10n/l10n.dart';
 import 'package:client/models/gateway_info.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,6 +63,7 @@ class _GatewaySelectorPaneState extends State<GatewaySelectorPane> {
   Widget build(BuildContext context) {
     final visible = _visibleGateways(widget.gateways);
     final colorScheme = Theme.of(context).colorScheme;
+    final l10n = context.l10n;
     return SizedBox(
       key: const ValueKey('gateway_selector_pane'),
       width: _width,
@@ -79,7 +81,7 @@ class _GatewaySelectorPaneState extends State<GatewaySelectorPane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Gateway 列表',
+                  l10n.gatewayList,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: colorScheme.onSurfaceVariant,
@@ -88,7 +90,7 @@ class _GatewaySelectorPaneState extends State<GatewaySelectorPane> {
                 const SizedBox(height: 12),
                 if (visible.isEmpty)
                   Text(
-                    '暂无 Gateway',
+                    l10n.noGateways,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -112,6 +114,7 @@ class _GatewaySelectorPaneState extends State<GatewaySelectorPane> {
                         unavailableMessage: _gatewayIssueMessage(
                           gateway,
                           widget.capability,
+                          context,
                         ),
                         issueKeyPrefix: widget.issueKeyPrefix,
                         onSelected: widget.onSelected,
@@ -175,6 +178,9 @@ class GatewayMobileSelectorButton extends StatelessWidget {
     final hasIssue =
         selected != null &&
         _hasGatewayIssue(selected, capability, errorGatewayId);
+    final issueMessage = selected == null
+        ? ''
+        : _gatewayIssueMessage(selected, capability, context);
     final label = selected?.displayName ?? 'Gateway';
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -216,7 +222,7 @@ class GatewayMobileSelectorButton extends StatelessWidget {
             right: -6,
             bottom: -4,
             child: Tooltip(
-              message: _gatewayIssueMessage(selected, capability),
+              message: issueMessage,
               child: Icon(
                 key: ValueKey('${issueKeyPrefix}_${selected.gatewayId}'),
                 Icons.warning_amber_rounded,
@@ -243,10 +249,10 @@ class GatewayMobileSelectorButton extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                '切换 Gateway',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+                context.l10n.switchGateway,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
               ),
             ),
             for (final gateway in gateways)
@@ -392,7 +398,12 @@ class _GatewayTile extends StatelessWidget {
         position.dx,
         position.dy,
       ),
-      items: const [PopupMenuItem(value: 'rename', child: Text('重命名'))],
+      items: [
+        PopupMenuItem(
+          value: 'rename',
+          child: Text(context.l10n.gatewayRenameAction),
+        ),
+      ],
     ).then((value) {
       if (value == 'rename' && context.mounted) {
         _showRename(context);
@@ -405,7 +416,7 @@ class _GatewayTile extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('重命名 Gateway'),
+        title: Text(ctx.l10n.gatewayRenameTitle),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -414,11 +425,11 @@ class _GatewayTile extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('取消'),
+            child: Text(ctx.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => _submitRename(ctx, controller),
-            child: const Text('确认'),
+            child: Text(ctx.l10n.confirm),
           ),
         ],
       ),
@@ -449,7 +460,12 @@ bool _canSelectGateway(GatewayInfo gateway, String capability) {
   return gateway.supports(capability);
 }
 
-String _gatewayIssueMessage(GatewayInfo gateway, String capability) {
+String _gatewayIssueMessage(
+  GatewayInfo gateway,
+  String capability,
+  BuildContext context,
+) {
+  final l10n = context.l10n;
   if (gateway.status != GatewayConnectionStatus.online) {
     final detail = gateway.lastErrorMessage?.trim();
     if (gateway.status == GatewayConnectionStatus.error &&
@@ -457,12 +473,12 @@ String _gatewayIssueMessage(GatewayInfo gateway, String capability) {
         detail.isNotEmpty) {
       return detail;
     }
-    return 'Gateway 未连接，无法显示相关信息。';
+    return l10n.gatewayDisconnectedMessage;
   }
   if (!gateway.supports(capability)) {
-    return '当前 Gateway 不支持此页面功能。';
+    return l10n.gatewayUnsupportedPage;
   }
-  return 'Gateway 异常，无法显示相关信息。';
+  return l10n.gatewayUnavailableMessage;
 }
 
 GatewayInfo? _selectedGateway(List<GatewayInfo> gateways, String? selectedId) {

@@ -16,7 +16,9 @@ class _FakeSkillsApi extends SkillsApiService {
   String? updatedId;
   SkillDraft? updatedDraft;
   ManagedSkill? updateResult;
+  ManagedSkill? detailResult;
   final createCompleter = Completer<ManagedSkill>();
+  int detailCalls = 0;
 
   @override
   Future<List<ManagedSkill>> listSkills({
@@ -48,6 +50,16 @@ class _FakeSkillsApi extends SkillsApiService {
     updatedId = id;
     updatedDraft = draft;
     return updateResult!;
+  }
+
+  @override
+  Future<ManagedSkill> getSkill(
+    String id, {
+    SkillScope? scope,
+    String? locale,
+  }) async {
+    detailCalls += 1;
+    return detailResult!;
   }
 }
 
@@ -255,6 +267,39 @@ void main() {
       expect(cached.map((skill) => skill.id), ['general2/code-review22']);
     },
   );
+
+  test('getDetail reads local cache without calling remote API', () async {
+    api.skills = const [
+      ManagedSkill(
+        id: 'general/web-search',
+        name: 'web-search',
+        description: 'Search the web',
+        category: 'general',
+        trigger: 'Cached trigger',
+        body: '# Cached body\n',
+        enabled: true,
+        source: 'managed',
+        sourceLabel: 'Managed',
+        writable: true,
+        deletable: true,
+        path: 'general/web-search/SKILL.md',
+        root: '/tmp/skills',
+        updatedAt: 0,
+        hasConflict: false,
+      ),
+    ];
+    await repo.syncGateway(_scope('hermes'), 'en');
+    api.detailResult = api.skills.single.copyWith(body: '# Remote body\n');
+
+    final detail = await repo.getDetail(
+      'general/web-search',
+      _scope('hermes'),
+      'en',
+    );
+
+    expect(api.detailCalls, 0);
+    expect(detail?.body, '# Cached body\n');
+  });
 }
 
 SkillScope _scope(String gatewayId) {

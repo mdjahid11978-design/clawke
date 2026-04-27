@@ -722,6 +722,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'Current gateway does not support skill selection';
 
   @override
+  String get gatewayList => 'Gateway List';
+
+  @override
+  String get noGateways => 'No gateways';
+
+  @override
+  String get switchGateway => 'Switch Gateway';
+
+  @override
+  String get gatewayRenameAction => 'Rename';
+
+  @override
+  String get gatewayRenameTitle => 'Rename Gateway';
+
+  @override
+  String get gatewayDisconnectedMessage =>
+      'Gateway disconnected. Related information is unavailable.';
+
+  @override
+  String get gatewayUnsupportedPage =>
+      'This Gateway does not support this page.';
+
+  @override
+  String get gatewayUnavailableMessage =>
+      'Gateway unavailable. Related information is unavailable.';
+
+  @override
   String get clickRefreshToRetry => 'Click refresh button to retry';
 
   @override

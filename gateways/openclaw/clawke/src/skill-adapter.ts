@@ -118,7 +118,7 @@ export class OpenClawSkillAdapter {
   async listSkills(): Promise<OpenClawManagedSkill[]> {
     const result = await this.rpc("skills.status");
     const byId = new Map<string, OpenClawManagedSkill>();
-    for (const skill of this.extractSkills(result).map((item) => this.toManagedSkill(item))) {
+    for (const skill of this.extractSkills(result).map((item) => this.withLocalContent(this.toManagedSkill(item)))) {
       if (!this.hiddenLocalIds.has(skill.id)) byId.set(skill.id, skill);
     }
     for (const [id, skill] of this.localOverrides) {

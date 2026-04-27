@@ -251,16 +251,12 @@ class SkillsController extends StateNotifier<SkillsState> {
     final requestScopeId = state.selectedScopeId;
     _setSkillBusy(id, true, clearError: true);
     try {
-      final cached = await _getCachedSkill(id, requestScope);
-      if (cached != null && state.selectedScopeId == requestScopeId) {
-        state = state.copyWith(
-          selected: cached,
-          skills: _replaceSkill(state.skills, cached),
-        );
-      }
-      final skill = await _getSkillDetail(id, requestScope);
-      if (skill == null) return null;
+      final skill = await _getCachedSkill(id, requestScope);
       if (state.selectedScopeId != requestScopeId) return null;
+      if (skill == null) {
+        state = state.copyWith(busySkillIds: _withoutBusy(id));
+        return null;
+      }
       state = state.copyWith(
         selected: skill,
         busySkillIds: _withoutBusy(id),
@@ -409,14 +405,6 @@ class SkillsController extends StateNotifier<SkillsState> {
     final cache = _cache;
     if (cache == null || scope == null) return Future.value();
     return cache.getCachedSkill(id, scope, _locale);
-  }
-
-  Future<ManagedSkill?> _getSkillDetail(String id, SkillScope? scope) {
-    final cache = _cache;
-    if (cache == null || scope == null) {
-      return _api.getSkill(id, scope: scope, locale: _locale);
-    }
-    return cache.getDetail(id, scope, _locale);
   }
 
   Future<ManagedSkill> _createSkill(SkillDraft draft, SkillScope? scope) {

@@ -123,6 +123,8 @@ test("OpenClawSkillAdapter edits and deletes file-backed non-bundled skills loca
 
     assert.equal(listed[0].writable, true);
     assert.equal(listed[0].deletable, true);
+    assert.equal(listed[0].body, "# editable-skill\n");
+    assert.match(listed[0].content ?? "", /description: Editable skill/);
 
     const updated = await adapter.updateSkill("agents-skills-personal/editable-skill", {
       name: "edited-skill",
