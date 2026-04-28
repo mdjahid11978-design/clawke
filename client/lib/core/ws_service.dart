@@ -98,7 +98,8 @@ class WsService {
         onDone: () {
           final code = _channel?.closeCode;
           final reason = _channel?.closeReason;
-          _lastError = 'Disconnected (code=$code'
+          _lastError =
+              'Disconnected (code=$code'
               '${reason != null && reason.isNotEmpty ? ', reason=$reason' : ''})';
           debugPrint('[WS] 🔌 $_lastError');
           _setState(WsState.disconnected);
@@ -131,13 +132,17 @@ class WsService {
   Future<void> _autoReconnect() async {
     if (!_shouldReconnect) return;
     if (_backoff.exhausted) {
-      debugPrint('[WS] ⛔ Max retries (${BackoffMachine.maxRetries}) exhausted, stopping auto-reconnect');
+      debugPrint(
+        '[WS] ⛔ Max retries (${BackoffMachine.maxRetries}) exhausted, stopping auto-reconnect',
+      );
       _lastError = '重连次数已达上限，请手动刷新';
       return;
     }
     final attempt = _backoff.attempt + 1;
     final waitTime = _backoff.currentDuration;
-    debugPrint('[WS] ⏳ Retry #$attempt in ${(waitTime.inMilliseconds / 1000).toStringAsFixed(1)}s...');
+    debugPrint(
+      '[WS] ⏳ Retry #$attempt in ${(waitTime.inMilliseconds / 1000).toStringAsFixed(1)}s...',
+    );
     await _backoff.wait();
     if (_shouldReconnect && _state == WsState.disconnected) {
       connect();
@@ -154,10 +159,20 @@ class WsService {
 
   /// 发送 JSON 对象（Repository 层使用）
   void sendJson(Map<String, dynamic> json) {
+    final payload = _formatOutboundPayload(json);
     debugPrint(
-      '[WS] 📤 send: ${json['event_type'] ?? json['payload_type'] ?? 'unknown'}',
+      '[WS] 📤 send: ${json['event_type'] ?? json['payload_type'] ?? 'unknown'} payload=$payload',
     );
     send(jsonEncode(json));
+  }
+
+  String _formatOutboundPayload(Map<String, dynamic> json) {
+    const maxPayloadLogLength = 4000;
+    final payload = jsonEncode(json);
+    if (payload.length <= maxPayloadLogLength) return payload;
+
+    final hiddenLength = payload.length - maxPayloadLogLength;
+    return '${payload.substring(0, maxPayloadLogLength)}...<truncated $hiddenLength chars>';
   }
 
   void reconnect() {
