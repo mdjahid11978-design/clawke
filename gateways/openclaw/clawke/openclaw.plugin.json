@@ -6,5 +6,36 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "channelConfigs": {
+    "clawke": {
+      "label": "Clawke",
+      "description": "Clawke Server channel",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "accountId": { "type": "string" },
+          "url": { "type": "string" },
+          "httpUrl": { "type": "string" },
+          "allowFrom": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "defaultTo": { "type": "string" }
+        }
+      },
+      "uiHints": {
+        "url": {
+          "label": "Clawke Server WebSocket URL",
+          "placeholder": "ws://127.0.0.1:8766"
+        },
+        "httpUrl": {
+          "label": "Clawke Server HTTP URL",
+          "placeholder": "http://127.0.0.1:8780"
+        }
+      }
+    }
   }
 }
