@@ -10,6 +10,8 @@ type ModelCatalogEntry = {
   provider?: unknown;
   alias?: unknown;
   contextWindow?: unknown;
+  reasoning?: unknown;
+  input?: unknown;
 };
 
 const liveTestEnabled = process.env.OPENCLAW_MODEL_RPC_LIVE === "1";
@@ -36,6 +38,25 @@ test(
       if (model.provider !== undefined) {
         assert.equal(typeof model.provider, "string", `Expected model.provider string, got: ${JSON.stringify(model)}`);
       }
+      if (model.alias !== undefined) {
+        assert.equal(typeof model.alias, "string", `Expected model.alias string, got: ${JSON.stringify(model)}`);
+      }
+      if (model.contextWindow !== undefined) {
+        assert.equal(
+          typeof model.contextWindow,
+          "number",
+          `Expected model.contextWindow number, got: ${JSON.stringify(model)}`,
+        );
+      }
+      if (model.reasoning !== undefined) {
+        assert.equal(typeof model.reasoning, "boolean", `Expected model.reasoning boolean, got: ${JSON.stringify(model)}`);
+      }
+      if (model.input !== undefined) {
+        assert.ok(Array.isArray(model.input), `Expected model.input array, got: ${JSON.stringify(model)}`);
+        for (const input of model.input) {
+          assert.equal(typeof input, "string", `Expected model.input item string, got: ${JSON.stringify(model)}`);
+        }
+      }
     }
 
     const sample = models
@@ -43,6 +64,7 @@ test(
       .map((model) => [model.provider, model.id].filter(Boolean).join("/"))
       .join(", ");
     console.log(`[OpenClaw models.list] count=${models.length}; sample=${sample}`);
+    console.log(`[OpenClaw models.list payload] ${JSON.stringify(models, null, 2)}`);
   },
 );
 

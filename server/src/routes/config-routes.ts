@@ -9,19 +9,24 @@
  */
 import type { Request, Response } from 'express';
 import type { ConversationConfigStore } from '../store/conversation-config-store.js';
-import type { GatewayModelCacheStore } from '../store/gateway-model-cache-store.js';
+import {
+  normalizeGatewayModel,
+  type CachedGatewayModel,
+  type GatewayModelCacheInput,
+  type GatewayModelCacheStore,
+} from '../store/gateway-model-cache-store.js';
 
 // ─── 依赖注入 ───
 
 let configStore: ConversationConfigStore | null = null;
 let modelCacheStore: GatewayModelCacheStore | null = null;
-let queryModelsFunc: ((gatewayId: string) => Promise<string[]>) | null = null;
+let queryModelsFunc: ((gatewayId: string) => Promise<GatewayModelCacheInput[]>) | null = null;
 let querySkillsFunc: ((accountId: string) => Promise<Array<{ name: string; description: string }>>) | null = null;
 
 export function initConfigRoutes(deps: {
   configStore: ConversationConfigStore;
   modelCacheStore?: GatewayModelCacheStore;
-  queryModels: (gatewayId: string) => Promise<string[]>;
+  queryModels: (gatewayId: string) => Promise<GatewayModelCacheInput[]>;
   querySkills: (accountId: string) => Promise<Array<{ name: string; description: string }>>;
 }): void {
   configStore = deps.configStore;
@@ -58,9 +63,9 @@ async function respondModels(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    let models: string[] = [];
+    let models: CachedGatewayModel[] = [];
     try {
-      models = await queryModelsFromGateway(gatewayId);
+      models = normalizeModels(await queryModelsFromGateway(gatewayId));
     } catch (err) {
       console.warn(`[ConfigAPI] model gateway query failed: ${err instanceof Error ? err.message : String(err)}`);
       res.json({ models: cachedModels });
@@ -79,12 +84,12 @@ async function respondModels(req: Request, res: Response): Promise<void> {
   }
 }
 
-async function queryModelsFromGateway(gatewayId: string): Promise<string[]> {
+async function queryModelsFromGateway(gatewayId: string): Promise<GatewayModelCacheInput[]> {
   if (!queryModelsFunc) return [];
   return queryModelsFunc(gatewayId);
 }
 
-function readCachedModels(gatewayId: string): string[] {
+function readCachedModels(gatewayId: string): CachedGatewayModel[] {
   if (!modelCacheStore) return [];
   try {
     return modelCacheStore.getGatewayModels(gatewayId);
@@ -94,7 +99,7 @@ function readCachedModels(gatewayId: string): string[] {
   }
 }
 
-function writeCachedModels(gatewayId: string, models: string[]): void {
+function writeCachedModels(gatewayId: string, models: GatewayModelCacheInput[]): void {
   if (!modelCacheStore || models.length === 0) return;
   try {
     modelCacheStore.replaceGatewayModels(gatewayId, models);
@@ -113,6 +118,12 @@ function scheduleModelRefresh(gatewayId: string): void {
         console.warn(`[ConfigAPI] model background refresh failed: ${err instanceof Error ? err.message : String(err)}`);
       });
   }, 0).unref?.();
+}
+
+function normalizeModels(models: GatewayModelCacheInput[]): CachedGatewayModel[] {
+  return models
+    .map((model) => normalizeGatewayModel(model))
+    .filter((model): model is CachedGatewayModel => Boolean(model));
 }
 
 function resolveGatewayId(req: Request): string {

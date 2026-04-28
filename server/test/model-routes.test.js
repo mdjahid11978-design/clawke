@@ -82,18 +82,54 @@ describe('Model routes gateway resource endpoint', () => {
       queryModels: async (gatewayId) => {
         calls += 1;
         assert.equal(gatewayId, 'hermes');
-        return [`model-${calls}`];
+        return [{
+          model_id: `hermes/model-${calls}`,
+          id: `model-${calls}`,
+          provider: 'hermes',
+          display_name: `Model ${calls}`,
+          name: `Model ${calls}`,
+          context_window: 1000,
+          reasoning: true,
+          input: ['text'],
+        }];
       },
     });
 
     const first = await getJson('/api/models?gateway_id=hermes');
     assert.equal(first.status, 200);
-    assert.deepEqual(first.body.models, ['model-1']);
-    assert.deepEqual(modelCacheStore.getGatewayModels('hermes'), ['model-1']);
+    assert.deepEqual(first.body.models, [{
+      model_id: 'hermes/model-1',
+      id: 'model-1',
+      provider: 'hermes',
+      display_name: 'Model 1',
+      name: 'Model 1',
+      context_window: 1000,
+      reasoning: true,
+      input: ['text'],
+    }]);
+    assert.deepEqual(modelCacheStore.getGatewayModels('hermes'), [{
+      model_id: 'hermes/model-1',
+      id: 'model-1',
+      provider: 'hermes',
+      display_name: 'Model 1',
+      name: 'Model 1',
+      context_window: 1000,
+      reasoning: true,
+      input: ['text'],
+    }]);
 
     const second = await getJson('/api/models?gateway_id=hermes');
     assert.equal(second.status, 200);
-    assert.deepEqual(second.body.models, ['model-1']);
+    assert.deepEqual(second.body.models, [{
+      model_id: 'hermes/model-1',
+      id: 'model-1',
+      provider: 'hermes',
+      display_name: 'Model 1',
+      name: 'Model 1',
+      context_window: 1000,
+      reasoning: true,
+      input: ['text'],
+    }]);
     assert.equal(calls, 1);
   });
 
@@ -105,7 +141,12 @@ describe('Model routes gateway resource endpoint', () => {
       modelCacheStore,
       queryModels: async () => {
         calls += 1;
-        return [`model-${calls}`];
+        return [{
+          model_id: `openclaw/model-${calls}`,
+          id: `model-${calls}`,
+          provider: 'openclaw',
+          display_name: `Model ${calls}`,
+        }];
       },
     });
 
@@ -113,9 +154,19 @@ describe('Model routes gateway resource endpoint', () => {
 
     const refreshed = await getJson('/api/models?gateway_id=hermes&refresh=1');
     assert.equal(refreshed.status, 200);
-    assert.deepEqual(refreshed.body.models, ['model-2']);
+    assert.deepEqual(refreshed.body.models, [{
+      model_id: 'openclaw/model-2',
+      id: 'model-2',
+      provider: 'openclaw',
+      display_name: 'Model 2',
+    }]);
     assert.equal(calls, 2);
-    assert.deepEqual(modelCacheStore.getGatewayModels('hermes'), ['model-2']);
+    assert.deepEqual(modelCacheStore.getGatewayModels('hermes'), [{
+      model_id: 'openclaw/model-2',
+      id: 'model-2',
+      provider: 'openclaw',
+      display_name: 'Model 2',
+    }]);
   });
 
   it('GET /api/models refresh=1 returns persisted cache when gateway refresh fails', async () => {
@@ -131,7 +182,12 @@ describe('Model routes gateway resource endpoint', () => {
 
     const response = await getJson('/api/models?gateway_id=OpenClaw&refresh=1');
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.models, ['openclaw/cached-model']);
+    assert.deepEqual(response.body.models, [{
+      model_id: 'openclaw/cached-model',
+      id: 'cached-model',
+      provider: 'openclaw',
+      display_name: 'openclaw/cached-model',
+    }]);
   });
 
   it('GET /api/models refresh=1 does not overwrite persisted cache with an empty gateway result', async () => {
@@ -145,8 +201,18 @@ describe('Model routes gateway resource endpoint', () => {
 
     const response = await getJson('/api/models?gateway_id=OpenClaw&refresh=1');
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.models, ['openclaw/cached-model']);
-    assert.deepEqual(modelCacheStore.getGatewayModels('OpenClaw'), ['openclaw/cached-model']);
+    assert.deepEqual(response.body.models, [{
+      model_id: 'openclaw/cached-model',
+      id: 'cached-model',
+      provider: 'openclaw',
+      display_name: 'openclaw/cached-model',
+    }]);
+    assert.deepEqual(modelCacheStore.getGatewayModels('OpenClaw'), [{
+      model_id: 'openclaw/cached-model',
+      id: 'cached-model',
+      provider: 'openclaw',
+      display_name: 'openclaw/cached-model',
+    }]);
   });
 
   it('GET /api/models returns persisted model cache before querying gateway', async () => {
@@ -158,14 +224,42 @@ describe('Model routes gateway resource endpoint', () => {
       modelCacheStore,
       queryModels: async () => {
         calls += 1;
-        return ['openclaw/fresh-model'];
+        return [{
+          model_id: 'openclaw/fresh-model',
+          id: 'fresh-model',
+          provider: 'openclaw',
+          display_name: 'Fresh Model',
+        }];
       },
     });
 
     const response = await getJson('/api/models?gateway_id=OpenClaw');
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.models, ['openclaw/cached-model']);
+    assert.deepEqual(response.body.models, [{
+      model_id: 'openclaw/cached-model',
+      id: 'cached-model',
+      provider: 'openclaw',
+      display_name: 'openclaw/cached-model',
+    }]);
     assert.equal(calls, 0);
+  });
+
+  it('GET /api/models keeps legacy string gateway responses compatible', async () => {
+    const { db, modelCacheStore } = createStore();
+    activeDb = db;
+    configureRoutes({
+      modelCacheStore,
+      queryModels: async () => ['openclaw/string-model'],
+    });
+
+    const response = await getJson('/api/models?gateway_id=OpenClaw&refresh=1');
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.models, [{
+      model_id: 'openclaw/string-model',
+      id: 'string-model',
+      provider: 'openclaw',
+      display_name: 'openclaw/string-model',
+    }]);
   });
 
   it('deprecated GET /api/config/models remains compatible with account_id and refresh=true', async () => {
@@ -177,7 +271,12 @@ describe('Model routes gateway resource endpoint', () => {
       queryModels: async (gatewayId) => {
         calls += 1;
         assert.equal(gatewayId, 'hermes');
-        return [`claude-sonnet-${calls}`];
+        return [{
+          model_id: `hermes/claude-sonnet-${calls}`,
+          id: `claude-sonnet-${calls}`,
+          provider: 'hermes',
+          display_name: `Claude Sonnet ${calls}`,
+        }];
       },
     });
 
@@ -185,7 +284,12 @@ describe('Model routes gateway resource endpoint', () => {
 
     const response = await getJson('/api/config/models?account_id=hermes&refresh=true');
     assert.equal(response.status, 200);
-    assert.deepEqual(response.body.models, ['claude-sonnet-2']);
+    assert.deepEqual(response.body.models, [{
+      model_id: 'hermes/claude-sonnet-2',
+      id: 'claude-sonnet-2',
+      provider: 'hermes',
+      display_name: 'Claude Sonnet 2',
+    }]);
     assert.equal(calls, 2);
   });
 });

@@ -228,8 +228,10 @@ export function untrackStreamingId(msgId: string): void {
  * 发送 { type: "query_models" }，等待 { type: "models_response", models: [...] }
  * 超时 5 秒返回空数组。
  */
-export function queryGatewayModels(accountId: string): Promise<string[]> {
-  return _queryGateway<string[]>(accountId, 'query_models', 'models_response', 'models', []);
+export type GatewayModelResponseItem = string | Record<string, unknown>;
+
+export function queryGatewayModels(accountId: string): Promise<GatewayModelResponseItem[]> {
+  return _queryGateway<GatewayModelResponseItem[]>(accountId, 'query_models', 'models_response', 'models', []);
 }
 
 /**

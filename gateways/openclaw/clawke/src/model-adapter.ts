@@ -10,6 +10,19 @@ export interface OpenClawModelAdapterOptions extends OpenClawGatewayRpcOptions {
   rpc?: OpenClawGatewayRpc;
 }
 
+export type OpenClawGatewayModel = {
+  model_id: string;
+  id: string;
+  provider: string;
+  display_name: string;
+  name?: string;
+  alias?: string;
+  context_window?: number;
+  reasoning?: boolean;
+  input?: string[];
+  raw_json?: Record<string, unknown>;
+};
+
 export class OpenClawModelAdapter {
   private readonly rpc: OpenClawGatewayRpc;
 
@@ -17,10 +30,10 @@ export class OpenClawModelAdapter {
     this.rpc = options.rpc ?? createOpenClawGatewayRpc(options);
   }
 
-  async listModels(ctx?: OpenClawModelAdapterContext): Promise<string[]> {
+  async listModels(ctx?: OpenClawModelAdapterContext): Promise<OpenClawGatewayModel[]> {
     try {
       const payload = await this.rpc("models.list", {}, { timeoutMs: 10_000 });
-      return modelCatalogPayloadToKeys(payload);
+      return modelCatalogPayloadToModels(payload);
     } catch (error) {
       ctx?.log?.error?.(`models.list failed: ${error instanceof Error ? error.message : String(error)}`);
       return [];
@@ -28,6 +41,51 @@ export class OpenClawModelAdapter {
   }
 }
 
+export function modelCatalogPayloadToModels(payload: unknown): OpenClawGatewayModel[] {
+  if (!isRecord(payload) || !Array.isArray(payload.models)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const models: OpenClawGatewayModel[] = [];
+  for (const entry of payload.models) {
+    const model = modelCatalogEntryToModel(entry);
+    if (!model || seen.has(model.model_id)) continue;
+    seen.add(model.model_id);
+    models.push(model);
+  }
+  return models;
+}
+
+export function modelCatalogEntryToModel(entry: unknown): OpenClawGatewayModel | undefined {
+  if (!isRecord(entry)) return undefined;
+  const provider = normalizeNonEmptyString(entry.provider);
+  const id = normalizeNonEmptyString(entry.id) ?? normalizeNonEmptyString(entry.name);
+  if (!provider || !id) return undefined;
+
+  const modelId = modelStartsWithProvider(id, provider) ? id : `${provider}/${id}`;
+  const name = normalizeNonEmptyString(entry.name);
+  const alias = normalizeNonEmptyString(entry.alias);
+  const model: OpenClawGatewayModel = {
+    model_id: modelId,
+    id,
+    provider,
+    display_name: alias ?? name ?? modelId,
+    raw_json: entry,
+  };
+
+  if (name) model.name = name;
+  if (alias) model.alias = alias;
+  if (typeof entry.contextWindow === "number") model.context_window = entry.contextWindow;
+  if (typeof entry.reasoning === "boolean") model.reasoning = entry.reasoning;
+  if (Array.isArray(entry.input)) {
+    const input = entry.input.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (input.length > 0) model.input = input;
+  }
+  return model;
+}
+
+// 兼容旧版 string[] 模型响应路径；新代码应使用 modelCatalogPayloadToModels。
+// Compatibility path for legacy string[] model responses; new code should use modelCatalogPayloadToModels.
 export function modelCatalogPayloadToKeys(payload: unknown): string[] {
   if (!isRecord(payload) || !Array.isArray(payload.models)) {
     return [];
@@ -43,6 +101,8 @@ export function modelCatalogPayloadToKeys(payload: unknown): string[] {
   return keys;
 }
 
+// 兼容旧版 string model key 生成逻辑；新代码应使用 modelCatalogEntryToModel。
+// Compatibility path for legacy string model key generation; new code should use modelCatalogEntryToModel.
 export function modelCatalogEntryToKey(entry: unknown): string | undefined {
   if (!isRecord(entry)) return undefined;
   const provider = normalizeNonEmptyString(entry.provider);
