@@ -303,22 +303,45 @@ Gateway 请求失败、超时或返回 invalid JSON 时，Server 不应该回退
 
 ## 日志要求
 
-日志必须能看出后台任务来源，但不能泄露 prompt 全文或模型密钥。
+日志必须覆盖 Server、Gateway、模型调用、JSON 校验、缓存写入这几个边界，线上出问题时应能通过一次日志采集定位卡在哪一层。日志不能泄露 prompt 全文、模型密钥或用户敏感内容。
 
-建议日志：
+每次 system request 必须生成稳定的 `request_id`，贯穿 Server 和 Gateway 日志。业务日志还应带上 `gateway_id`、`system_session_id`、`purpose`、`entity_type`、`entity_id`、`locale`、`source_hash`、`job_id` 等可排查字段；没有对应字段时可以省略，但不能只打一条泛化错误。
+
+### 必须覆盖的日志点
+
+- Job 创建：记录 `job_id`、`gateway_id`、`purpose`、`entity_type/entity_id`、`locale`、`source_hash`。
+- Job 开始执行：记录 attempt、timeout、translator backend。
+- System session 解析：记录 `gateway_id`、`system_session_id`。
+- Server 发出 system request：记录 `request_id`、`gateway_id`、`purpose`、`timeoutMs`，不记录 prompt 全文。
+- Gateway 收到 system request：记录 `request_id`、`gateway_id`、`system_session_id`、`purpose`。
+- Gateway 调模型前：记录 `request_id`、provider/model 标识、timeout，不记录密钥。
+- Gateway 收到模型响应：记录 `request_id`、耗时、响应类型、文本长度或 JSON key 列表。
+- Server 收到 system response：记录 `request_id`、ok/error、耗时。
+- JSON/schema 校验：成功记录 JSON key 列表；失败记录错误类型和截断后的安全摘要。
+- Cache 写入：记录 `job_id`、`status=ready/failed`、`source_hash`、`translated_description_length`。
+- Fallback：记录 fallback 原因，例如 `timeout`、`invalid_json`、`gateway_error`。
+
+### 成功日志示例
 
 ```text
+[SkillTranslation] job queued job=tr_123 gateway=OpenClaw purpose=translation entity=skill:openclaw-bundled/1password locale=zh sourceHash=abc123
+[SkillTranslation] job started job=tr_123 attempt=1 backend=gateway_system timeoutMs=30000
 [GatewayManage] system session resolved gateway=OpenClaw session=__clawke_system__:OpenClaw
-[GatewaySystem] request purpose=translation gateway=OpenClaw timeoutMs=30000
-[GatewaySystem] response ok purpose=translation gateway=OpenClaw durationMs=1234
-[SkillTranslation] ready gateway=OpenClaw skill=openclaw-bundled/1password locale=zh
+[GatewaySystem] request sent request=req_456 job=tr_123 purpose=translation gateway=OpenClaw timeoutMs=30000
+[OpenClawGateway] system request received request=req_456 session=__clawke_system__:OpenClaw purpose=translation
+[OpenClawGateway] model request started request=req_456 provider=openclaw model=primary timeoutMs=30000
+[OpenClawGateway] model response received request=req_456 durationMs=1180 jsonKeys=description
+[GatewaySystem] response ok request=req_456 purpose=translation gateway=OpenClaw durationMs=1234
+[SkillTranslation] cache ready job=tr_123 gateway=OpenClaw entity=skill:openclaw-bundled/1password locale=zh sourceHash=abc123 translatedDescriptionLength=42
 ```
 
-失败日志：
+### 失败日志示例
 
 ```text
-[GatewaySystem] response failed purpose=translation gateway=OpenClaw code=capability_not_supported
-[SkillTranslation] failed gateway=OpenClaw skill=openclaw-bundled/1password locale=zh error=invalid_json
+[GatewaySystem] response failed request=req_456 job=tr_123 purpose=translation gateway=OpenClaw code=timeout durationMs=30000
+[SkillTranslation] cache failed job=tr_123 gateway=OpenClaw entity=skill:openclaw-bundled/1password locale=zh sourceHash=abc123 error=timeout fallback=source
+[GatewaySystem] response ok request=req_789 job=tr_124 purpose=translation gateway=Hermes durationMs=900
+[SkillTranslation] schema invalid job=tr_124 gateway=Hermes error=missing_description jsonKeys=message fallback=source
 ```
 
 ## 测试要求
