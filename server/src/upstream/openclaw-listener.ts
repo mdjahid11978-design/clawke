@@ -23,6 +23,7 @@ const TRANSIENT_GATEWAY_RESPONSE_TYPES = new Set([
   'skill_list_response',
   'skill_get_response',
   'skill_mutation_response',
+  'gateway_system_response',
 ]);
 
 export function isTransientGatewayResponseType(type: unknown): boolean {

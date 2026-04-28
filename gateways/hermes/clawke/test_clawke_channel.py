@@ -88,6 +88,7 @@ class TestProtocolTypes:
         assert GatewayMessageType.AgentToolResult == "agent_tool_result"
         assert GatewayMessageType.ApprovalRequest == "approval_request"
         assert GatewayMessageType.ClarifyRequest == "clarify_request"
+        assert GatewayMessageType.GatewaySystemResponse == "gateway_system_response"
 
     def test_inbound_message_types(self):
         assert InboundMessageType.Chat == "chat"
@@ -96,6 +97,7 @@ class TestProtocolTypes:
         assert InboundMessageType.QuerySkills == "query_skills"
         assert InboundMessageType.ApprovalResponse == "approval_response"
         assert InboundMessageType.ClarifyResponse == "clarify_response"
+        assert InboundMessageType.GatewaySystemRequest == "gateway_system_request"
 
 
 # ── Backoff Tests ───────────────────────────────────────────────────────────
@@ -207,6 +209,56 @@ class TestSend:
         await gateway._send({"text": "中文测试"})
         sent_raw = gateway._ws.send.call_args[0][0]
         assert "中文测试" in sent_raw  # Not escaped
+
+
+class TestGatewaySystemRequest:
+    """Test isolated Gateway system-session requests."""
+
+    @pytest.mark.asyncio
+    async def test_system_request_returns_response_without_user_message(self, gateway, sent_messages):
+        async def fake_run(msg):
+            assert msg["system_session_id"] == "__clawke_system__:Hermes"
+            assert msg["prompt"] == "Return strict JSON."
+            return '{"description":"中文描述"}'
+
+        gateway._run_system_session = fake_run
+
+        await gateway._handle_gateway_system_request({
+            "type": InboundMessageType.GatewaySystemRequest,
+            "request_id": "req_1",
+            "gateway_id": "Hermes",
+            "system_session_id": "__clawke_system__:Hermes",
+            "purpose": "translation",
+            "prompt": "Return strict JSON.",
+        })
+
+        assert sent_messages == [{
+            "type": GatewayMessageType.GatewaySystemResponse,
+            "request_id": "req_1",
+            "ok": True,
+            "json": {"description": "中文描述"},
+        }]
+
+    @pytest.mark.asyncio
+    async def test_system_request_invalid_json_returns_safe_error(self, gateway, sent_messages):
+        async def fake_run(_msg):
+            return "not json"
+
+        gateway._run_system_session = fake_run
+
+        await gateway._handle_gateway_system_request({
+            "type": InboundMessageType.GatewaySystemRequest,
+            "request_id": "req_2",
+            "gateway_id": "Hermes",
+            "system_session_id": "__clawke_system__:Hermes",
+            "purpose": "translation",
+            "prompt": "Return strict JSON.",
+        })
+
+        assert sent_messages[0]["type"] == GatewayMessageType.GatewaySystemResponse
+        assert sent_messages[0]["request_id"] == "req_2"
+        assert sent_messages[0]["ok"] is False
+        assert sent_messages[0]["error_code"] == "invalid_json"
 
 
 # ── Abort Tests ─────────────────────────────────────────────────────────────

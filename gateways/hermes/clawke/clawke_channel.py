@@ -66,6 +66,7 @@ class GatewayMessageType:
     SkillListResponse = "skill_list_response"
     SkillGetResponse = "skill_get_response"
     SkillMutationResponse = "skill_mutation_response"
+    GatewaySystemResponse = "gateway_system_response"
 
 
 class InboundMessageType:
@@ -91,6 +92,7 @@ class InboundMessageType:
     SkillUpdate = "skill_update"
     SkillDelete = "skill_delete"
     SkillSetEnabled = "skill_set_enabled"
+    GatewaySystemRequest = "gateway_system_request"
 
 
 class AgentStatusValue:
@@ -137,6 +139,19 @@ def _classify_error(e: Exception) -> dict[str, str]:
     if any(kw in err_str for kw in _MODEL_KEYWORDS):
         return {"error_code": "model_unavailable", "error_detail": detail}
     return {"error_code": "agent_error", "error_detail": detail}
+
+
+def _parse_strict_json(value: Any) -> Optional[dict[str, Any]]:
+    """Parse a strict JSON object response."""
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 # ─── Lazy imports for Hermes components ──────────────────────────────────────
@@ -357,6 +372,9 @@ class ClawkeHermesGateway:
                 elif isinstance(msg_type, str) and msg_type.startswith("task_"):
                     await self._handle_task_command(msg)
 
+                elif msg_type == InboundMessageType.GatewaySystemRequest:
+                    await self._handle_gateway_system_request(msg)
+
                 elif msg_type == InboundMessageType.Chat:
                     # MUST NOT await — the WS loop must stay free to receive
                     # approval_response / abort while the agent is running.
@@ -382,6 +400,130 @@ class ClawkeHermesGateway:
 
         self._ws = None
         logger.info("Disconnected from Clawke Server")
+
+    async def _handle_gateway_system_request(self, msg: dict) -> None:
+        """Handle isolated server-to-gateway background system requests."""
+        request_id = msg.get("request_id", "")
+        gateway_id = msg.get("gateway_id", self.config.account_id)
+        system_session_id = msg.get("system_session_id") or f"__clawke_system__:{gateway_id}"
+        purpose = msg.get("purpose", "system")
+        logger.info(
+            "[HermesGateway] system request received request=%s gateway=%s session=%s purpose=%s",
+            request_id,
+            gateway_id,
+            system_session_id,
+            purpose,
+        )
+
+        try:
+            started = time.monotonic()
+            result = await self._run_system_session({
+                **msg,
+                "gateway_id": gateway_id,
+                "system_session_id": system_session_id,
+                "purpose": purpose,
+            })
+            parsed = _parse_strict_json(result)
+            if parsed is None:
+                logger.warning(
+                    "[HermesGateway] model response invalid request=%s purpose=%s durationMs=%d",
+                    request_id,
+                    purpose,
+                    int((time.monotonic() - started) * 1000),
+                )
+                await self._send({
+                    "type": GatewayMessageType.GatewaySystemResponse,
+                    "request_id": request_id,
+                    "ok": False,
+                    "error_code": "invalid_json",
+                    "error_message": "Gateway system response was not strict JSON.",
+                })
+                return
+
+            logger.info(
+                "[HermesGateway] model response received request=%s durationMs=%d jsonKeys=%s",
+                request_id,
+                int((time.monotonic() - started) * 1000),
+                ",".join(parsed.keys()),
+            )
+            await self._send({
+                "type": GatewayMessageType.GatewaySystemResponse,
+                "request_id": request_id,
+                "ok": True,
+                "json": parsed,
+            })
+        except Exception as e:
+            logger.error(
+                "[HermesGateway] system request failed request=%s purpose=%s error=%s",
+                request_id,
+                purpose,
+                e,
+            )
+            await self._send({
+                "type": GatewayMessageType.GatewaySystemResponse,
+                "request_id": request_id,
+                "ok": False,
+                "error_code": "model_error",
+                "error_message": str(e),
+            })
+
+    async def _run_system_session(self, msg: dict) -> str:
+        """Run a Hermes model request without emitting user-facing messages."""
+        AIAgent = _get_ai_agent()
+        if AIAgent is None:
+            raise RuntimeError("Hermes AIAgent is unavailable.")
+
+        prompt = msg.get("prompt", "")
+        session_id = msg.get("system_session_id") or f"__clawke_system__:{self.config.account_id}"
+        resolved_model = self.config.model
+        resolved_provider = self.config.provider
+        resolved_base_url = self.config.base_url
+        resolved_api_key = None
+
+        try:
+            from hermes_cli.runtime_provider import resolve_runtime_provider
+            rt = resolve_runtime_provider(requested=resolved_provider or None)
+            resolved_api_key = rt.get("api_key")
+            if not resolved_provider:
+                resolved_provider = rt.get("provider", "")
+            if not resolved_model:
+                resolved_model = rt.get("model", "")
+            if not resolved_base_url:
+                resolved_base_url = rt.get("base_url", "")
+        except Exception as e:
+            logger.warning("resolve_runtime_provider failed: %s", e)
+
+        request_id = msg.get("request_id", "")
+        logger.info(
+            "[HermesGateway] model request started request=%s provider=%s model=%s timeoutMs=default",
+            request_id,
+            resolved_provider,
+            resolved_model,
+        )
+
+        def _run_agent():
+            agent = AIAgent(
+                model=resolved_model,
+                provider=resolved_provider,
+                base_url=resolved_base_url or None,
+                api_key=resolved_api_key,
+                platform="cli",
+                quiet_mode=True,
+                enabled_toolsets=[],
+                session_id=session_id,
+                session_db=None,
+            )
+            return agent.run_conversation(
+                user_message=prompt,
+                conversation_history=[],
+                task_id=session_id,
+            )
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _run_agent)
+        if isinstance(result, dict):
+            return str(result.get("final_response") or result.get("content") or "")
+        return str(result or "")
 
     # ── Message Dispatch (serial per-session queue) ──────────────────────
 

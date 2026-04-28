@@ -51,6 +51,9 @@ export const GatewayMessageType = {
   SkillListResponse:     "skill_list_response",
   SkillGetResponse:      "skill_get_response",
   SkillMutationResponse: "skill_mutation_response",
+
+  // 后台系统会话
+  GatewaySystemResponse: "gateway_system_response",
 } as const;
 
 export type GatewayMessageType = (typeof GatewayMessageType)[keyof typeof GatewayMessageType];
@@ -87,6 +90,9 @@ export const InboundMessageType = {
   SkillUpdate:     "skill_update",
   SkillDelete:     "skill_delete",
   SkillSetEnabled: "skill_set_enabled",
+
+  // 后台系统会话
+  GatewaySystemRequest: "gateway_system_request",
 } as const;
 
 export type InboundMessageType = (typeof InboundMessageType)[keyof typeof InboundMessageType];

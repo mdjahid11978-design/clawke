@@ -171,6 +171,7 @@ function translationSource(
   skill: ManagedSkill,
   _fieldSet: SkillTranslationFieldSet,
 ): SkillTranslationSource {
+  // 仅翻译技能描述，名称/触发条件/正文保持上游原文 — Translate only the skill description; keep name/trigger/body from upstream unchanged.
   return {
     description: skill.description,
   };
@@ -180,6 +181,7 @@ function descriptionOnlyLocalization(
   localization: SkillLocalizationPayload | undefined,
 ): SkillLocalizationPayload | undefined {
   if (!localization) return undefined;
+  // 对客户端只暴露描述翻译，避免误把技能名称、触发条件或正文改写 — Expose only translated description so skill names, triggers, and bodies are not rewritten.
   return {
     locale: localization.locale,
     status: localization.status,

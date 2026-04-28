@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Any
+from typing import Any, Optional
 
 import websockets
 from loguru import logger
@@ -20,6 +20,19 @@ from loguru import logger
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
+
+
+def _parse_strict_json(value: Any) -> Optional[dict[str, Any]]:
+    """Parse a strict JSON object response."""
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 class ClawkeChannel(BaseChannel):
@@ -41,6 +54,7 @@ class ClawkeChannel(BaseChannel):
         # Streaming state: track in-flight message for delta → done logic
         self._stream_msg_id: str | None = None
         self._stream_sent_any = False
+        self._system_response_futures: dict[str, asyncio.Future[str]] = {}
 
     @property
     def _url(self) -> str:
@@ -109,6 +123,8 @@ class ClawkeChannel(BaseChannel):
                         "type": "skills_response",
                         "skills": [],
                     }))
+                elif msg.get("type") == "gateway_system_request":
+                    await self._handle_gateway_system_request(msg)
 
         self._ws = None
         logger.info("Disconnected from Clawke Server")
@@ -152,6 +168,96 @@ class ClawkeChannel(BaseChannel):
         )
         logger.info("📥 Dispatched to nanobot: chat_id={} msg_id={}", chat_id, client_msg_id)
 
+    async def _handle_gateway_system_request(self, msg: dict) -> None:
+        """Handle isolated server-to-gateway background system requests."""
+        request_id = msg.get("request_id", "")
+        gateway_id = msg.get("gateway_id", self._account_id)
+        system_session_id = msg.get("system_session_id") or f"__clawke_system__:{gateway_id}"
+        purpose = msg.get("purpose", "system")
+        logger.info(
+            "Nanobot system request received request={} gateway={} session={} purpose={}",
+            request_id,
+            gateway_id,
+            system_session_id,
+            purpose,
+        )
+
+        try:
+            started = time.monotonic()
+            result = await self._run_system_session({
+                **msg,
+                "gateway_id": gateway_id,
+                "system_session_id": system_session_id,
+                "purpose": purpose,
+            })
+            parsed = _parse_strict_json(result)
+            if parsed is None:
+                logger.warning(
+                    "Nanobot system response invalid request={} purpose={} durationMs={}",
+                    request_id,
+                    purpose,
+                    int((time.monotonic() - started) * 1000),
+                )
+                await self._send_gateway_system_response({
+                    "type": "gateway_system_response",
+                    "request_id": request_id,
+                    "ok": False,
+                    "error_code": "invalid_json",
+                    "error_message": "Gateway system response was not strict JSON.",
+                })
+                return
+
+            logger.info(
+                "Nanobot system response received request={} durationMs={} jsonKeys={}",
+                request_id,
+                int((time.monotonic() - started) * 1000),
+                ",".join(parsed.keys()),
+            )
+            await self._send_gateway_system_response({
+                "type": "gateway_system_response",
+                "request_id": request_id,
+                "ok": True,
+                "json": parsed,
+            })
+        except Exception as e:
+            logger.error(
+                "Nanobot system request failed request={} purpose={} error={}",
+                request_id,
+                purpose,
+                e,
+            )
+            await self._send_gateway_system_response({
+                "type": "gateway_system_response",
+                "request_id": request_id,
+                "ok": False,
+                "error_code": "model_error",
+                "error_message": str(e),
+            })
+
+    async def _send_gateway_system_response(self, payload: dict) -> None:
+        if not self._ws:
+            logger.warning("Clawke WS not connected, dropping system response")
+            return
+        await self._ws.send(json.dumps(payload, ensure_ascii=False))
+
+    async def _run_system_session(self, msg: dict) -> str:
+        system_session_id = msg.get("system_session_id") or f"__clawke_system__:{self._account_id}"
+        prompt = msg.get("prompt", "")
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[str] = loop.create_future()
+        self._system_response_futures[system_session_id] = future
+        try:
+            await self._handle_message(
+                sender_id=system_session_id,
+                chat_id=f"clawke:{system_session_id}",
+                content=prompt,
+                media=None,
+                metadata={"message_id": msg.get("request_id", ""), "system_request": True},
+            )
+            return await asyncio.wait_for(future, timeout=120)
+        finally:
+            self._system_response_futures.pop(system_session_id, None)
+
     async def send(self, msg: OutboundMessage) -> None:
         """Send outbound message to Clawke Server via the gateway protocol."""
         if not self._ws:
@@ -167,6 +273,12 @@ class ClawkeChannel(BaseChannel):
         conv_id = (msg.chat_id.split(":", 1)[1]
                    if msg.chat_id and ":" in msg.chat_id
                    else getattr(self, '_current_conversation_id', 'clawke_user'))
+
+        system_future = self._system_response_futures.get(conv_id)
+        if system_future is not None:
+            if not is_progress and not is_tool_hint and text.strip() and not system_future.done():
+                system_future.set_result(text)
+            return
 
         try:
             if is_tool_hint:

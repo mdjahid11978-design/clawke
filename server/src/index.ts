@@ -45,7 +45,8 @@ import { GatewayStore } from './store/gateway-store.js';
 import { GatewayModelCacheStore } from './store/gateway-model-cache-store.js';
 import { SkillTranslationStore } from './store/skill-translation-store.js';
 import { SkillTranslationService, startSkillTranslationWorker } from './services/skill-translation-service.js';
-import { createConfiguredSkillTranslator } from './services/skill-translator.js';
+import { GatewayManageService } from './services/gateway-manage-service.js';
+import { createGatewaySystemSkillTranslator } from './services/gateway-system-translator.js';
 
 const serverDir = path.join(__dirname, '..');
 
@@ -163,9 +164,10 @@ async function main() {
   const gatewayStore = new GatewayStore(db);
   const gatewayModelCacheStore = new GatewayModelCacheStore(db);
   const skillTranslationStore = new SkillTranslationStore(db);
+  const gatewayManageService = new GatewayManageService();
   const skillTranslationService = new SkillTranslationService({
     store: skillTranslationStore,
-    translator: createConfiguredSkillTranslator(),
+    translator: createGatewaySystemSkillTranslator(gatewayManageService),
   });
   const stopSkillTranslationWorker = startSkillTranslationWorker(skillTranslationService, {
     onError: (error) => console.warn(`[SkillTranslation] Worker error: ${error instanceof Error ? error.message : String(error)}`),

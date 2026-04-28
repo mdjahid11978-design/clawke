@@ -10,9 +10,20 @@ export type SkillTranslationSource = {
   description?: string;
 };
 
+export interface SkillTranslationJobContext {
+  jobId: string;
+  gatewayType: string;
+  gatewayId: string;
+  skillId: string;
+  locale: string;
+  fieldSet: SkillTranslationFieldSet;
+  sourceHash: string;
+}
+
 export type SkillTranslator = (
   source: SkillTranslationSource,
   locale: string,
+  context: SkillTranslationJobContext,
 ) => Promise<Pick<Partial<SkillLocalizationPayload>, 'description'>>;
 
 export interface SkillTranslationLookupInput {
@@ -68,8 +79,19 @@ export class SkillTranslationService {
 
     this.options.store.markJobRunning(job.job_id);
     try {
+      console.log(
+        `[SkillTranslation] job started job=${job.job_id} attempt=${job.attempt_count + 1} backend=gateway_system gateway=${job.gateway_id} locale=${job.locale} sourceHash=${job.source_hash}`,
+      );
       const source = parseSource(job.source_json);
-      const translated = await this.options.translator(source, job.locale);
+      const translated = await this.options.translator(source, job.locale, {
+        jobId: job.job_id,
+        gatewayType: job.gateway_type,
+        gatewayId: job.gateway_id,
+        skillId: job.skill_id,
+        locale: job.locale,
+        fieldSet: job.field_set,
+        sourceHash: job.source_hash,
+      });
       this.options.store.upsertCache({
         gateway_type: job.gateway_type,
         gateway_id: job.gateway_id,
@@ -84,11 +106,18 @@ export class SkillTranslationService {
         status: 'ready',
       });
       this.options.store.markJobReady(job.job_id);
+      console.log(
+        `[SkillTranslation] cache ready job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} translatedDescriptionLength=${translated.description?.length ?? 0}`,
+      );
       return true;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.options.store.markJobFailed(
         job.job_id,
-        error instanceof Error ? error.message : String(error),
+        message,
+      );
+      console.warn(
+        `[SkillTranslation] cache failed job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} error=${message} fallback=source`,
       );
       return false;
     }
