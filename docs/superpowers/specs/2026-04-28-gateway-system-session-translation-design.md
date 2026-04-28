@@ -376,7 +376,7 @@ Gateway 请求失败、超时或返回 invalid JSON 时，Server 不应该回退
 2. 新增 Server 到 Gateway 的 `gateway_system_request/response` 协议。
 3. OpenClaw、Hermes、nanobot Gateway 都实现 system session 请求处理。
 4. 新增 `GatewaySystemTranslator`，替换 `createConfiguredSkillTranslator()` 注入。
-5. 保留旧 OpenAI translator 仅作为测试 mock 或删除，不能作为生产 fallback。
+5. 删除旧 OpenAI translator 生产实现，避免任何生产 fallback 歧义；测试改用显式 fake/mock translator。
 6. 更新 skill translation tests，断言不依赖 `OPENAI_API_KEY`。
 7. 远端部署后清理 failed/pending translation jobs，让后台重新排队。
 
