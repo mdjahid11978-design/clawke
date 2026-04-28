@@ -41,8 +41,9 @@
 GatewayManageService
   -> getSystemSession(gatewayId): GatewaySystemSession
 
-GatewaySystemSession
-  -> request(input): Promise<GatewaySystemSessionResponse>
+GatewaySession
+  -> GatewaySystemSession
+  -> GatewayUserSession
 
 SkillTranslationService
   -> 负责 skill description 翻译缓存、排队、sourceHash、结果写入
@@ -65,13 +66,25 @@ interface GatewayManageService {
   getSystemSession(gatewayId: string): GatewaySystemSession;
 }
 
-interface GatewaySystemSession {
+interface GatewaySession {
   gatewayId: string;
   sessionId: string;
+  kind: 'system' | 'user';
+  request(input: GatewaySessionRequest): Promise<GatewaySessionResponse>;
+}
+
+interface GatewaySystemSession extends GatewaySession {
+  kind: 'system';
   request(input: GatewaySystemSessionRequest): Promise<GatewaySystemSessionResponse>;
 }
 
-interface GatewaySystemSessionRequest {
+interface GatewayUserSession extends GatewaySession {
+  kind: 'user';
+  conversationId: string;
+  request(input: GatewayUserSessionRequest): Promise<GatewayUserSessionResponse>;
+}
+
+interface GatewaySessionRequest {
   purpose: string;
   prompt: string;
   responseSchema?: Record<string, unknown>;
@@ -79,16 +92,32 @@ interface GatewaySystemSessionRequest {
   metadata?: Record<string, unknown>;
 }
 
-interface GatewaySystemSessionResponse {
+interface GatewaySystemSessionRequest extends GatewaySessionRequest {
+  internal: true;
+}
+
+interface GatewayUserSessionRequest extends GatewaySessionRequest {
+  conversationId: string;
+}
+
+interface GatewaySessionResponse {
   ok: boolean;
   text?: string;
   json?: unknown;
   errorCode?: string;
   errorMessage?: string;
 }
+
+interface GatewaySystemSessionResponse extends GatewaySessionResponse {}
+
+interface GatewayUserSessionResponse extends GatewaySessionResponse {}
 ```
 
 `purpose` 只用于日志、限流和排查，不决定业务逻辑。翻译业务仍由调用方负责。
+
+`GatewaySystemSession` 和 `GatewayUserSession` 共用 `GatewaySession` 协议骨架，但副作用完全不同：system session 是后台内部交互，不写用户消息、不 sync、不通知；user session 面向真实用户会话，可以进入聊天记录和客户端同步。
+
+当前阶段只实现 `GatewayManageService.getSystemSession(gatewayId)`。`GatewayUserSession` 先作为协议方向保留，后续需要统一用户会话 gateway 入口时再实现。
 
 ## System Session 规则
 
