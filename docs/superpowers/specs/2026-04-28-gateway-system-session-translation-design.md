@@ -29,7 +29,7 @@
 - 不新增 Client 侧模型调用。
 - 不把翻译结果写入用户聊天消息。
 - 不把 `GatewayManageService` 做成通用任务执行器。
-- 不要求所有 Gateway 第一版都支持 system session；不支持时降级为原文。
+- 不做单 Gateway 特例分支；现有 OpenClaw、Hermes、nanobot 都走同一 system session 协议。
 - 不翻译 skill `name`、`trigger`、`body`。
 - 不做翻译完成后的实时 push；仍依赖下一次 refresh/sync 获取 ready 翻译。
 
@@ -291,15 +291,15 @@ SkillTranslationService
 
 ## Gateway 支持矩阵
 
-第一版按能力降级：
+第一版所有现有 Gateway 都必须接入同一 system session 协议。这样 Server 不需要按 Gateway 类型写跳过逻辑，也不需要保留当前 OpenAI translator 作为生产 fallback。
 
 | Gateway | system session | translation | 行为 |
 | --- | --- | --- | --- |
 | OpenClaw | 必须实现 | 必须实现 | 使用 OpenClaw 当前模型/provider 翻译 |
-| Hermes | 后续实现 | 后续实现 | 未支持时 fallback 原文 |
-| nanobot | 后续实现 | 后续实现 | 未支持时 fallback 原文 |
+| Hermes | 必须实现 | 必须实现 | 使用 Hermes 当前模型/provider 翻译 |
+| nanobot | 必须实现 | 必须实现 | 使用 nanobot 当前模型/provider 翻译 |
 
-Gateway 不支持时，Server 不应该回退到自己的 OpenAI key。这样可以避免不同 Gateway 行为不一致和隐藏依赖。
+Gateway 请求失败、超时或返回 invalid JSON 时，Server 不应该回退到自己的 OpenAI key，只标记对应 job failed 并让 UI fallback 原文。fallback 是异常兜底，不是某个 Gateway 的正常能力路径。
 
 ## 日志要求
 
@@ -330,7 +330,7 @@ Gateway 不支持时，Server 不应该回退到自己的 OpenAI key。这样可
 - 不同 gateway 返回不同 session ID。
 - `SkillTranslationService` 使用 gateway system session translator，而不是 OpenAI env translator。
 - Gateway 返回 invalid JSON 时 job 标记 failed。
-- Gateway 返回 unsupported 时 UI fallback 原文。
+- Gateway 请求失败、超时或返回 invalid JSON 时，job 标记 failed，UI fallback 原文。
 
 ### Gateway 测试
 
@@ -351,7 +351,7 @@ Gateway 不支持时，Server 不应该回退到自己的 OpenAI key。这样可
 
 1. 新增 `GatewayManageService` 和 `GatewaySystemSession` 接口。
 2. 新增 Server 到 Gateway 的 `gateway_system_request/response` 协议。
-3. OpenClaw Gateway 实现 system session 请求处理。
+3. OpenClaw、Hermes、nanobot Gateway 都实现 system session 请求处理。
 4. 新增 `GatewaySystemTranslator`，替换 `createConfiguredSkillTranslator()` 注入。
 5. 保留旧 OpenAI translator 仅作为测试 mock 或删除，不能作为生产 fallback。
 6. 更新 skill translation tests，断言不依赖 `OPENAI_API_KEY`。
@@ -360,7 +360,8 @@ Gateway 不支持时，Server 不应该回退到自己的 OpenAI key。这样可
 ## 验收标准
 
 - 远端未配置 `OPENAI_API_KEY` 或 `CLAWKE_TRANSLATION_API_KEY` 时，skill description 仍可通过 OpenClaw Gateway 翻译。
+- Hermes 和 nanobot 也不依赖 Server 侧 `OPENAI_API_KEY` 或 `CLAWKE_TRANSLATION_API_KEY`，统一通过各自 Gateway system session 翻译。
 - 翻译请求不出现在任何用户会话消息历史中。
 - `GatewayManageService` 只有 `getSystemSession(gatewayId)` 一个公开职责。
 - `SkillTranslationService` 继续负责 skill 翻译缓存和状态，不把业务逻辑塞进 `GatewayManageService`。
-- 不支持 system session 的 Gateway 能稳定 fallback 原文，不影响技能管理页面使用。
+- Gateway 请求失败、超时或 invalid JSON 时能稳定 fallback 原文，不影响技能管理页面使用。
