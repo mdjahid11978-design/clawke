@@ -17,6 +17,7 @@ import {
   type GatewaySystemRequest,
   type GatewaySystemRunnerResult,
 } from "./gateway-system-request.ts";
+import { ensureOpenClawSessionModel } from "./model-switch.js";
 
 // 模块级状态（生命周期级，非请求级）
 // ws/gatewayCtx: 在 startClawkeGateway 建立连接时设置，在整个 gateway 生命周期内共享
@@ -737,57 +738,14 @@ async function handleClawkeInbound(
 
   // 模型切换（首次/变化时注入 /model 命令）
   const senderId = msg.conversation_id || "clawke_user";
-  if (msg.model_override && sessionModels.get(senderId) !== msg.model_override) {
-    sessionModels.set(senderId, msg.model_override);
-    ctx.log?.info(`[ConvConfig] Switching model to: ${msg.model_override} for session=${senderId}`);
-    // 通过 system event 通知 OpenClaw 切换模型
-    // 直接在 BodyForCommands 中注入 /model 命令
-    try {
-      const modelRoute = core.channel.routing.resolveAgentRoute({
-        cfg,
-        channel: "clawke",
-        accountId: ctx.accountId,
-        peer: { kind: "direct", id: `clawke:${senderId}` },
-      });
-      const modelBody = `/model ${msg.model_override}`;
-      const modelCtx = core.channel.reply.finalizeInboundContext({
-        Body: modelBody,
-        BodyForAgent: modelBody,
-        RawBody: modelBody,
-        CommandBody: modelBody,
-        BodyForCommands: modelBody,
-        From: `clawke:${senderId}`,
-        To: `user:${senderId}`,
-        SessionKey: modelRoute.sessionKey,
-        AccountId: modelRoute.accountId,
-        ChatType: "direct",
-        SenderName: senderId,
-        SenderId: senderId,
-        Provider: "clawke" as any,
-        Surface: "clawke" as any,
-        MessageSid: `model_switch_${Date.now()}`,
-        Timestamp: Date.now(),
-        OriginatingChannel: "clawke" as any,
-        OriginatingTo: `user:${senderId}`,
-        CommandAuthorized: true,
-      });
-      const modelDispatcher = core.channel.reply.createReplyDispatcherWithTyping({
-        ctx: modelCtx,
-        cfg,
-        sessionKey: modelRoute.sessionKey,
-        dispatcher: { deliver: async () => {} },
-        replyOptions: {},
-      });
-      await core.channel.reply.withReplyDispatcher(modelCtx, modelDispatcher, async () => {
-        await core.channel.reply.dispatchReplyFromConfig({
-          ctx: modelCtx, cfg, dispatcher: modelDispatcher, replyOptions: {},
-        });
-      });
-      ctx.log?.info(`[ConvConfig] ✅ Model switched to: ${msg.model_override}`);
-    } catch (e: any) {
-      ctx.log?.error(`[ConvConfig] ❌ Model switch failed: ${e.message}`);
-    }
-  }
+  await ensureOpenClawSessionModel({
+    ctx,
+    core,
+    cfg,
+    senderId,
+    modelOverride: msg.model_override,
+    sessionModels,
+  });
 
   const peerId = `clawke:${senderId}`;
   const messageId = msg.client_msg_id || `clawke_${Date.now()}`;
