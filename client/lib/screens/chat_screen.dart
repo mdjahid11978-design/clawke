@@ -39,6 +39,7 @@ import 'package:client/widgets/highlighted_code_builder.dart';
 import 'package:client/providers/mermaid_provider.dart';
 import 'package:client/providers/approval_provider.dart';
 import 'package:client/widgets/approval_card.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 
 final dismissedGatewayIssueKeyProvider = StateProvider<String?>((ref) => null);
 
@@ -1865,12 +1866,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // 附件预览条
         const StagedAttachmentsPreview(),
         if (activeGatewayIssue != null)
-          _GatewayIssueBanner(
-            issue: activeGatewayIssue,
-            onDismiss: () {
-              ref.read(dismissedGatewayIssueKeyProvider.notifier).state =
-                  activeGatewayIssue.key;
-            },
+          Align(
+            child: AppNoticeBar.error(
+              message: activeGatewayIssue.message,
+              edgeToEdge: MediaQuery.sizeOf(context).width < 600,
+              onDismiss: () {
+                ref.read(dismissedGatewayIssueKeyProvider.notifier).state =
+                    activeGatewayIssue.key;
+              },
+            ),
           ),
         // 输入栏
         Container(
@@ -1976,60 +1980,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _GatewayIssueBanner extends StatelessWidget {
-  final ConversationGatewayIssue issue;
-  final VoidCallback onDismiss;
-
-  const _GatewayIssueBanner({
-    required this.issue,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
-        border: Border(
-          top: BorderSide(color: colorScheme.error.withValues(alpha: 0.35)),
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.warning_amber_rounded,
-            size: 18,
-            color: colorScheme.onErrorContainer,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              issue.message,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onErrorContainer,
-                  ),
-            ),
-          ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: onDismiss,
-            icon: Icon(
-              Icons.close,
-              size: 18,
-              color: colorScheme.onErrorContainer,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

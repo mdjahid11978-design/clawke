@@ -8,6 +8,7 @@ import 'package:client/models/managed_task.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/tasks_provider.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import 'package:client/widgets/app_snack_bar.dart';
 import 'package:client/widgets/empty_state_panel.dart';
 import 'package:client/widgets/gateway_selector_pane.dart';
@@ -404,6 +405,16 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         ),
         const SizedBox(height: 18),
       ],
+      if (state.errorMessage != null) ...[
+        Align(
+          child: AppNoticeBar.error(
+            message: state.errorMessage!,
+            onDismiss: () =>
+                ref.read(tasksControllerProvider.notifier).clearError(),
+          ),
+        ),
+        const SizedBox(height: 18),
+      ],
       _Header(
         isLoading: state.isLoading,
         canCreate: state.selectedAccountId != null && !showUnavailablePanel,
@@ -492,6 +503,16 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
           errorGatewayId: state.errorAccountId,
           issueKeyPrefix: 'tasks_gateway_issue',
           onSelected: _selectAccount,
+        ),
+        const SizedBox(height: 18),
+      ],
+      if (state.errorMessage != null) ...[
+        Align(
+          child: AppNoticeBar.error(
+            message: state.errorMessage!,
+            onDismiss: () =>
+                ref.read(tasksControllerProvider.notifier).clearError(),
+          ),
         ),
         const SizedBox(height: 18),
       ],

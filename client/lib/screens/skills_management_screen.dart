@@ -10,6 +10,7 @@ import 'package:client/models/managed_skill.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/skills_provider.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import 'package:client/widgets/app_snack_bar.dart';
 import 'package:client/widgets/empty_state_panel.dart';
 import 'package:client/widgets/gateway_selector_pane.dart';
@@ -378,6 +379,16 @@ class _SkillsManagementScreenState
             ),
             const SizedBox(height: 18),
           ],
+          if (state.errorMessage != null) ...[
+            Align(
+              child: AppNoticeBar.error(
+                message: state.errorMessage!,
+                onDismiss: () =>
+                    ref.read(skillsControllerProvider.notifier).clearError(),
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           _Header(
             isLoading: state.isLoading,
             isReadOnly: state.isScopeReadOnly || state.selectedScope == null,
@@ -527,6 +538,16 @@ class _SkillsManagementScreenState
           capability: 'skills',
           errorGatewayId: state.errorGatewayId,
           onSelected: _selectGateway,
+        ),
+        const SizedBox(height: 18),
+      ],
+      if (state.errorMessage != null) ...[
+        Align(
+          child: AppNoticeBar.error(
+            message: state.errorMessage!,
+            onDismiss: () =>
+                ref.read(skillsControllerProvider.notifier).clearError(),
+          ),
         ),
         const SizedBox(height: 18),
       ],

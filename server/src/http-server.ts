@@ -30,25 +30,15 @@ import type { Server } from 'http';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
-export function isLoopbackAddress(remoteAddress?: string | null): boolean {
-  if (!remoteAddress) return false;
-  const address = remoteAddress.trim().toLowerCase();
-  if (address === '::1') return true;
-  if (address.startsWith('127.')) return true;
-  if (address.startsWith('::ffff:127.')) return true;
-  return false;
-}
-
 export function isAuthorizedRequest({
   serverToken,
   clientToken,
-  remoteAddress,
 }: {
   serverToken: string;
   clientToken: string;
   remoteAddress?: string | null;
 }): boolean {
-  if (isLoopbackAddress(remoteAddress)) return true;
+  if (!serverToken) return true;
   return serverToken === clientToken;
 }
 

@@ -154,6 +154,11 @@ class SkillsController extends StateNotifier<SkillsState> {
     return _loadScopedList(state.scopes, selectedScope);
   }
 
+  void clearError() {
+    if (state.errorMessage == null) return;
+    state = state.copyWith(clearError: true);
+  }
+
   Future<void> selectScope(String scopeId) async {
     final scope = _findScope(scopeId);
     if (scope == null || scope.id == state.selectedScopeId) return;

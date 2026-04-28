@@ -130,6 +130,52 @@ void main() {
     expect(skillRepo.syncCalls, 2);
     expect(find.text('refreshed-skill'), findsOneWidget);
   });
+
+  testWidgets('skill picker search filters available skills', (tester) async {
+    final skillRepo = _FakeSkillCacheRepository(
+      cached: [
+        _skill(name: 'weather', description: 'Weather lookup'),
+        _skill(name: 'calendar', description: 'Calendar helper'),
+      ],
+    );
+
+    await _pumpSheet(tester, skillRepo: skillRepo);
+    await tester.tap(find.byIcon(Icons.build_rounded));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'calendar');
+    await tester.pump();
+
+    expect(find.text('Calendar helper'), findsOneWidget);
+    expect(find.text('weather'), findsNothing);
+  });
+
+  testWidgets(
+    'skill picker keeps search usable when opened before sync finishes',
+    (tester) async {
+      final syncCompleter = Completer<List<ManagedSkill>>();
+      final skillRepo = _FakeSkillCacheRepository(syncCompleter: syncCompleter);
+
+      await _pumpSheet(tester, skillRepo: skillRepo);
+      await tester.tap(find.byIcon(Icons.build_rounded));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TextField), findsOneWidget);
+
+      syncCompleter.complete([
+        _skill(name: 'weather', description: 'Weather lookup'),
+        _skill(name: 'calendar', description: 'Calendar helper'),
+      ]);
+      await tester.tap(find.byIcon(Icons.refresh_rounded));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'calendar');
+      await tester.pump();
+
+      expect(find.text('Calendar helper'), findsOneWidget);
+      expect(find.text('weather'), findsNothing);
+    },
+  );
 }
 
 Future<void> _pumpSheet(

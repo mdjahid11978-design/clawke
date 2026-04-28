@@ -18,6 +18,7 @@ import 'package:client/services/media_resolver.dart';
 import 'package:client/widgets/nav_rail.dart';
 import 'package:client/widgets/debug_log_panel.dart';
 import 'package:client/widgets/widget_factory.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import 'package:client/services/auth_service.dart';
 import 'package:client/l10n/l10n.dart';
 import 'package:client/core/notification_service.dart';
@@ -201,17 +202,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         ? _buildMobileLayout(context)
         : _buildDesktopLayout(context);
 
-    return Stack(
-      children: [content, _buildFloatingAlert(context, ref, ws)],
-    );
+    return Stack(children: [content, _buildFloatingAlert(context, ref, ws)]);
   }
 
   /// 构建浮动的底部错误提示
-  Widget _buildFloatingAlert(
-    BuildContext context,
-    WidgetRef ref,
-    WsState ws,
-  ) {
+  Widget _buildFloatingAlert(BuildContext context, WidgetRef ref, WsState ws) {
     // 显示条件：已尝试过连接、不在宽限期、WS 未连接、且未被用户关闭
     final showAlert =
         _hasEverAttempted &&
@@ -221,7 +216,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
 
     if (!showAlert) return const SizedBox.shrink();
 
-    final colorScheme = Theme.of(context).colorScheme;
     final isConnecting = ws == WsState.connecting;
 
     // 不暴露原始错误细节给用户（审核员不应看到技术错误信息）
@@ -232,112 +226,32 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     };
 
     // 底部偏移：移动端需要避开 BottomNavigationBar
-    final bottomOffset = _isMobile(context) ? 64.0 : 16.0;
+    final isMobileLayout = _isMobile(context);
+    final bottomOffset = isMobileLayout ? 64.0 : 16.0;
+    final horizontalInset = isMobileLayout ? 0.0 : 16.0;
 
     return Positioned(
-      left: 16,
-      right: 16,
+      left: horizontalInset,
+      right: horizontalInset,
       bottom: bottomOffset,
-      child: Material(
-        elevation: 8,
-        borderRadius: BorderRadius.circular(12),
-        color: isConnecting
-            ? colorScheme.secondaryContainer
-            : colorScheme.error,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: isConnecting
-              ? null
-              : () => ref.read(wsServiceProvider).reconnect(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                if (isConnecting)
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colorScheme.onSecondaryContainer,
-                    ),
-                  )
-                else
-                  Icon(
-                    Icons.error_outline,
-                    size: 20,
-                    color: colorScheme.onError,
-                  ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        alertText,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: isConnecting
-                              ? colorScheme.onSecondaryContainer
-                              : colorScheme.onError,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      if (ws == WsState.disconnected)
-                        Text(
-                          context.l10n.checkServerSetup,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                color: colorScheme.onError.withValues(
-                                  alpha: 0.8,
-                                ),
-                                decoration: TextDecoration.underline,
-                                decorationColor: colorScheme.onError.withValues(
-                                  alpha: 0.8,
-                                ),
-                              ),
-                        ),
-                    ],
-                  ),
-                ),
-                // 重试按钮（连接中时不显示）
-                if (!isConnecting)
-                  IconButton(
-                    icon: Icon(
-                      Icons.refresh,
-                      size: 18,
-                      color: colorScheme.onError,
-                    ),
-                    tooltip: context.l10n.connecting,
-                    onPressed: () => ref.read(wsServiceProvider).reconnect(),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
-                  ),
-                if (!isConnecting) const SizedBox(width: 4),
-                // 关闭按钮
-                IconButton(
-                  icon: Icon(
-                    Icons.close,
-                    size: 18,
-                    color: isConnecting
-                        ? colorScheme.onSecondaryContainer
-                        : colorScheme.onError,
-                  ),
-                  tooltip: context.l10n.cancel,
-                  onPressed: () => setState(() => _alertDismissed = true),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: isConnecting
+            ? AppNoticeBar.info(
+                message: alertText,
+                showProgress: true,
+                edgeToEdge: isMobileLayout,
+                onDismiss: () => setState(() => _alertDismissed = true),
+              )
+            : AppNoticeBar.error(
+                message: alertText,
+                detail: context.l10n.checkServerSetup,
+                onAction: () => ref.read(wsServiceProvider).reconnect(),
+                actionIcon: Icons.refresh,
+                actionTooltip: context.l10n.connecting,
+                edgeToEdge: isMobileLayout,
+                onDismiss: () => setState(() => _alertDismissed = true),
+              ),
       ),
     );
   }

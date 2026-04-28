@@ -16,6 +16,7 @@ import 'package:client/models/managed_skill.dart';
 class ConversationSettingsSheet extends ConsumerStatefulWidget {
   final String? conversationId;
   final String accountId;
+
   /// 创建成功后的回调
   final void Function(String conversationId)? onCreated;
 
@@ -136,7 +137,8 @@ class _ConversationSettingsSheetState
       modelRepository.getModels(widget.accountId),
       skillRepository.getSkills(widget.accountId, locale),
       ref.read(configApiServiceProvider).getConvConfig(widget.conversationId!),
-      ref.read(conversationRepositoryProvider)
+      ref
+          .read(conversationRepositoryProvider)
           .getConversationName(widget.conversationId!),
     ]);
 
@@ -178,10 +180,12 @@ class _ConversationSettingsSheetState
   List<SkillInfo> _toSkillInfoList(List<ManagedSkill> skills) {
     return skills
         .where((skill) => skill.enabled)
-        .map((skill) => SkillInfo(
-              name: skill.name,
-              description: skill.displayDescription,
-            ))
+        .map(
+          (skill) => SkillInfo(
+            name: skill.name,
+            description: skill.displayDescription,
+          ),
+        )
         .toList();
   }
 
@@ -245,12 +249,14 @@ class _ConversationSettingsSheetState
     late final String convId;
     if (_isCreateMode) {
       convId = const Uuid().v4();
-      await ref.read(conversationRepositoryProvider).createConversation(
-        conversationId: convId,
-        accountId: widget.accountId,
-        type: 'ai',
-        name: newName.isNotEmpty ? newName : widget.accountId,
-      );
+      await ref
+          .read(conversationRepositoryProvider)
+          .createConversation(
+            conversationId: convId,
+            accountId: widget.accountId,
+            type: 'ai',
+            name: newName.isNotEmpty ? newName : widget.accountId,
+          );
     } else {
       convId = widget.conversationId!;
     }
@@ -304,7 +310,10 @@ class _ConversationSettingsSheetState
           backgroundColor: colorScheme.surface,
           surfaceTintColor: Colors.transparent,
           title: Text(
-              _isCreateMode ? context.l10n.newConversation : context.l10n.conversationSettings),
+            _isCreateMode
+                ? context.l10n.newConversation
+                : context.l10n.conversationSettings,
+          ),
           actions: [
             if (_isCreateMode)
               TextButton(
@@ -384,7 +393,9 @@ class _ConversationSettingsSheetState
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.5),
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withOpacity(0.5),
           letterSpacing: 0.3,
         ),
       ),
@@ -405,13 +416,17 @@ class _ConversationSettingsSheetState
         child: Row(
           children: [
             Container(
-              width: 30, height: 30,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: colorScheme.primary.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: Icon(Icons.chat_bubble_outline_rounded,
-                  size: 16, color: colorScheme.primary),
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 16,
+                color: colorScheme.primary,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -438,7 +453,8 @@ class _ConversationSettingsSheetState
   // Gateway 卡片 — Gateway 名称 + 会话 ID 小字
   // ═══════════════════════════════════════
   Widget _buildGatewayCard(ColorScheme colorScheme) {
-    final sessionId = widget.conversationId ?? context.l10n.generatedAfterCreate;
+    final sessionId =
+        widget.conversationId ?? context.l10n.generatedAfterCreate;
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
@@ -449,13 +465,17 @@ class _ConversationSettingsSheetState
         child: Row(
           children: [
             Container(
-              width: 30, height: 30,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: colorScheme.onSurfaceVariant.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(7),
               ),
-              child: Icon(Icons.dns_outlined,
-                  size: 16, color: colorScheme.onSurfaceVariant.withOpacity(0.5)),
+              child: Icon(
+                Icons.dns_outlined,
+                size: 16,
+                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -507,13 +527,17 @@ class _ConversationSettingsSheetState
           child: Row(
             children: [
               Container(
-                width: 30, height: 30,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: colorScheme.primary.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(Icons.layers_rounded,
-                    size: 16, color: colorScheme.primary),
+                child: Icon(
+                  Icons.layers_rounded,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -528,9 +552,11 @@ class _ConversationSettingsSheetState
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(Icons.chevron_right_rounded,
-                  size: 18,
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+              ),
             ],
           ),
         ),
@@ -543,10 +569,14 @@ class _ConversationSettingsSheetState
   // ═══════════════════════════════════════
   Widget _buildSkillPanel(ColorScheme colorScheme) {
     final selectedList = _selectedSkills
-        .map((name) => _availableSkills.where((s) => s.name == name).firstOrNull)
+        .map(
+          (name) => _availableSkills.where((s) => s.name == name).firstOrNull,
+        )
         .whereType<SkillInfo>()
         .toList();
-    final modeText = _skillMode == 'exclusive' ? context.l10n.exclusiveTrigger : context.l10n.priorityTrigger;
+    final modeText = _skillMode == 'exclusive'
+        ? context.l10n.exclusiveTrigger
+        : context.l10n.priorityTrigger;
     final dotColors = [
       const Color(0xFF34D399),
       const Color(0xFF60A5FA),
@@ -571,13 +601,17 @@ class _ConversationSettingsSheetState
               child: Row(
                 children: [
                   Container(
-                    width: 30, height: 30,
+                    width: 30,
+                    height: 30,
                     decoration: BoxDecoration(
                       color: const Color(0xFF34D399).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(7),
                     ),
-                    child: const Icon(Icons.build_rounded,
-                        size: 16, color: Color(0xFF34D399)),
+                    child: const Icon(
+                      Icons.build_rounded,
+                      size: 16,
+                      color: Color(0xFF34D399),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -587,7 +621,9 @@ class _ConversationSettingsSheetState
                         Text(
                           selectedList.isEmpty
                               ? context.l10n.skillsNotEnabled
-                              : context.l10n.skillsEnabledCount(selectedList.length),
+                              : context.l10n.skillsEnabledCount(
+                                  selectedList.length,
+                                ),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w500,
@@ -611,22 +647,31 @@ class _ConversationSettingsSheetState
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 18, color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  ),
                 ],
               ),
             ),
           ),
           // Skill list items
           if (selectedList.isNotEmpty) ...[
-            Divider(height: 1, thickness: 1,
-                color: colorScheme.outlineVariant.withOpacity(0.15)),
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: colorScheme.outlineVariant.withOpacity(0.15),
+            ),
             ...selectedList.asMap().entries.map((entry) {
               final i = entry.key;
               final skill = entry.value;
               final isLast = i == selectedList.length - 1;
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 11,
+                ),
                 decoration: BoxDecoration(
                   border: isLast
                       ? null
@@ -639,7 +684,8 @@ class _ConversationSettingsSheetState
                 child: Row(
                   children: [
                     Container(
-                      width: 7, height: 7,
+                      width: 7,
+                      height: 7,
                       decoration: BoxDecoration(
                         color: dotColors[i % dotColors.length],
                         shape: BoxShape.circle,
@@ -713,7 +759,8 @@ class _ConversationSettingsSheetState
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
-              width: 30, height: 30,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 color: iconBg,
                 borderRadius: BorderRadius.circular(7),
@@ -737,9 +784,11 @@ class _ConversationSettingsSheetState
               ),
             ),
             const SizedBox(width: 6),
-            Icon(Icons.chevron_right_rounded,
-                size: 18,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+            ),
           ],
         ),
       ),
@@ -815,9 +864,7 @@ class _ConversationSettingsSheetState
   void _openWorkDirEditor(ColorScheme colorScheme) async {
     final result = await Navigator.of(context).push<String?>(
       MaterialPageRoute(
-        builder: (_) => _WorkDirPage(
-          initialValue: _workDirController.text,
-        ),
+        builder: (_) => _WorkDirPage(initialValue: _workDirController.text),
       ),
     );
     if (result != null) {
@@ -876,8 +923,10 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
             IconButton(
               icon: _refreshing
                   ? const SizedBox(
-                      width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.refresh_rounded, size: 20),
               tooltip: context.l10n.refreshModelList,
               onPressed: _refreshing ? null : _refresh,
@@ -900,26 +949,32 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
                 if (_models.isEmpty)
                   // 空状态提示
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 20,
+                    ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline_rounded,
-                            size: 16, color: colorScheme.onSurfaceVariant.withOpacity(0.5)),
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           context.l10n.gatewayNoModelSupport,
                           style: TextStyle(
                             fontSize: 13,
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                            color: colorScheme.onSurfaceVariant.withOpacity(
+                              0.5,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   )
                 else
-                  ..._models.map(
-                    (m) => _buildModelItem(m, m, colorScheme),
-                  ),
+                  ..._models.map((m) => _buildModelItem(m, m, colorScheme)),
               ],
             ),
           ),
@@ -928,11 +983,7 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
     );
   }
 
-  Widget _buildModelItem(
-    String? value,
-    String label,
-    ColorScheme colorScheme,
-  ) {
+  Widget _buildModelItem(String? value, String label, ColorScheme colorScheme) {
     final isSelected = widget.selected == value;
     return InkWell(
       onTap: () => Navigator.of(context).pop(value ?? ''),
@@ -956,14 +1007,15 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                  color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.onSurface,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             if (isSelected)
-              Icon(Icons.check_rounded,
-                  size: 20, color: colorScheme.primary),
+              Icon(Icons.check_rounded, size: 20, color: colorScheme.primary),
           ],
         ),
       ),
@@ -1037,9 +1089,11 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
     // Filter & sort: selected first
     final filtered = _searchQuery.isEmpty
         ? _skills
-        : _skills.where((s) =>
-            s.name.toLowerCase().contains(_searchQuery) ||
-            s.description.toLowerCase().contains(_searchQuery));
+        : _skills.where(
+            (s) =>
+                s.name.toLowerCase().contains(_searchQuery) ||
+                s.description.toLowerCase().contains(_searchQuery),
+          );
     final sorted = filtered.toList()
       ..sort((a, b) {
         final aS = _selected.contains(a.name) ? 0 : 1;
@@ -1065,8 +1119,9 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
           surfaceTintColor: Colors.transparent,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-            onPressed: () => Navigator.of(context)
-                .pop(_SkillPickerResult(selected: _selected, mode: _mode)),
+            onPressed: () => Navigator.of(
+              context,
+            ).pop(_SkillPickerResult(selected: _selected, mode: _mode)),
           ),
           title: Text(context.l10n.selectSkills),
           actions: [
@@ -1074,46 +1129,18 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
               IconButton(
                 icon: _refreshing
                     ? const SizedBox(
-                        width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Icon(Icons.refresh_rounded, size: 20),
                 tooltip: context.l10n.refreshSkillsList,
                 onPressed: _refreshing ? null : _refresh,
               ),
           ],
         ),
-        body: _skills.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.extension_off_rounded,
-                          size: 48, color: colorScheme.onSurfaceVariant.withOpacity(0.3)),
-                      const SizedBox(height: 16),
-                      Text(
-                        context.l10n.gatewayNoSkillSupport,
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        context.l10n.clickRefreshToRetry,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onSurfaceVariant.withOpacity(0.35),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : Column(
+        body: Column(
           children: [
-
             // Chips row for selected
             if (_selected.isNotEmpty)
               Container(
@@ -1125,7 +1152,9 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
                   children: _selected.toList().map((name) {
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: colorScheme.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(16),
@@ -1143,10 +1172,12 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
                           ),
                           const SizedBox(width: 4),
                           GestureDetector(
-                            onTap: () =>
-                                setState(() => _selected.remove(name)),
-                            child: Icon(Icons.close_rounded,
-                                size: 14, color: colorScheme.primary),
+                            onTap: () => setState(() => _selected.remove(name)),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 14,
+                              color: colorScheme.primary,
+                            ),
                           ),
                         ],
                       ),
@@ -1166,8 +1197,16 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
                 ),
                 child: Row(
                   children: [
-                    _buildModeBtn(context.l10n.priorityTrigger, 'priority', colorScheme),
-                    _buildModeBtn(context.l10n.exclusiveTrigger, 'exclusive', colorScheme),
+                    _buildModeBtn(
+                      context.l10n.priorityTrigger,
+                      'priority',
+                      colorScheme,
+                    ),
+                    _buildModeBtn(
+                      context.l10n.exclusiveTrigger,
+                      'exclusive',
+                      colorScheme,
+                    ),
                   ],
                 ),
               ),
@@ -1182,14 +1221,18 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
                 decoration: InputDecoration(
                   hintText: context.l10n.searchSkills,
                   hintStyle: TextStyle(
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
-                  prefixIcon: Icon(Icons.search_rounded,
-                      size: 18,
-                      color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  ),
                   isDense: true,
                   filled: true,
-                  fillColor:
-                      colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  fillColor: colorScheme.surfaceContainerHighest.withOpacity(
+                    0.5,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide: BorderSide.none,
@@ -1205,16 +1248,61 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
 
             // Skill list
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: sorted.length,
-                itemBuilder: (context, index) {
-                  final skill = sorted[index];
-                  final selected = _selected.contains(skill.name);
-                  return _buildSkillToggleItem(skill, selected, colorScheme);
-                },
+              child: sorted.isEmpty
+                  ? _buildEmptySkillsState(colorScheme)
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: sorted.length,
+                      itemBuilder: (context, index) {
+                        final skill = sorted[index];
+                        final selected = _selected.contains(skill.name);
+                        return _buildSkillToggleItem(
+                          skill,
+                          selected,
+                          colorScheme,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptySkillsState(ColorScheme colorScheme) {
+    final hasQuery = _searchQuery.trim().isNotEmpty;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hasQuery ? Icons.search_off_rounded : Icons.extension_off_rounded,
+              size: 48,
+              color: colorScheme.onSurfaceVariant.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              hasQuery
+                  ? context.l10n.noSkillsAvailable
+                  : context.l10n.gatewayNoSkillSupport,
+              style: TextStyle(
+                fontSize: 15,
+                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
               ),
             ),
+            if (!hasQuery) ...[
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.clickRefreshToRetry,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: colorScheme.onSurfaceVariant.withOpacity(0.35),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1230,9 +1318,7 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isActive
-                ? colorScheme.primary
-                : Colors.transparent,
+            color: isActive ? colorScheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -1309,7 +1395,8 @@ class _SkillPickerPageState extends State<_SkillPickerPage> {
             ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 44, height: 26,
+              width: 44,
+              height: 26,
               child: FittedBox(
                 fit: BoxFit.contain,
                 child: Switch.adaptive(
@@ -1406,7 +1493,9 @@ class _TextEditorPageState extends State<_TextEditorPage> {
                     color: colorScheme.onSurfaceVariant.withOpacity(0.4),
                   ),
                   filled: true,
-                  fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                  fillColor: colorScheme.surfaceContainerHighest.withOpacity(
+                    0.5,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -1475,28 +1564,34 @@ class _WorkDirPageState extends State<_WorkDirPage> {
               child: TextField(
                 controller: _controller,
                 autofocus: true,
-                style: TextStyle(
-                    fontSize: 14, color: colorScheme.onSurface),
+                style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
                 decoration: InputDecoration(
                   hintText: context.l10n.workDirHint,
                   hintStyle: TextStyle(
                     color: colorScheme.onSurface.withOpacity(0.3),
                   ),
-                  prefixIcon: Icon(Icons.folder_outlined,
-                      size: 18,
-                      color:
-                          colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                  prefixIcon: Icon(
+                    Icons.folder_outlined,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  ),
                   suffixIcon: _controller.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear,
-                              size: 18,
-                              color: colorScheme.onSurfaceVariant.withOpacity(0.4)),
+                          icon: Icon(
+                            Icons.clear,
+                            size: 18,
+                            color: colorScheme.onSurfaceVariant.withOpacity(
+                              0.4,
+                            ),
+                          ),
                           onPressed: () => setState(() => _controller.clear()),
                         )
                       : null,
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 14),
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                 ),
               ),
             ),

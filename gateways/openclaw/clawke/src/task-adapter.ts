@@ -314,8 +314,9 @@ export class OpenClawTaskAdapter {
     }
 
     const state = job.state;
-    if (!state?.lastRunAtMs && !state?.lastRunStatus && !state?.lastStatus) return undefined;
-    const startedAt = this.toIso(state.lastRunAtMs) ?? new Date(0).toISOString();
+    if (!state?.lastRunAtMs) return undefined;
+    const startedAt = this.toIso(state.lastRunAtMs);
+    if (!startedAt) return undefined;
     const finishedAt = this.toIso(state.lastCompletedAtMs) ?? startedAt;
     return {
       id: `last_${job.id}_${state.lastRunAtMs ?? "unknown"}`,

@@ -6,6 +6,7 @@ import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/screens/tasks_management_screen.dart';
 import 'package:client/services/tasks_api_service.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -357,7 +358,7 @@ void main() {
     expect(newTaskRect.left, greaterThan(refreshRect.right));
   });
 
-  testWidgets('task gateway errors only show gateway issue badge', (
+  testWidgets('task gateway errors show app notice and gateway issue badge', (
     tester,
   ) async {
     await pumpApp(
@@ -371,14 +372,15 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SnackBar), findsNothing);
-    expect(find.byKey(const ValueKey('app_notice_bar')), findsNothing);
+    final notice = tester.widget<AppNoticeBar>(find.byType(AppNoticeBar));
+    expect(notice.severity, AppNoticeSeverity.error);
     expect(
       find.byKey(const ValueKey('tasks_gateway_issue_hermes')),
       findsOneWidget,
     );
     expect(
       find.text('Hermes 网关响应超时，请确认 Hermes Gateway 正在运行后重试。'),
-      findsNothing,
+      findsOneWidget,
     );
   });
 

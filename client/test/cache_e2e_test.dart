@@ -69,8 +69,7 @@ void main() {
     await taskRepo.syncGateway('hermes');
 
     final remoteCompleter = Completer<List<ManagedTask>>();
-    final tasksApi = _FakeTasksApiService()
-      ..listCompleter = remoteCompleter;
+    final tasksApi = _FakeTasksApiService()..listCompleter = remoteCompleter;
 
     await _pumpSubject(
       tester,
@@ -164,26 +163,36 @@ void main() {
     expect(skillsApi.lastListLocale, 'zh');
     expect(find.text('web-search'), findsOneWidget);
     expect(find.text('搜索网页'), findsOneWidget);
+    expect(find.text('网页搜索'), findsNothing);
     expect(find.text('网络搜索'), findsNothing);
 
     listCompleter.complete([
       _skill(
+        trigger: 'Use when web lookup is needed',
+        body: '## Source body\n',
         sourceHash: 'hash-remote',
         translatedName: '网络搜索',
         translatedDescription: '联网搜索',
+        translatedTrigger: '需要联网搜索时使用',
+        translatedBody: '## 翻译正文\n',
       ),
     ]);
     await _pumpFrames(tester);
 
     expect(find.text('web-search'), findsOneWidget);
+    expect(find.text('联网搜索'), findsOneWidget);
+    expect(find.text('搜索网页'), findsNothing);
     expect(find.text('网络搜索'), findsNothing);
 
     await tester.tap(find.widgetWithText(OutlinedButton, '编辑').first);
     await _pumpFrames(tester);
 
-    expect(skillsApi.lastDetailLocale, 'zh');
+    expect(skillsApi.lastDetailLocale, isNull);
     final fields = find.byType(TextFormField);
-    expect(tester.widget<TextFormField>(fields.at(0)).controller?.text, 'web-search');
+    expect(
+      tester.widget<TextFormField>(fields.at(0)).controller?.text,
+      'web-search',
+    );
     expect(
       tester.widget<TextFormField>(fields.at(2)).controller?.text,
       'Use when web lookup is needed',
@@ -222,7 +231,8 @@ Future<void> _pumpSubject(
         currentUserUidProvider.overrideWithValue(_userId),
         databaseProvider.overrideWithValue(db),
         gatewayRepositoryProvider.overrideWithValue(gatewayRepo),
-        if (tasksApi != null) tasksApiServiceProvider.overrideWithValue(tasksApi),
+        if (tasksApi != null)
+          tasksApiServiceProvider.overrideWithValue(tasksApi),
         if (skillsApi != null)
           skillsApiServiceProvider.overrideWithValue(skillsApi),
       ],

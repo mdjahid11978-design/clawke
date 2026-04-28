@@ -257,7 +257,12 @@ Future<void> _createConversation(
 
   final skills = _stringList(step['skills']);
   if (skills.isNotEmpty) {
-    await _selectConversationSkills(tester, skills);
+    await _selectConversationSkills(
+      tester,
+      skills,
+      searchQuery: step['skillSearchQuery'] as String?,
+      absentAfterSearch: _stringList(step['skillSearchAbsent']),
+    );
   }
 
   await _tapButtonText(tester, '创建');
@@ -279,13 +284,37 @@ Future<void> _selectConversationModel(WidgetTester tester, String model) async {
 
 Future<void> _selectConversationSkills(
   WidgetTester tester,
-  List<String> skills,
-) async {
+  List<String> skills, {
+  String? searchQuery,
+  List<String> absentAfterSearch = const [],
+}) async {
   await _tapFirstAvailable(tester, [
     find.byIcon(Icons.build_rounded),
     find.textContaining('Skills'),
   ]);
   await _waitForText(tester, '选择 Skills');
+  final trimmedQuery = searchQuery?.trim();
+  if (trimmedQuery != null && trimmedQuery.isNotEmpty) {
+    for (final skill in skills) {
+      await _waitForText(tester, skill, timeout: const Duration(seconds: 30));
+    }
+    for (final hidden in absentAfterSearch) {
+      await _waitForText(tester, hidden, timeout: const Duration(seconds: 30));
+    }
+    final searchField = find.byType(TextField);
+    await _waitForFinder(tester, searchField);
+    await tester.ensureVisible(searchField.first);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.enterText(searchField.first, trimmedQuery);
+    await tester.pump(const Duration(milliseconds: 500));
+    for (final hidden in absentAfterSearch) {
+      await _waitForAbsentText(
+        tester,
+        hidden,
+        duration: const Duration(milliseconds: 800),
+      );
+    }
+  }
   for (final skill in skills) {
     await _waitForText(tester, skill, timeout: const Duration(seconds: 30));
     await _tapFinder(tester, find.text(skill).first);

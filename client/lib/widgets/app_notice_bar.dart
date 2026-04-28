@@ -4,57 +4,157 @@ enum AppNoticeSeverity { info, warning, error }
 
 class AppNoticeBar extends StatelessWidget {
   final String message;
+  final String? detail;
   final AppNoticeSeverity severity;
   final VoidCallback onDismiss;
+  final VoidCallback? onAction;
+  final IconData? actionIcon;
+  final String? actionTooltip;
+  final bool showProgress;
+  final bool edgeToEdge;
 
   const AppNoticeBar({
     super.key,
     required this.message,
+    this.detail,
     required this.severity,
     required this.onDismiss,
+    this.onAction,
+    this.actionIcon,
+    this.actionTooltip,
+    this.showProgress = false,
+    this.edgeToEdge = false,
   });
+
+  const AppNoticeBar.info({
+    super.key,
+    required this.message,
+    this.detail,
+    required this.onDismiss,
+    this.onAction,
+    this.actionIcon,
+    this.actionTooltip,
+    this.showProgress = false,
+    this.edgeToEdge = false,
+  }) : severity = AppNoticeSeverity.info;
+
+  const AppNoticeBar.warning({
+    super.key,
+    required this.message,
+    this.detail,
+    required this.onDismiss,
+    this.onAction,
+    this.actionIcon,
+    this.actionTooltip,
+    this.showProgress = false,
+    this.edgeToEdge = false,
+  }) : severity = AppNoticeSeverity.warning;
+
+  const AppNoticeBar.error({
+    super.key,
+    required this.message,
+    this.detail,
+    required this.onDismiss,
+    this.onAction,
+    this.actionIcon,
+    this.actionTooltip,
+    this.showProgress = false,
+    this.edgeToEdge = false,
+  }) : severity = AppNoticeSeverity.error;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final palette = _palette(colorScheme);
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = viewportWidth < 600;
+    final maxWidth = isMobile
+        ? viewportWidth
+        : (viewportWidth * 0.64).clamp(800.0, 1120.0).toDouble();
+    final radius = BorderRadius.circular(edgeToEdge ? 0 : 8);
+    final border = edgeToEdge
+        ? Border(
+            top: BorderSide(color: palette.border),
+            bottom: BorderSide(color: palette.border),
+          )
+        : Border.all(color: palette.border);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 760),
+      constraints: BoxConstraints(maxWidth: maxWidth),
       child: Material(
         key: const ValueKey('app_notice_bar'),
         color: palette.background,
         elevation: 6,
         shadowColor: colorScheme.shadow.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: radius,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: palette.border),
-          ),
+          decoration: BoxDecoration(borderRadius: radius, border: border),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Icon(palette.icon, size: 22, color: palette.foreground),
+                child: showProgress
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: palette.foreground,
+                        ),
+                      )
+                    : Icon(palette.icon, size: 22, color: palette.foreground),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    message,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.foreground,
-                      fontWeight: FontWeight.w600,
-                      height: 1.45,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        message,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: palette.foreground,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                        ),
+                      ),
+                      if (detail != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          detail!,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: palette.foreground.withValues(
+                                  alpha: 0.82,
+                                ),
+                                height: 1.35,
+                              ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              if (onAction != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: actionTooltip,
+                  onPressed: onAction,
+                  icon: Icon(actionIcon ?? Icons.refresh),
+                  color: palette.foreground,
+                  iconSize: 20,
+                  constraints: const BoxConstraints(
+                    minWidth: 44,
+                    minHeight: 44,
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+              ],
+              const SizedBox(width: 4),
               IconButton(
                 key: const ValueKey('app_notice_close'),
                 tooltip: '关闭',

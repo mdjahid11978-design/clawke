@@ -9,6 +9,7 @@ import 'package:client/providers/chat_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/models/message_model.dart';
 import 'package:client/screens/chat_screen.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import '../helpers/provider_overrides.dart';
 
 void main() {
@@ -186,35 +187,38 @@ void main() {
       expect(sendButton.onPressed, isNull);
     });
 
-    testWidgets('shows dismissible gateway issue banner when selected gateway is disconnected', (
-      tester,
-    ) async {
-      await _pumpChatScreen(
-        tester,
-        selectedConvId: 'conv_hermes',
-        selectedAccountId: 'hermes',
-        messages: [],
-        wsState: WsState.connected,
-        connectedAccounts: const [
-          ConnectedAccount(accountId: 'OpenClaw', agentName: 'OpenClaw'),
-        ],
-        gateways: const [
-          GatewayInfo(
-            gatewayId: 'hermes',
-            displayName: 'Hermes',
-            gatewayType: 'hermes',
-            status: GatewayConnectionStatus.disconnected,
-          ),
-        ],
-      );
+    testWidgets(
+      'shows dismissible gateway issue banner when selected gateway is disconnected',
+      (tester) async {
+        await _pumpChatScreen(
+          tester,
+          selectedConvId: 'conv_hermes',
+          selectedAccountId: 'hermes',
+          messages: [],
+          wsState: WsState.connected,
+          connectedAccounts: const [
+            ConnectedAccount(accountId: 'OpenClaw', agentName: 'OpenClaw'),
+          ],
+          gateways: const [
+            GatewayInfo(
+              gatewayId: 'hermes',
+              displayName: 'Hermes',
+              gatewayType: 'hermes',
+              status: GatewayConnectionStatus.disconnected,
+            ),
+          ],
+        );
 
-      expect(find.text('当前网关未连接：Hermes'), findsOneWidget);
+        expect(find.text('当前网关未连接：Hermes'), findsOneWidget);
+        final notice = tester.widget<AppNoticeBar>(find.byType(AppNoticeBar));
+        expect(notice.severity, AppNoticeSeverity.error);
 
-      await tester.tap(find.byTooltip('关闭'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('关闭'));
+        await tester.pumpAndSettle();
 
-      expect(find.text('当前网关未连接：Hermes'), findsNothing);
-    });
+        expect(find.text('当前网关未连接：Hermes'), findsNothing);
+      },
+    );
   });
 }
 

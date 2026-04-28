@@ -18,7 +18,7 @@ function waitForOpenOrError(ws) {
   });
 }
 
-describe('Unified server local auth bypass', () => {
+describe('Unified server auth', () => {
   const servers = [];
   const tempDirs = [];
   let previousClawkeDataDir;
@@ -62,10 +62,20 @@ describe('Unified server local auth bypass', () => {
     return server.address().port;
   }
 
-  it('allows local HTTP requests without token even when relay token exists', async () => {
+  it('rejects local HTTP requests without token when relay token exists', async () => {
     const port = await startServerWithRelayToken();
 
     const res = await fetch(`http://127.0.0.1:${port}/api/does-not-exist`);
+
+    assert.equal(res.status, 401);
+  });
+
+  it('allows local HTTP requests with token when relay token exists', async () => {
+    const port = await startServerWithRelayToken();
+
+    const res = await fetch(`http://127.0.0.1:${port}/api/does-not-exist`, {
+      headers: { authorization: 'Bearer local-auth-token' },
+    });
 
     assert.equal(res.status, 404);
   });
@@ -82,12 +92,12 @@ describe('Unified server local auth bypass', () => {
       serverToken: 'local-auth-token',
       clientToken: '',
       remoteAddress: '127.0.0.1',
-    }), true);
+    }), false);
     assert.equal(isAuthorizedRequest({
       serverToken: 'local-auth-token',
       clientToken: '',
       remoteAddress: '::ffff:127.0.0.1',
-    }), true);
+    }), false);
     assert.equal(isAuthorizedRequest({
       serverToken: 'local-auth-token',
       clientToken: 'local-auth-token',
@@ -95,9 +105,19 @@ describe('Unified server local auth bypass', () => {
     }), true);
   });
 
-  it('allows local WebSocket requests without token even when relay token exists', async () => {
+  it('rejects local WebSocket requests without token when relay token exists', async () => {
     const port = await startServerWithRelayToken();
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+
+    const result = await waitForOpenOrError(ws);
+    ws.close();
+
+    assert.equal(result.ok, false);
+  });
+
+  it('allows local WebSocket requests with token when relay token exists', async () => {
+    const port = await startServerWithRelayToken();
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?token=local-auth-token`);
 
     const result = await waitForOpenOrError(ws);
     ws.close();

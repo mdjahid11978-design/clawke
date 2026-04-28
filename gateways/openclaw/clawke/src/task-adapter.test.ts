@@ -59,6 +59,34 @@ test("OpenClawTaskAdapter lists agent cron jobs through OpenClaw Gateway RPC", a
   assert.equal(listed[0].last_run?.status, "success");
 });
 
+test("OpenClawTaskAdapter omits last_run when OpenClaw state has no real run time", async () => {
+  const { adapter } = createAdapter(async (method, params) => {
+    assert.equal(method, "cron.list");
+    assert.deepEqual(params, { includeDisabled: true });
+    return {
+      jobs: [
+        {
+          id: "job_no_time",
+          name: "No timestamp",
+          enabled: true,
+          createdAtMs: 1776395104970,
+          updatedAtMs: 1776395104970,
+          schedule: { kind: "cron", expr: "0 7 * * *" },
+          payload: { kind: "agentTurn", message: "Create report" },
+          state: {
+            lastRunStatus: "ok",
+          },
+        },
+      ],
+    };
+  });
+
+  const listed = await adapter.listTasks("OpenClaw");
+
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].last_run, undefined);
+});
+
 test("OpenClawTaskAdapter mutates tasks through OpenClaw cron RPC methods", async () => {
   let job = {
     id: "job_new",

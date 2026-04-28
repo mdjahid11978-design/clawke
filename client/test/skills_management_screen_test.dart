@@ -9,6 +9,7 @@ import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/screens/skills_management_screen.dart';
 import 'package:client/services/skills_api_service.dart';
+import 'package:client/widgets/app_notice_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1493,7 +1494,7 @@ void main() {
     expect(find.text('No skill request will be sent.'), findsOneWidget);
   });
 
-  testWidgets('skills gateway errors do not show bottom snackbar', (
+  testWidgets('skills gateway errors show app notice without bottom snackbar', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 900);
@@ -1513,11 +1514,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SnackBar), findsNothing);
+    final notice = tester.widget<AppNoticeBar>(find.byType(AppNoticeBar));
+    expect(notice.severity, AppNoticeSeverity.error);
     expect(
       find.byKey(const ValueKey('gateway_issue_openclaw-lab')),
       findsOneWidget,
     );
-    expect(find.textContaining('Gateway 未连接'), findsOneWidget);
+    expect(notice.message, contains('Gateway 未连接'));
+    expect(find.text('OpenClaw Gateway 未连接'), findsOneWidget);
     expect(find.textContaining('网关响应超时'), findsNothing);
   });
 

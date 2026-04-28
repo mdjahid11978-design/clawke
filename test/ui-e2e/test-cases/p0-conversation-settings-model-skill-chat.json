@@ -5,6 +5,7 @@
   "objective": "验证从会话设置新建会话、选择模型和 Skill、发送消息后，Server 会把配置注入到 Gateway；最后删除该测试会话。",
   "coverage": [
     "新建会话并选择模型",
+    "在 Skill 选择页搜索过滤 skill",
     "选择 skill 并保存配置",
     "发送消息并验证 Gateway 收到模型和 skill 配置",
     "删除测试会话"
@@ -25,7 +26,9 @@
       "action": "create_conversation",
       "name": "E2E 模型技能会话",
       "model": "e2e-config-model",
-      "skills": ["e2e-chat-skill"]
+      "skills": ["e2e-chat-skill"],
+      "skillSearchQuery": "chat",
+      "skillSearchAbsent": ["e2e-unused-skill"]
     },
     { "action": "send_message", "text": "请用配置回答" },
     { "action": "wait_for_text", "text": "配置已生效：model=e2e-config-model skill=e2e-chat-skill" },
@@ -48,6 +51,20 @@
         "path": "general/e2e-chat-skill/SKILL.md",
         "root": "/tmp/clawke-e2e-skills",
         "body": "## Purpose\n\nUsed by conversation settings UI E2E."
+      },
+      {
+        "id": "general/e2e-unused-skill",
+        "name": "e2e-unused-skill",
+        "category": "general",
+        "description": "E2E conversation settings skill that should be filtered out",
+        "enabled": true,
+        "source": "managed",
+        "sourceLabel": "E2E skills",
+        "writable": true,
+        "deletable": true,
+        "path": "general/e2e-unused-skill/SKILL.md",
+        "root": "/tmp/clawke-e2e-skills",
+        "body": "## Purpose\n\nVerifies skill search filtering."
       }
     ],
     "interactions": [
