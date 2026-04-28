@@ -6,11 +6,10 @@ import { join } from "node:path";
 export type OpenClawTaskStatus = "active" | "paused";
 export type OpenClawRunStatus = "running" | "success" | "failed" | "cancelled";
 
-export type OpenClawGatewayRpc = (
-  method: string,
-  params?: unknown,
-  options?: { timeoutMs?: number },
-) => Promise<unknown>;
+export type OpenClawGatewayRpc = {
+  (method: string, params?: unknown, options?: { timeoutMs?: number }): Promise<unknown>;
+  close?: () => void;
+};
 
 export interface OpenClawGatewayRpcOptions {
   gatewayUrl?: string;
@@ -477,7 +476,9 @@ export class OpenClawTaskAdapter {
 
 export function createOpenClawGatewayRpc(options: OpenClawGatewayRpcOptions = {}): OpenClawGatewayRpc {
   const client = new OpenClawGatewayRpcClient(resolveGatewayConnectOptions(options));
-  return (method, params, rpcOptions) => client.call(method, params, rpcOptions);
+  const rpc: OpenClawGatewayRpc = (method, params, rpcOptions) => client.call(method, params, rpcOptions);
+  rpc.close = () => client.close();
+  return rpc;
 }
 
 function resolveGatewayConnectOptions(options: OpenClawGatewayRpcOptions): GatewayConnectOptions {
@@ -531,6 +532,18 @@ class OpenClawGatewayRpcClient {
       this.pending.set(id, { resolve, reject, timer });
       ws.send(JSON.stringify({ type: "req", id, method, params }));
     });
+  }
+
+  close(): void {
+    this.rejectPending(new Error("OpenClaw Gateway RPC client closed"));
+    this.authenticated = false;
+    this.connectPromise = null;
+    try {
+      this.ws?.close();
+    } catch {
+      // WebSocket 关闭是尽力而为 — WebSocket shutdown is best-effort.
+    }
+    this.ws = null;
   }
 
   private ensureConnected(): Promise<void> {
@@ -647,11 +660,11 @@ class OpenClawGatewayRpcClient {
           role: "operator",
           scopes: ["operator.read", "operator.write", "operator.admin", "operator.approvals"],
           client: {
-            id: "openclaw-tui",
+            id: "gateway-client",
             displayName: "Clawke Plugin",
             version: "1.0.2",
             platform: "openclaw-plugin",
-            mode: "ui",
+            mode: "backend",
           },
           caps: ["tool-events", "thinking-events"],
           auth,
@@ -679,11 +692,114 @@ function safeLoadConfig(): Record<string, unknown> {
     const stateDir = process.env.OPENCLAW_STATE_DIR || join(homedir(), ".openclaw");
     const configPath = process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
     if (!existsSync(configPath)) return {};
-    const loaded = JSON.parse(readFileSync(configPath, "utf8"));
+    const loaded = JSON.parse(stripJsonc(readFileSync(configPath, "utf8")));
     return isRecord(loaded) ? loaded : {};
   } catch {
     return {};
   }
+}
+
+function stripJsonc(input: string): string {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    const next = input[i + 1];
+
+    if (inLineComment) {
+      if (ch === "\n" || ch === "\r") {
+        inLineComment = false;
+        output += ch;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 1;
+      } else if (ch === "\n" || ch === "\r") {
+        output += ch;
+      }
+      continue;
+    }
+
+    if (inString) {
+      output += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      output += ch;
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (ch === "/" && next === "*") {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    output += ch;
+  }
+
+  return stripTrailingCommas(output);
+}
+
+function stripTrailingCommas(input: string): string {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+
+    if (inString) {
+      output += ch;
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = true;
+      output += ch;
+      continue;
+    }
+
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < input.length && /\s/.test(input[j])) j += 1;
+      if (input[j] === "}" || input[j] === "]") continue;
+    }
+
+    output += ch;
+  }
+
+  return output;
 }
 
 function stringSecret(value: unknown): string | undefined {

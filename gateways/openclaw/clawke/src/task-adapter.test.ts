@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OpenClawTaskAdapter, type OpenClawGatewayRpc } from "./task-adapter.ts";
 
 type RpcCall = {
@@ -204,6 +207,11 @@ test("OpenClawTaskAdapter maps cron run log timestamps without epoch fallback", 
 test("OpenClawTaskAdapter default RPC connects to the OpenClaw gateway origin endpoint", async () => {
   const originalWebSocket = globalThis.WebSocket;
   const originalPort = process.env.OPENCLAW_GATEWAY_PORT;
+  const originalToken = process.env.OPENCLAW_GATEWAY_TOKEN;
+  const originalPassword = process.env.OPENCLAW_GATEWAY_PASSWORD;
+  const originalConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+  const tempDir = mkdtempSync(join(tmpdir(), "clawke-openclaw-config-"));
+  const configPath = join(tempDir, "openclaw.json");
   let capturedUrl = "";
   let connectParams: Record<string, unknown> | undefined;
 
@@ -262,7 +270,24 @@ test("OpenClawTaskAdapter default RPC connects to the OpenClaw gateway origin en
   }
 
   try {
-    process.env.OPENCLAW_GATEWAY_PORT = "18789";
+    delete process.env.OPENCLAW_GATEWAY_PORT;
+    delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    delete process.env.OPENCLAW_GATEWAY_PASSWORD;
+    process.env.OPENCLAW_CONFIG_PATH = configPath;
+    writeFileSync(
+      configPath,
+      `{
+        // 本地配置允许注释 — Local config allows comments.
+        "gateway": {
+          "port": 18789,
+          "auth": {
+            "mode": "token",
+            "token": "test-token", // token 可带尾注释 — Token may have trailing comments.
+          },
+        },
+      }`,
+      "utf8",
+    );
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
       value: FakeWebSocket,
@@ -274,18 +299,35 @@ test("OpenClawTaskAdapter default RPC connects to the OpenClaw gateway origin en
     assert.equal(capturedUrl, "ws://127.0.0.1:18789");
     assert.equal(connectParams?.nonce, undefined);
     assert.deepEqual(connectParams?.client, {
-      id: "openclaw-tui",
+      id: "gateway-client",
       displayName: "Clawke Plugin",
       version: "1.0.2",
       platform: "openclaw-plugin",
-      mode: "ui",
+      mode: "backend",
     });
+    assert.deepEqual(connectParams?.auth, { token: "test-token" });
   } finally {
     if (originalPort === undefined) {
       delete process.env.OPENCLAW_GATEWAY_PORT;
     } else {
       process.env.OPENCLAW_GATEWAY_PORT = originalPort;
     }
+    if (originalToken === undefined) {
+      delete process.env.OPENCLAW_GATEWAY_TOKEN;
+    } else {
+      process.env.OPENCLAW_GATEWAY_TOKEN = originalToken;
+    }
+    if (originalPassword === undefined) {
+      delete process.env.OPENCLAW_GATEWAY_PASSWORD;
+    } else {
+      process.env.OPENCLAW_GATEWAY_PASSWORD = originalPassword;
+    }
+    if (originalConfigPath === undefined) {
+      delete process.env.OPENCLAW_CONFIG_PATH;
+    } else {
+      process.env.OPENCLAW_CONFIG_PATH = originalConfigPath;
+    }
+    rmSync(tempDir, { recursive: true, force: true });
     Object.defineProperty(globalThis, "WebSocket", {
       configurable: true,
       value: originalWebSocket,
