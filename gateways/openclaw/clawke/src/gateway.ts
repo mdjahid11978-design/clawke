@@ -13,6 +13,7 @@ import { OpenClawModelAdapter } from "./model-adapter.js";
 import { GatewayBoundaryFinalizer } from "./gateway-stream-finalizer.js";
 import {
   handleGatewaySystemRequest,
+  runOpenClawSystemPrompt,
   type GatewaySystemRequest,
   type GatewaySystemRunnerResult,
 } from "./gateway-system-request.ts";
@@ -632,78 +633,7 @@ async function runOpenClawSystemRequest(
   ctx: ChannelGatewayContext<ResolvedClawkeAccount>,
   msg: GatewaySystemRequest,
 ): Promise<GatewaySystemRunnerResult> {
-  const core = getClawkeRuntime();
-  const cfg = ctx.cfg;
-  const systemSessionId = msg.system_session_id || `__clawke_system__:${ctx.accountId}`;
-  const prompt = msg.prompt || "";
-  const messageId = msg.request_id || `system_${Date.now()}`;
-  const startedAt = Date.now();
-
-  ctx.log?.info(
-    `[OpenClawGateway] model request started request=${messageId} provider=openclaw model=primary timeoutMs=default`,
-  );
-
-  const route = core.channel.routing.resolveAgentRoute({
-    cfg,
-    channel: "clawke",
-    accountId: ctx.accountId,
-    peer: { kind: "direct", id: `clawke:${systemSessionId}` },
-  });
-  const systemCtx = core.channel.reply.finalizeInboundContext({
-    Body: prompt,
-    BodyForAgent: prompt,
-    RawBody: prompt,
-    CommandBody: prompt,
-    BodyForCommands: prompt,
-    From: `clawke:${systemSessionId}`,
-    To: `user:${systemSessionId}`,
-    SessionKey: route.sessionKey,
-    AccountId: route.accountId,
-    ChatType: "direct",
-    SenderName: systemSessionId,
-    SenderId: systemSessionId,
-    Provider: "clawke" as any,
-    Surface: "clawke" as any,
-    MessageSid: messageId,
-    Timestamp: Date.now(),
-    OriginatingChannel: "clawke" as any,
-    OriginatingTo: `user:${systemSessionId}`,
-    CommandAuthorized: true,
-  });
-
-  let latestText = "";
-  let finalText = "";
-  const dispatcher = core.channel.reply.createReplyDispatcherWithTyping({
-    ctx: systemCtx,
-    cfg,
-    sessionKey: route.sessionKey,
-    dispatcher: {
-      deliver: async (payload: ReplyPayload) => {
-        if (payload.text) finalText = payload.text;
-      },
-    },
-    replyOptions: {},
-  });
-
-  await core.channel.reply.withReplyDispatcher(systemCtx, dispatcher, async () => {
-    await core.channel.reply.dispatchReplyFromConfig({
-      ctx: systemCtx,
-      cfg,
-      dispatcher,
-      replyOptions: {
-        disableBlockStreaming: true,
-        onPartialReply: (payload: ReplyPayload) => {
-          if (payload.text) latestText = payload.text;
-        },
-      },
-    });
-  });
-
-  const text = finalText || latestText;
-  ctx.log?.info(
-    `[OpenClawGateway] model request completed request=${messageId} durationMs=${Date.now() - startedAt} textLength=${text.length}`,
-  );
-  return { text };
+  return runOpenClawSystemPrompt(ctx, msg, getClawkeRuntime());
 }
 
 async function handleClawkeInbound(

@@ -102,3 +102,4 @@ client/demo/
 __pycache__/
 *.pyc
 *.pyo
+.gstack/

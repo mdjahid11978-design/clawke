@@ -89,12 +89,15 @@ test('service queues missing translation and worker stores ready cache without t
   const calls = [];
   const service = new SkillTranslationService({
     store,
-    translator: async (source, locale, context) => {
-      calls.push({ source, locale, context });
-      return {
-      name: '网页搜索',
-      description: '搜索网页',
-      };
+    translator: async (items, locale) => {
+      calls.push({ items, locale });
+      return new Map(items.map((item) => [
+        item.jobId,
+        {
+          name: '网页搜索',
+          description: '搜索网页',
+        },
+      ]));
     },
   });
 
@@ -124,15 +127,98 @@ test('service queues missing translation and worker stores ready cache without t
   assert.equal(ready.name, undefined);
   assert.equal(ready.description, '搜索网页');
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].source, { name: 'web-search', description: 'Search' });
+  assert.deepEqual(calls[0].items[0].source, { name: 'web-search', description: 'Search' });
   assert.equal(calls[0].locale, 'zh-CN');
-  assert.equal(calls[0].context.gatewayType, 'hermes');
-  assert.equal(calls[0].context.gatewayId, 'hermes');
-  assert.equal(calls[0].context.skillId, 'general/web-search');
-  assert.equal(calls[0].context.locale, 'zh-CN');
-  assert.equal(calls[0].context.fieldSet, 'metadata');
-  assert.equal(calls[0].context.sourceHash, 'sha256:a');
-  assert.equal(typeof calls[0].context.jobId, 'string');
+  assert.equal(calls[0].items[0].gatewayType, 'hermes');
+  assert.equal(calls[0].items[0].gatewayId, 'hermes');
+  assert.equal(calls[0].items[0].skillId, 'general/web-search');
+  assert.equal(calls[0].items[0].locale, 'zh-CN');
+  assert.equal(calls[0].items[0].fieldSet, 'metadata');
+  assert.equal(calls[0].items[0].sourceHash, 'sha256:a');
+  assert.equal(typeof calls[0].items[0].jobId, 'string');
+  db.close();
+});
+
+test('service batches pending jobs for the same gateway and locale', async () => {
+  const db = new Database(':memory:');
+  const store = new SkillTranslationStore(db);
+  const calls = [];
+  const service = new SkillTranslationService({
+    store,
+    batchSize: 10,
+    translator: async (items, locale) => {
+      calls.push({ items, locale });
+      return new Map(items.map((item) => [
+        item.jobId,
+        { description: `translated:${item.skillId}` },
+      ]));
+    },
+  });
+
+  service.getOrQueue({
+    gatewayType: 'hermes',
+    gatewayId: 'hermes',
+    skillId: 'general/a',
+    locale: 'zh',
+    fieldSet: 'metadata',
+    sourceHash: 'sha256:a',
+    source: { description: 'A description' },
+  });
+  service.getOrQueue({
+    gatewayType: 'hermes',
+    gatewayId: 'hermes',
+    skillId: 'general/b',
+    locale: 'zh',
+    fieldSet: 'metadata',
+    sourceHash: 'sha256:b',
+    source: { description: 'B description' },
+  });
+  service.getOrQueue({
+    gatewayType: 'OpenClaw',
+    gatewayId: 'OpenClaw',
+    skillId: 'general/c',
+    locale: 'zh',
+    fieldSet: 'metadata',
+    sourceHash: 'sha256:c',
+    source: { description: 'C description' },
+  });
+
+  assert.equal(await service.runNextJob(), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].locale, 'zh');
+  assert.deepEqual(calls[0].items.map((item) => item.skillId), ['general/a', 'general/b']);
+
+  const rows = db.raw.prepare(`
+    SELECT gateway_id, skill_id, status
+    FROM skill_translation_jobs
+    ORDER BY created_at ASC
+  `).all();
+  assert.deepEqual(rows, [
+    { gateway_id: 'hermes', skill_id: 'general/a', status: 'ready' },
+    { gateway_id: 'hermes', skill_id: 'general/b', status: 'ready' },
+    { gateway_id: 'OpenClaw', skill_id: 'general/c', status: 'pending' },
+  ]);
+
+  const readyA = service.getOrQueue({
+    gatewayType: 'hermes',
+    gatewayId: 'hermes',
+    skillId: 'general/a',
+    locale: 'zh',
+    fieldSet: 'metadata',
+    sourceHash: 'sha256:a',
+    source: { description: 'A description' },
+  });
+  const readyB = service.getOrQueue({
+    gatewayType: 'hermes',
+    gatewayId: 'hermes',
+    skillId: 'general/b',
+    locale: 'zh',
+    fieldSet: 'metadata',
+    sourceHash: 'sha256:b',
+    source: { description: 'B description' },
+  });
+  assert.equal(readyA.description, 'translated:general/a');
+  assert.equal(readyB.description, 'translated:general/b');
   db.close();
 });
 
@@ -173,9 +259,10 @@ test('translation worker drains pending jobs in the background', async () => {
   const store = new SkillTranslationStore(db);
   const service = new SkillTranslationService({
     store,
-    translator: async () => ({
-      description: '搜索网页',
-    }),
+    translator: async (items) => new Map(items.map((item) => [
+      item.jobId,
+      { description: '搜索网页' },
+    ])),
   });
 
   service.getOrQueue({

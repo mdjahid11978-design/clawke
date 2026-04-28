@@ -147,14 +147,53 @@ export class SkillTranslationStore {
   }
 
   nextPendingJob(): SkillTranslationJob | null {
-    const row = this.db.prepare(`
+    return this.nextPendingJobs(1)[0] ?? null;
+  }
+
+  nextPendingJobs(limit: number): SkillTranslationJob[] {
+    const first = this.db.prepare(`
       SELECT *
       FROM skill_translation_jobs
       WHERE status = 'pending'
       ORDER BY created_at ASC
       LIMIT 1
     `).get() as JobRow | undefined;
-    return row ?? null;
+    if (!first) return [];
+
+    const rows = this.db.prepare(`
+      SELECT *
+      FROM skill_translation_jobs
+      WHERE status = 'pending'
+        AND gateway_type = ?
+        AND gateway_id = ?
+        AND locale = ?
+        AND field_set = ?
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(
+      first.gateway_type,
+      first.gateway_id,
+      first.locale,
+      first.field_set,
+      Math.max(1, limit),
+    ) as JobRow[];
+    return rows;
+  }
+
+  markJobsRunning(jobIds: string[]): void {
+    if (jobIds.length === 0) return;
+    const stmt = this.db.prepare(`
+      UPDATE skill_translation_jobs
+      SET status = 'running',
+          attempt_count = attempt_count + 1,
+          updated_at = ?
+      WHERE job_id = ?
+    `);
+    const now = Date.now();
+    const update = this.db.transaction((ids: string[]) => {
+      for (const jobId of ids) stmt.run(now, jobId);
+    });
+    update(jobIds);
   }
 
   markJobRunning(jobId: string): void {

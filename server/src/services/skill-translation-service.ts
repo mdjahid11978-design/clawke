@@ -20,11 +20,14 @@ export interface SkillTranslationJobContext {
   sourceHash: string;
 }
 
+export interface SkillTranslationBatchItem extends SkillTranslationJobContext {
+  source: SkillTranslationSource;
+}
+
 export type SkillTranslator = (
-  source: SkillTranslationSource,
+  items: SkillTranslationBatchItem[],
   locale: string,
-  context: SkillTranslationJobContext,
-) => Promise<Pick<Partial<SkillLocalizationPayload>, 'description'>>;
+) => Promise<Map<string, Pick<Partial<SkillLocalizationPayload>, 'description'>>>;
 
 export interface SkillTranslationLookupInput {
   gatewayType: string;
@@ -41,6 +44,7 @@ export class SkillTranslationService {
     private readonly options: {
       store: SkillTranslationStore;
       translator: SkillTranslator;
+      batchSize?: number;
     },
   ) {}
 
@@ -74,16 +78,17 @@ export class SkillTranslationService {
   }
 
   async runNextJob(): Promise<boolean> {
-    const job = this.options.store.nextPendingJob();
-    if (!job) return false;
+    const jobs = this.options.store.nextPendingJobs(this.options.batchSize ?? 25);
+    if (jobs.length === 0) return false;
 
-    this.options.store.markJobRunning(job.job_id);
+    const jobIds = jobs.map((job) => job.job_id);
+    this.options.store.markJobsRunning(jobIds);
     try {
+      const firstJob = jobs[0];
       console.log(
-        `[SkillTranslation] job started job=${job.job_id} attempt=${job.attempt_count + 1} backend=gateway_system gateway=${job.gateway_id} locale=${job.locale} sourceHash=${job.source_hash}`,
+        `[SkillTranslation] batch started jobs=${jobs.length} firstJob=${firstJob.job_id} backend=gateway_system gateway=${firstJob.gateway_id} locale=${firstJob.locale}`,
       );
-      const source = parseSource(job.source_json);
-      const translated = await this.options.translator(source, job.locale, {
+      const items = jobs.map((job): SkillTranslationBatchItem => ({
         jobId: job.job_id,
         gatewayType: job.gateway_type,
         gatewayId: job.gateway_id,
@@ -91,34 +96,52 @@ export class SkillTranslationService {
         locale: job.locale,
         fieldSet: job.field_set,
         sourceHash: job.source_hash,
-      });
-      this.options.store.upsertCache({
-        gateway_type: job.gateway_type,
-        gateway_id: job.gateway_id,
-        skill_id: job.skill_id,
-        locale: job.locale,
-        field_set: job.field_set,
-        source_hash: job.source_hash,
-        translated_name: null,
-        translated_description: translated.description ?? null,
-        translated_trigger: null,
-        translated_body: null,
-        status: 'ready',
-      });
-      this.options.store.markJobReady(job.job_id);
+        source: parseSource(job.source_json),
+      }));
+      const translatedByJobId = await this.options.translator(items, firstJob.locale);
+      let readyCount = 0;
+      let failedCount = 0;
+      for (const job of jobs) {
+        const translated = translatedByJobId.get(job.job_id);
+        if (!translated?.description) {
+          failedCount += 1;
+          this.options.store.markJobFailed(job.job_id, 'Skill translation response did not include description.');
+          console.warn(
+            `[SkillTranslation] cache failed job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} error=missing_description fallback=source`,
+          );
+          continue;
+        }
+        this.options.store.upsertCache({
+          gateway_type: job.gateway_type,
+          gateway_id: job.gateway_id,
+          skill_id: job.skill_id,
+          locale: job.locale,
+          field_set: job.field_set,
+          source_hash: job.source_hash,
+          translated_name: null,
+          translated_description: translated.description,
+          translated_trigger: null,
+          translated_body: null,
+          status: 'ready',
+        });
+        this.options.store.markJobReady(job.job_id);
+        readyCount += 1;
+        console.log(
+          `[SkillTranslation] cache ready job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} translatedDescriptionLength=${translated.description.length}`,
+        );
+      }
       console.log(
-        `[SkillTranslation] cache ready job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} translatedDescriptionLength=${translated.description?.length ?? 0}`,
+        `[SkillTranslation] batch finished jobs=${jobs.length} ready=${readyCount} failed=${failedCount} gateway=${firstJob.gateway_id} locale=${firstJob.locale}`,
       );
-      return true;
+      return readyCount > 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.options.store.markJobFailed(
-        job.job_id,
-        message,
-      );
-      console.warn(
-        `[SkillTranslation] cache failed job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} error=${message} fallback=source`,
-      );
+      for (const job of jobs) {
+        this.options.store.markJobFailed(job.job_id, message);
+        console.warn(
+          `[SkillTranslation] cache failed job=${job.job_id} gateway=${job.gateway_id} entity=skill:${job.skill_id} locale=${job.locale} sourceHash=${job.source_hash} error=${message} fallback=source`,
+        );
+      }
       return false;
     }
   }
