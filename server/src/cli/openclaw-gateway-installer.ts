@@ -101,6 +101,12 @@ function mergeOpenClawConfig(): void {
   config.plugins.entries.clawke = { enabled: true };
   console.log('[clawke] ✅ Enabled plugins.entries.clawke');
 
+  if (enableControlUiInsecureAuthForClawke(config)) {
+    console.log('[clawke] ✅ Set gateway.controlUi.allowInsecureAuth = true');
+  } else {
+    console.log('[clawke] ✅ gateway.controlUi.allowInsecureAuth already enabled');
+  }
+
   // 合并 session.dmScope — 多会话隔离需要 per-account-channel-peer
   if (!config.session) config.session = {};
   const currentScope = config.session.dmScope;
@@ -161,6 +167,11 @@ If OpenClaw is installed on a remote server, install the gateway manually:
 
   2. Configure OpenClaw (edit ~/.openclaw/openclaw.json on the remote server):
      {
+       "gateway": {
+         "controlUi": {
+           "allowInsecureAuth": true
+         }
+       },
        "session": {
          "dmScope": "per-account-channel-peer"
        },
@@ -179,4 +190,21 @@ If OpenClaw is installed on a remote server, install the gateway manually:
 
   3. Restart OpenClaw on the remote server:
      npx openclaw gateway restart`);
+}
+
+export function enableControlUiInsecureAuthForClawke(config: Record<string, any>): boolean {
+  if (!config.gateway || typeof config.gateway !== 'object' || Array.isArray(config.gateway)) {
+    config.gateway = {};
+  }
+  if (
+    !config.gateway.controlUi ||
+    typeof config.gateway.controlUi !== 'object' ||
+    Array.isArray(config.gateway.controlUi)
+  ) {
+    config.gateway.controlUi = {};
+  }
+
+  const changed = config.gateway.controlUi.allowInsecureAuth !== true;
+  config.gateway.controlUi.allowInsecureAuth = true;
+  return changed;
 }

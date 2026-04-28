@@ -48,18 +48,6 @@ function detectAvailableGateways(): GatewayInfo[] {
     },
   });
 
-  // nanobot: 检查 ~/.nanobot/config.json
-  const nanobotConfig = path.join(os.homedir(), '.nanobot', 'config.json');
-  gateways.push({
-    name: 'nanobot',
-    displayName: 'nanobot',
-    configPath: nanobotConfig,
-    installFn: async () => {
-      const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
-      await installNanobotGateway();
-    },
-  });
-
   // Hermes: 检查 ~/.hermes/
   const hermesHome = path.join(os.homedir(), '.hermes');
   gateways.push({
@@ -69,6 +57,18 @@ function detectAvailableGateways(): GatewayInfo[] {
     installFn: async () => {
       const { installHermesGateway } = await import('./hermes-gateway-installer.js');
       await installHermesGateway();
+    },
+  });
+
+  // nanobot: 检查 ~/.nanobot/config.json
+  const nanobotConfig = path.join(os.homedir(), '.nanobot', 'config.json');
+  gateways.push({
+    name: 'nanobot',
+    displayName: 'nanobot',
+    configPath: nanobotConfig,
+    installFn: async () => {
+      const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
+      await installNanobotGateway();
     },
   });
 
@@ -504,4 +504,3 @@ main().catch((err) => {
   console.error('[clawke] Fatal error:', err.message);
   process.exit(1);
 });
-
