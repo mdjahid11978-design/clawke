@@ -58,7 +58,6 @@ relay-server/frp-auth/
 .claude/
 .superpowers/
 .internal-docs/
-CLAUDE.md
 bak/
 .worktrees/
 extends/
@@ -82,7 +81,6 @@ client/ios/Flutter/Flutter.podspec
 *.xcuserstate
 
 # Agent persona files (not project code)
-AGENTS.md
 SOUL.md
 USER.md
 TOOLS.md
