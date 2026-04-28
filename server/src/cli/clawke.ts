@@ -15,6 +15,7 @@ import path from 'path';
 import os from 'os';
 import readline from 'readline';
 import { spawn, execSync, type ChildProcess } from 'child_process';
+import { resolveGatewayStartShell } from './gateway-start-config.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -149,7 +150,7 @@ const gatewayChildren: ChildProcess[] = [];
 
 interface GatewayInstance {
   id: string;
-  start_shell: string;
+  start_shell?: string;
   hermes_home?: string;
 }
 
@@ -206,6 +207,14 @@ async function startGateways(): Promise<void> {
   console.log(`[clawke] 🔌 Starting ${instances.length} gateway(s)...`);
 
   for (const gw of instances) {
+    const startShell = resolveGatewayStartShell(gw);
+    if (!startShell) {
+      // 外部接入型 Gateway 没有本地启动命令，只需等待它主动连接。 — Externally managed gateways have no local start command; wait for inbound connection.
+      console.log(`[clawke] ℹ️  ${gw.id} gateway has no start_shell; waiting for external connection`);
+      removeGatewayPid(gw.id);
+      continue;
+    }
+
     // Kill old process if running (code may have been updated)
     const oldPid = readGatewayPid(gw.id);
     if (oldPid && isProcessAlive(oldPid)) {
@@ -229,7 +238,7 @@ async function startGateways(): Promise<void> {
     }
 
     // 通过 shell 启动，正确处理含空格路径和引号参数 — Use shell to handle spaces/quotes in paths
-    const child = spawn(gw.start_shell, [], {
+    const child = spawn(startShell, [], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
       shell: true,
@@ -259,7 +268,7 @@ async function startGateways(): Promise<void> {
         removeGatewayPid(gw.id);
       });
     } else {
-      console.error(`[clawke] ❌ Failed to start ${gw.id} gateway: ${gw.start_shell}`);
+      console.error(`[clawke] ❌ Failed to start ${gw.id} gateway: ${startShell}`);
     }
   }
 }
