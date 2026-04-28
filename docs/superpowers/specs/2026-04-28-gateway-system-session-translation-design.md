@@ -115,6 +115,10 @@ interface GatewayUserSessionResponse extends GatewaySessionResponse {}
 
 `purpose` 只用于日志、限流和排查，不决定业务逻辑。翻译业务仍由调用方负责。
 
+`request()` 是 request-response 模式。它返回 `Promise` 是因为 Server 到 Gateway、Gateway 到模型都是异步 I/O；调用方必须 `await` 结果后再解析 JSON、写缓存或标记失败。它不是 fire-and-forget 后台投递。
+
+`metadata` 只用于追踪、审计、日志和排查，不参与业务执行，不应该原样进入 LLM prompt。协议层不固定 skill 字段；如果调用方是 skill 翻译，由调用方用通用字段标记来源，例如 `entity_type: "skill"` 和 `entity_id: "<skill id>"`。
+
 `GatewaySystemSession` 和 `GatewayUserSession` 共用 `GatewaySession` 协议骨架，但副作用完全不同：system session 是后台内部交互，不写用户消息、不 sync、不通知；user session 面向真实用户会话，可以进入聊天记录和客户端同步。
 
 当前阶段只实现 `GatewayManageService.getSystemSession(gatewayId)`。`GatewayUserSession` 先作为协议方向保留，后续需要统一用户会话 gateway 入口时再实现。
@@ -204,7 +208,7 @@ Server 到 Gateway 可以新增通用后台请求类型：
 ```json
 {
   "type": "gateway_system_request",
-  "account_id": "OpenClaw",
+  "gateway_id": "OpenClaw",
   "system_session_id": "__clawke_system__:OpenClaw",
   "purpose": "translation",
   "prompt": "Return strict JSON...",
@@ -216,12 +220,15 @@ Server 到 Gateway 可以新增通用后台请求类型：
     }
   },
   "metadata": {
-    "source": "skill_translation",
-    "skill_id": "openclaw-bundled/1password",
+    "source": "translation",
+    "entity_type": "skill",
+    "entity_id": "openclaw-bundled/1password",
     "locale": "zh"
   }
 }
 ```
+
+上面 `metadata` 是调用方附带的通用追踪信息。`translation` 本身不理解 skill；`SkillTranslationService` 只是作为调用方把 `entity_type/entity_id` 写进 metadata，方便日志和缓存任务排查。
 
 Gateway 返回：
 
