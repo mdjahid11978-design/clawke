@@ -10,23 +10,30 @@ class ConfigApiService {
   late final Dio _dio;
 
   ConfigApiService() {
-    _dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
+    _dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ),
+    );
     // 动态注入 baseUrl 和 token（避免构造时 MediaResolver 还未初始化）
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        options.baseUrl = MediaResolver.baseUrl;
-        final headers = MediaResolver.authHeaders;
-        options.headers.addAll(headers);
-        handler.next(options);
-      },
-    ));
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          options.baseUrl = MediaResolver.baseUrl;
+          final headers = MediaResolver.authHeaders;
+          options.headers.addAll(headers);
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   /// 查询指定 Gateway 的可用模型列表
-  Future<List<String>> getModels({required String accountId, bool refresh = false}) async {
+  Future<List<String>> getModels({
+    required String accountId,
+    bool refresh = false,
+  }) async {
     try {
       final params = <String, String>{'account_id': accountId};
       if (refresh) params['refresh'] = '1';
@@ -35,7 +42,17 @@ class ConfigApiService {
         queryParameters: params,
       );
       final data = response.data as Map<String, dynamic>;
-      return (data['models'] as List?)?.cast<String>() ?? [];
+      final list = data['models'] as List? ?? [];
+      return list
+          .map((item) {
+            if (item is String) return item;
+            if (item is Map) {
+              return item['model_id'] as String? ?? item['id'] as String? ?? '';
+            }
+            return '';
+          })
+          .where((modelId) => modelId.isNotEmpty)
+          .toList();
     } catch (e) {
       debugPrint('[ConfigAPI] getModels error: $e');
       return [];
@@ -43,7 +60,10 @@ class ConfigApiService {
   }
 
   /// 查询指定 Gateway 的可用 Skill 列表
-  Future<List<SkillInfo>> getSkills({required String accountId, bool refresh = false}) async {
+  Future<List<SkillInfo>> getSkills({
+    required String accountId,
+    bool refresh = false,
+  }) async {
     try {
       final params = <String, String>{'account_id': accountId};
       if (refresh) params['refresh'] = '1';
@@ -54,10 +74,12 @@ class ConfigApiService {
       final data = response.data as Map<String, dynamic>;
       final list = data['skills'] as List? ?? [];
       return list
-          .map((s) => SkillInfo(
-                name: s['name'] as String,
-                description: s['description'] as String? ?? '',
-              ))
+          .map(
+            (s) => SkillInfo(
+              name: s['name'] as String,
+              description: s['description'] as String? ?? '',
+            ),
+          )
           .toList();
     } catch (e) {
       debugPrint('[ConfigAPI] getSkills error: $e');
@@ -80,10 +102,7 @@ class ConfigApiService {
   /// 保存会话配置
   Future<bool> saveConvConfig(String convId, ConvConfig config) async {
     try {
-      await _dio.put(
-        '/api/conv/$convId/config',
-        data: config.toJson(),
-      );
+      await _dio.put('/api/conv/$convId/config', data: config.toJson());
       debugPrint('[ConfigAPI] Saved config for conv=$convId');
       return true;
     } catch (e) {
@@ -99,7 +118,9 @@ class ConfigApiService {
     try {
       final response = await _dio.get('/api/conversations');
       final list = response.data as List;
-      return list.map((e) => ServerConv.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => ServerConv.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       debugPrint('[ConfigAPI] getConversations error: $e');
       return [];
@@ -107,14 +128,22 @@ class ConfigApiService {
   }
 
   /// 在 Server 上创建会话
-  Future<ServerConv?> createConversation({String? id, String? name, String type = 'dm', String? accountId}) async {
+  Future<ServerConv?> createConversation({
+    String? id,
+    String? name,
+    String type = 'dm',
+    String? accountId,
+  }) async {
     try {
-      final response = await _dio.post('/api/conversations', data: {
-        if (id != null) 'id': id,
-        if (name != null) 'name': name,
-        'type': type,
-        if (accountId != null) 'account_id': accountId,
-      });
+      final response = await _dio.post(
+        '/api/conversations',
+        data: {
+          if (id != null) 'id': id,
+          if (name != null) 'name': name,
+          'type': type,
+          if (accountId != null) 'account_id': accountId,
+        },
+      );
       return ServerConv.fromJson(response.data as Map<String, dynamic>);
     } catch (e) {
       debugPrint('[ConfigAPI] createConversation error: $e');
@@ -123,13 +152,21 @@ class ConfigApiService {
   }
 
   /// 更新 Server 上的会话（name, pin, mute）
-  Future<bool> updateConversation(String convId, {String? name, bool? isPinned, bool? isMuted}) async {
+  Future<bool> updateConversation(
+    String convId, {
+    String? name,
+    bool? isPinned,
+    bool? isMuted,
+  }) async {
     try {
-      await _dio.put('/api/conversations/$convId', data: {
-        if (name != null) 'name': name,
-        if (isPinned != null) 'is_pinned': isPinned,
-        if (isMuted != null) 'is_muted': isMuted,
-      });
+      await _dio.put(
+        '/api/conversations/$convId',
+        data: {
+          if (name != null) 'name': name,
+          if (isPinned != null) 'is_pinned': isPinned,
+          if (isMuted != null) 'is_muted': isMuted,
+        },
+      );
       return true;
     } catch (e) {
       debugPrint('[ConfigAPI] updateConversation error: $e');
@@ -162,6 +199,7 @@ class ConvConfig {
   final String convId;
   final String? accountId;
   final String? modelId;
+  final String? modelProvider;
   final List<String>? skills;
   final String? skillMode; // 'priority' | 'exclusive'
   final String? systemPrompt;
@@ -171,6 +209,7 @@ class ConvConfig {
     required this.convId,
     this.accountId,
     this.modelId,
+    this.modelProvider,
     this.skills,
     this.skillMode,
     this.systemPrompt,
@@ -192,6 +231,7 @@ class ConvConfig {
       convId: json['conv_id'] as String? ?? '',
       accountId: json['account_id'] as String?,
       modelId: json['model_id'] as String?,
+      modelProvider: json['model_provider'] as String?,
       skills: skills,
       skillMode: json['skill_mode'] as String?,
       systemPrompt: json['system_prompt'] as String?,
@@ -200,22 +240,25 @@ class ConvConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'account_id': accountId,
-        'model_id': modelId,
-        'skills': skills != null ? jsonEncode(skills) : null,
-        'skill_mode': skillMode,
-        'system_prompt': systemPrompt,
-        'work_dir': workDir,
-      };
+    'account_id': accountId,
+    'model_id': modelId,
+    'model_provider': modelProvider,
+    'skills': skills != null ? jsonEncode(skills) : null,
+    'skill_mode': skillMode,
+    'system_prompt': systemPrompt,
+    'work_dir': workDir,
+  };
 
   ConvConfig copyWith({
     String? accountId,
     String? modelId,
+    String? modelProvider,
     List<String>? skills,
     String? skillMode,
     String? systemPrompt,
     String? workDir,
     bool clearModelId = false,
+    bool clearModelProvider = false,
     bool clearSkills = false,
     bool clearSystemPrompt = false,
     bool clearWorkDir = false,
@@ -224,10 +267,14 @@ class ConvConfig {
       convId: convId,
       accountId: accountId ?? this.accountId,
       modelId: clearModelId ? null : (modelId ?? this.modelId),
+      modelProvider: clearModelProvider
+          ? null
+          : (modelProvider ?? this.modelProvider),
       skills: clearSkills ? null : (skills ?? this.skills),
       skillMode: skillMode ?? this.skillMode,
-      systemPrompt:
-          clearSystemPrompt ? null : (systemPrompt ?? this.systemPrompt),
+      systemPrompt: clearSystemPrompt
+          ? null
+          : (systemPrompt ?? this.systemPrompt),
       workDir: clearWorkDir ? null : (workDir ?? this.workDir),
     );
   }

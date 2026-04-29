@@ -73,11 +73,12 @@ class _ConversationSettingsSheetState
   bool get _isCreateMode => widget.conversationId == null;
 
   // 可选列表
-  List<String> _availableModels = [];
+  List<CachedGatewayModel> _availableModels = [];
   List<SkillInfo> _availableSkills = [];
 
   // 当前配置
   String? _selectedModel;
+  String? _selectedModelProvider;
   Set<String> _selectedSkills = {};
   String _skillMode = 'priority';
   final _nameController = TextEditingController();
@@ -119,9 +120,7 @@ class _ConversationSettingsSheetState
       ]);
       if (!mounted) return;
       setState(() {
-        _availableModels = _mergeSelectedModel(
-          _modelIds(results[0] as List<CachedGatewayModel>),
-        );
+        _availableModels = results[0] as List<CachedGatewayModel>;
         _availableSkills = _mergeSelectedSkills(
           _toSkillInfoList(results[1] as List<ManagedSkill>),
         );
@@ -142,7 +141,7 @@ class _ConversationSettingsSheetState
           .getConversationName(widget.conversationId!),
     ]);
 
-    final models = _modelIds(results[0] as List<CachedGatewayModel>);
+    final models = results[0] as List<CachedGatewayModel>;
     final skills = _toSkillInfoList(results[1] as List<ManagedSkill>);
     final config = results[2] as ConvConfig;
     final convName = results[3] as String?;
@@ -152,29 +151,18 @@ class _ConversationSettingsSheetState
       if (!refresh) {
         _nameController.text = convName ?? '';
         _selectedModel = config.modelId;
+        _selectedModelProvider = config.modelProvider;
         _selectedSkills = (config.skills ?? []).toSet();
         _skillMode = config.skillMode ?? 'priority';
         _systemPromptController.text = config.systemPrompt ?? '';
         _workDirController.text = config.workDir ?? '';
       }
-      _availableModels = _mergeSelectedModel(models);
+      _availableModels = models;
       _availableSkills = _mergeSelectedSkills(skills);
       _loading = false;
     });
     unawaited(_refreshModelsFromRemote());
     unawaited(_refreshSkillsFromRemote());
-  }
-
-  List<String> _modelIds(List<CachedGatewayModel> models) {
-    return models.map((model) => model.modelId).toList();
-  }
-
-  List<String> _mergeSelectedModel(List<String> models) {
-    final selected = _selectedModel;
-    if (selected == null || selected.isEmpty || models.contains(selected)) {
-      return models;
-    }
-    return [selected, ...models];
   }
 
   List<SkillInfo> _toSkillInfoList(List<ManagedSkill> skills) {
@@ -200,12 +188,10 @@ class _ConversationSettingsSheetState
     return byName.values.toList();
   }
 
-  Future<List<String>> _refreshModelsFromRemote() async {
+  Future<List<CachedGatewayModel>> _refreshModelsFromRemote() async {
     try {
       final modelRepository = ref.read(modelCacheRepositoryProvider);
-      final models = _mergeSelectedModel(
-        _modelIds(await modelRepository.syncGateway(widget.accountId)),
-      );
+      final models = await modelRepository.syncGateway(widget.accountId);
       if (!mounted) return _availableModels;
       setState(() => _availableModels = models);
       return models;
@@ -266,6 +252,7 @@ class _ConversationSettingsSheetState
       convId: convId,
       accountId: widget.accountId,
       modelId: _selectedModel,
+      modelProvider: _selectedModelProvider,
       skills: _selectedSkills.isEmpty ? null : _selectedSkills.toList(),
       skillMode: _selectedSkills.isEmpty ? null : _skillMode,
       systemPrompt: _systemPromptController.text.trim().isEmpty
@@ -512,7 +499,15 @@ class _ConversationSettingsSheetState
   // 模型卡片 — 显示模型名称
   // ═══════════════════════════════════════
   Widget _buildModelCard(ColorScheme colorScheme) {
-    final displayModel = _selectedModel ?? context.l10n.defaultModel;
+    final selectedModel = _selectedModel == null
+        ? null
+        : _availableModels
+              .where((model) => model.modelId == _selectedModel)
+              .firstOrNull;
+    final displayModel =
+        selectedModel?.displayName ??
+        _selectedModel ??
+        context.l10n.defaultModel;
 
     return Container(
       decoration: BoxDecoration(
@@ -799,7 +794,7 @@ class _ConversationSettingsSheetState
   // 模型选择器 — 子页面（抽屉式 push）
   // ═══════════════════════════════════════
   void _openModelPicker(ColorScheme colorScheme) async {
-    final result = await Navigator.of(context).push<String?>(
+    final result = await Navigator.of(context).push<CachedGatewayModel?>(
       MaterialPageRoute(
         builder: (_) => _ModelPickerPage(
           models: _availableModels,
@@ -810,8 +805,13 @@ class _ConversationSettingsSheetState
         ),
       ),
     );
-    if (result != null || result == '') {
-      setState(() => _selectedModel = result!.isEmpty ? null : result);
+    if (result != null) {
+      setState(() {
+        _selectedModel = result.modelId.isEmpty ? null : result.modelId;
+        _selectedModelProvider = result.modelId.isEmpty
+            ? null
+            : result.provider;
+      });
     }
   }
 
@@ -877,9 +877,9 @@ class _ConversationSettingsSheetState
 // Model Picker 子页面
 // ═══════════════════════════════════════════════════════════
 class _ModelPickerPage extends StatefulWidget {
-  final List<String> models;
+  final List<CachedGatewayModel> models;
   final String? selected;
-  final Future<List<String>> Function()? onRefresh;
+  final Future<List<CachedGatewayModel>> Function()? onRefresh;
 
   const _ModelPickerPage({required this.models, this.selected, this.onRefresh});
 
@@ -888,7 +888,7 @@ class _ModelPickerPage extends StatefulWidget {
 }
 
 class _ModelPickerPageState extends State<_ModelPickerPage> {
-  late List<String> _models;
+  late List<CachedGatewayModel> _models;
   bool _refreshing = false;
 
   @override
@@ -974,7 +974,9 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
                     ),
                   )
                 else
-                  ..._models.map((m) => _buildModelItem(m, m, colorScheme)),
+                  ..._models.map(
+                    (m) => _buildModelItem(m, m.displayName, colorScheme),
+                  ),
               ],
             ),
           ),
@@ -983,10 +985,22 @@ class _ModelPickerPageState extends State<_ModelPickerPage> {
     );
   }
 
-  Widget _buildModelItem(String? value, String label, ColorScheme colorScheme) {
-    final isSelected = widget.selected == value;
+  Widget _buildModelItem(
+    CachedGatewayModel? model,
+    String label,
+    ColorScheme colorScheme,
+  ) {
+    final isSelected = widget.selected == model?.modelId;
     return InkWell(
-      onTap: () => Navigator.of(context).pop(value ?? ''),
+      onTap: () => Navigator.of(context).pop(
+        model ??
+            const CachedGatewayModel(
+              modelId: '',
+              displayName: '',
+              updatedAt: 0,
+              lastSeenAt: 0,
+            ),
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(

@@ -21,6 +21,7 @@ const { translateToCup } = require('../dist/translator/cup-encoder');
 const { StatsCollector } = require('../dist/services/stats-collector');
 const { VersionChecker } = require('../dist/services/version-checker');
 const { ActionRouter } = require('../dist/event-handlers/user-action');
+const { createUserMessageHandler } = require('../dist/event-handlers/user-message');
 const { toUpstreamMessage } = require('../dist/types/upstream');
 const { loadConfig } = require('../dist/config');
 
@@ -134,6 +135,116 @@ describe('TS: ConversationStore', () => {
     // list
     const all = store.list();
     assert.equal(all.length, 1);
+    db.close();
+  });
+});
+
+describe('TS: ConversationConfigStore', () => {
+  it('persists model provider with canonical model id', () => {
+    const db = new Database(':memory:');
+    const store = new ConversationConfigStore(db);
+
+    store.set('conv_1', 'hermes', {
+      modelId: 'anthropic/claude-sonnet-4',
+      modelProvider: 'anthropic',
+    });
+
+    const config = store.get('conv_1');
+    assert.equal(config.modelId, 'anthropic/claude-sonnet-4');
+    assert.equal(config.modelProvider, 'anthropic');
+    db.close();
+  });
+});
+
+describe('TS: user-message config injection', () => {
+  it('injects model and provider overrides without gateway branching', async () => {
+    const db = new Database(':memory:');
+    const configStore = new ConversationConfigStore(db);
+    configStore.set('conv_1', 'hermes', {
+      modelId: 'anthropic/claude-sonnet-4',
+      modelProvider: 'anthropic',
+    });
+
+    let forwarded = null;
+    const responses = [];
+    const handler = createUserMessageHandler({
+      cupHandler: {
+        handleUserMessage: () => ({ payload_type: 'ctrl', code: 200 }),
+        makeDeliveredAck: () => ({ payload_type: 'ctrl', code: 201 }),
+      },
+      stats: {
+        recordMessage: () => {},
+        recordConversation: () => {},
+      },
+      forwardToUpstream: (_accountId, msg) => {
+        forwarded = msg;
+      },
+      configStore,
+    });
+
+    await handler({
+      accountId: 'hermes',
+      payload: {
+        id: 'req_1',
+        event_type: 'user_message',
+        context: {
+          account_id: 'hermes',
+          conversation_id: 'conv_1',
+          client_msg_id: 'cmsg_1',
+        },
+        data: { type: 'text', content: 'hello' },
+      },
+      respond: (msg) => responses.push(msg),
+      ws: {},
+    });
+
+    assert.equal(forwarded.model_override, 'anthropic/claude-sonnet-4');
+    assert.equal(forwarded.provider_override, 'anthropic');
+    assert.equal(responses.at(-1).code, 201);
+    db.close();
+  });
+
+  it('keeps legacy configs without provider override', async () => {
+    const db = new Database(':memory:');
+    const configStore = new ConversationConfigStore(db);
+    configStore.set('conv_legacy', 'hermes', {
+      modelId: 'legacy-model',
+    });
+
+    let forwarded = null;
+    const handler = createUserMessageHandler({
+      cupHandler: {
+        handleUserMessage: () => ({ payload_type: 'ctrl', code: 200 }),
+        makeDeliveredAck: () => ({ payload_type: 'ctrl', code: 201 }),
+      },
+      stats: {
+        recordMessage: () => {},
+        recordConversation: () => {},
+      },
+      forwardToUpstream: (_accountId, msg) => {
+        forwarded = msg;
+      },
+      configStore,
+    });
+
+    await handler({
+      accountId: 'hermes',
+      payload: {
+        id: 'req_legacy',
+        event_type: 'user_message',
+        context: {
+          account_id: 'hermes',
+          conversation_id: 'conv_legacy',
+          client_msg_id: 'cmsg_legacy',
+        },
+        data: { type: 'text', content: 'hello' },
+      },
+      respond: () => {},
+      ws: {},
+    });
+
+    assert.equal(forwarded.model_override, 'legacy-model');
+    assert.equal(forwarded.provider_override, undefined);
     db.close();
   });
 });

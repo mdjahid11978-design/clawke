@@ -651,6 +651,7 @@ async function handleClawkeInbound(
     };
     // 会话配置（Server 注入）
     model_override?: string;
+    provider_override?: string;
     skills_hint?: string[];
     skill_mode?: 'priority' | 'exclusive';
     system_prompt?: string;

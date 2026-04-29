@@ -11,6 +11,7 @@ export interface ConversationConfig {
   convId: string;
   accountId: string;
   modelId: string | null;
+  modelProvider: string | null;
   skills: string | null;       // JSON array: '["camsnap","github"]'
   skillMode: string | null;    // 'priority' | 'exclusive'
   systemPrompt: string | null;
@@ -32,6 +33,7 @@ export class ConversationConfigStore {
         conv_id       TEXT PRIMARY KEY,
         account_id    TEXT NOT NULL,
         model_id      TEXT,
+        model_provider TEXT,
         skills        TEXT,
         skill_mode    TEXT,
         system_prompt TEXT,
@@ -46,14 +48,20 @@ export class ConversationConfigStore {
     } catch {
       // 列已存在，忽略
     }
+    try {
+      db.exec(`ALTER TABLE conversation_configs ADD COLUMN model_provider TEXT;`);
+    } catch {
+      // 列已存在，忽略
+    }
 
     this.getStmt = db.prepare('SELECT * FROM conversation_configs WHERE conv_id = ?');
     this.upsertStmt = db.prepare(`
-      INSERT INTO conversation_configs (conv_id, account_id, model_id, skills, skill_mode, system_prompt, work_dir, updated_at)
-      VALUES (@conv_id, @account_id, @model_id, @skills, @skill_mode, @system_prompt, @work_dir, @updated_at)
+      INSERT INTO conversation_configs (conv_id, account_id, model_id, model_provider, skills, skill_mode, system_prompt, work_dir, updated_at)
+      VALUES (@conv_id, @account_id, @model_id, @model_provider, @skills, @skill_mode, @system_prompt, @work_dir, @updated_at)
       ON CONFLICT(conv_id) DO UPDATE SET
         account_id = @account_id,
         model_id = @model_id,
+        model_provider = @model_provider,
         skills = @skills,
         skill_mode = @skill_mode,
         system_prompt = @system_prompt,
@@ -70,6 +78,7 @@ export class ConversationConfigStore {
       convId: row.conv_id as string,
       accountId: row.account_id as string,
       modelId: row.model_id as string | null,
+      modelProvider: row.model_provider as string | null,
       skills: row.skills as string | null,
       skillMode: row.skill_mode as string | null,
       systemPrompt: row.system_prompt as string | null,
@@ -86,6 +95,7 @@ export class ConversationConfigStore {
   /** 保存/更新会话配置 */
   set(convId: string, accountId: string, config: {
     modelId?: string | null;
+    modelProvider?: string | null;
     skills?: string | null;
     skillMode?: string | null;
     systemPrompt?: string | null;
@@ -95,6 +105,7 @@ export class ConversationConfigStore {
       conv_id: convId,
       account_id: accountId,
       model_id: config.modelId ?? null,
+      model_provider: config.modelProvider ?? null,
       skills: config.skills ?? null,
       skill_mode: config.skillMode ?? null,
       system_prompt: config.systemPrompt ?? null,

@@ -7,6 +7,8 @@
  *   clawke openclaw-gateway install       — 安装 Gateway 插件到本机 OpenClaw（别名）
  *   clawke nanobot-gateway install        — 安装 Clawke channel 到本机 nanobot（别名）
  *   clawke server start                   — 启动 Clawke Server
+ *   clawke update                         — 更新 Clawke / Update Clawke
+ *   clawke --version                      — 显示版本 / Show version
  *   clawke --help                         — 显示帮助
  */
 
@@ -16,6 +18,7 @@ import os from 'os';
 import readline from 'readline';
 import { spawn, execSync, type ChildProcess } from 'child_process';
 import { resolveGatewayStartShell } from './gateway-start-config.js';
+import { formatClawkeVersion, runClawkeUpdate } from './clawke-update.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -446,8 +449,15 @@ async function serverRestart(): Promise<void> {
 // ────────────── Main ──────────────
 
 async function main(): Promise<void> {
+  if (command === '--version' || command === '-V' || command === 'version') {
+    console.log(formatClawkeVersion());
+
+  } else if (command === 'update') {
+    const code = runClawkeUpdate({ checkOnly: args.includes('--check') });
+    if (code !== 0) process.exit(code);
+
   // 统一入口：clawke gateway install
-  if (command === 'gateway' && subCommand === 'install') {
+  } else if (command === 'gateway' && subCommand === 'install') {
     await installGateway();
 
   // 旧命令别名兼容 — Legacy command aliases
@@ -489,6 +499,8 @@ function printHelp(): void {
     clawke <command>
 
   Commands:
+    update                     Update Clawke to the latest version
+    update --check             Check for updates without installing
     server start               Start Clawke Server
     server stop                Stop Clawke Server
     server restart             Restart Clawke Server
@@ -501,6 +513,7 @@ function printHelp(): void {
     hermes-gateway install     Install Hermes gateway
 
   Options:
+    --version, -V              Show version and exit
     --help, -h                 Show this help message
 
   Quick Start:

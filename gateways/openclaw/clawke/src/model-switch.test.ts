@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ensureOpenClawSessionModel, switchOpenClawSessionModel } from "./model-switch.ts";
 
-function createCore(calls: string[], options: { fail?: boolean } = {}) {
+function createCore(
+  calls: string[],
+  options: { fail?: boolean; expectedModel?: string } = {},
+) {
+  const expectedModel = options.expectedModel ?? "minimax-portal/MiniMax-M2.7";
   const dispatcher = {
     markComplete: () => calls.push("markComplete"),
     waitForIdle: async () => calls.push("waitForIdle"),
@@ -48,8 +52,8 @@ function createCore(calls: string[], options: { fail?: boolean } = {}) {
           },
           dispatchReplyFromConfig: async ({ ctx, dispatcher: actualDispatcher, replyOptions }: any) => {
             assert.equal(actualDispatcher, dispatcher);
-            assert.equal(ctx.Body, "/model minimax-portal/MiniMax-M2.7");
-            assert.equal(ctx.BodyForCommands, "/model minimax-portal/MiniMax-M2.7");
+            assert.equal(ctx.Body, `/model ${expectedModel}`);
+            assert.equal(ctx.BodyForCommands, `/model ${expectedModel}`);
             assert.equal(ctx.CommandAuthorized, true);
             assert.equal(replyOptions.disableBlockStreaming, true);
             calls.push("dispatch");
@@ -89,6 +93,30 @@ test("OpenClaw model switch uses current SDK dispatcher contract", async () => {
   ]);
   assert.match(logs.at(0) ?? "", /Switching model to: minimax-portal\/MiniMax-M2\.7/);
   assert.match(logs.at(-1) ?? "", /Model switched to: minimax-portal\/MiniMax-M2\.7/);
+});
+
+test("OpenClaw model switch keeps canonical provider/model id intact", async () => {
+  const calls: string[] = [];
+  const { core } = createCore(calls, {
+    expectedModel: "anthropic/claude-sonnet-4",
+  });
+
+  const switched = await switchOpenClawSessionModel({
+    ctx: {
+      accountId: "OpenClaw",
+      log: {
+        info: () => {},
+        error: () => {},
+      },
+    },
+    core,
+    cfg: {},
+    senderId: "conv_1",
+    modelOverride: "anthropic/claude-sonnet-4",
+  });
+
+  assert.equal(switched, true);
+  assert.equal(calls[0], "dispatch");
 });
 
 test("OpenClaw model cache updates only after successful switch", async () => {

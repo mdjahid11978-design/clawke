@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # ── Import the module under test ────────────────────────────────────────────
+import clawke_channel
 from clawke_channel import (
     ClawkeHermesGateway,
     GatewayConfig,
@@ -28,6 +30,7 @@ from clawke_channel import (
     InboundMessageType,
     AgentStatusValue,
     _backoff_delay,
+    _configured_default_model,
     _sanitize_messages,
 )
 
@@ -155,6 +158,52 @@ class TestMessageSanitization:
                 "codex_reasoning_items": [{"id": "r1"}],
             },
         ]
+
+
+class TestDefaultModelCache:
+    def test_configured_default_model_caches_until_config_mtime_changes(self, tmp_path, monkeypatch):
+        hermes_home = tmp_path / "hermes"
+        hermes_home.mkdir()
+        config_path = hermes_home / "config.yaml"
+        config_path.write_text("model:\n  default: one\n", encoding="utf-8")
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        monkeypatch.delenv("HERMES_INFERENCE_MODEL", raising=False)
+        clawke_channel._DEFAULT_MODEL_CACHE.clear()
+        calls = []
+
+        config_module = MagicMock()
+
+        def load_config():
+            calls.append(1)
+            return {"model": {"default": f"model-{len(calls)}"}}
+
+        config_module.load_config = load_config
+        with patch.dict("sys.modules", {
+            "hermes_cli": MagicMock(),
+            "hermes_cli.config": config_module,
+        }):
+            assert _configured_default_model() == "model-1"
+            assert _configured_default_model() == "model-1"
+
+            old_mtime = config_path.stat().st_mtime_ns
+            os.utime(config_path, ns=(old_mtime + 1_000_000_000, old_mtime + 1_000_000_000))
+
+            assert _configured_default_model() == "model-2"
+
+        assert len(calls) == 2
+
+    def test_configured_default_model_refreshes_when_env_changes(self, tmp_path, monkeypatch):
+        hermes_home = tmp_path / "hermes"
+        hermes_home.mkdir()
+        (hermes_home / "config.yaml").write_text("model:\n  default: file-model\n", encoding="utf-8")
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        clawke_channel._DEFAULT_MODEL_CACHE.clear()
+
+        monkeypatch.setenv("HERMES_INFERENCE_MODEL", "env-one")
+        assert _configured_default_model() == "env-one"
+
+        monkeypatch.setenv("HERMES_INFERENCE_MODEL", "env-two")
+        assert _configured_default_model() == "env-two"
 
 
 # ── Gateway Init Tests ──────────────────────────────────────────────────────
@@ -390,6 +439,79 @@ class TestQueryHandlers:
         assert len(sent_messages) == 1
         assert sent_messages[0]["type"] == GatewayMessageType.ModelsResponse
         assert "models" in sent_messages[0]
+        assert {
+            "model_id": "anthropic/claude-3",
+            "provider": "anthropic",
+            "display_name": "claude-3",
+        } in sent_messages[0]["models"]
+
+    @pytest.mark.asyncio
+    async def test_query_models_preserves_same_display_from_runtime_and_config(
+        self,
+        gateway,
+        sent_messages,
+        tmp_path,
+        monkeypatch,
+    ):
+        hermes_home = tmp_path / "hermes"
+        hermes_home.mkdir()
+        (hermes_home / "config.yaml").write_text(
+            """
+model:
+  default: deepseek-v4-pro
+  provider: deepseek-v4-pro
+providers:
+  deepseek-v4-pro:
+    name: DeepSeek V4 Pro
+    default_model: deepseek-v4-pro
+""",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        for env_var in (
+            "ANTHROPIC_API_KEY",
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "GLM_API_KEY",
+            "HF_TOKEN",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
+
+        runtime_provider = MagicMock()
+        runtime_provider.resolve_runtime_provider = (
+            lambda: {"model": "deepseek-v4-pro", "provider": "custom"}
+        )
+        models_module = MagicMock()
+        models_module.list_available_providers = lambda: []
+
+        with patch.dict("sys.modules", {
+            "hermes_cli": MagicMock(),
+            "hermes_cli.runtime_provider": runtime_provider,
+            "hermes_cli.models": models_module,
+        }):
+            await gateway._handle_query_models()
+
+        models = sent_messages[0]["models"]
+        same_label = [
+            model for model in models
+            if model["display_name"] == "deepseek-v4-pro"
+        ]
+        assert same_label == [
+            {
+                "model_id": "custom/deepseek-v4-pro",
+                "provider": "custom",
+                "display_name": "deepseek-v4-pro",
+            },
+            {
+                "model_id": "deepseek-v4-pro/deepseek-v4-pro",
+                "provider": "deepseek-v4-pro",
+                "display_name": "deepseek-v4-pro",
+            },
+        ]
 
     @pytest.mark.asyncio
     async def test_query_skills_response(self, gateway, sent_messages):
@@ -407,6 +529,179 @@ class TestCallbackMapping:
     These tests exercise the callback closures defined inside _handle_chat
     by calling _handle_chat with a mocked AIAgent.
     """
+
+    @pytest.mark.asyncio
+    async def test_provider_override_strips_matching_model_prefix(self, gateway, sent_messages):
+        """Hermes needs provider and raw model split before AIAgent construction."""
+        captured_kwargs = {}
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+            def run_conversation(self, **kwargs):
+                return {"final_response": "ok"}
+
+        def resolve_runtime_provider(requested=None, target_model=None):
+            assert requested == "anthropic"
+            assert target_model == "claude-sonnet-4"
+            return {
+                "api_key": "k",
+                "provider": "anthropic",
+                "model": "default-model",
+                "base_url": "",
+            }
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch("clawke_channel._get_session_db", return_value=None), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": MagicMock(),
+             }):
+            import sys
+            sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = resolve_runtime_provider
+            await gateway._handle_chat({
+                "conversation_id": "conv_model",
+                "text": "hello",
+                "model_override": "anthropic/claude-sonnet-4",
+                "provider_override": "anthropic",
+            })
+
+        assert captured_kwargs["provider"] == "anthropic"
+        assert captured_kwargs["model"] == "claude-sonnet-4"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_provider_override_keeps_nested_model_prefix(self, gateway, sent_messages):
+        """Only the selected provider prefix is stripped."""
+        captured_kwargs = {}
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+            def run_conversation(self, **kwargs):
+                return {"final_response": "ok"}
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch("clawke_channel._get_session_db", return_value=None), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": MagicMock(),
+             }):
+            import sys
+            sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
+                lambda requested=None, target_model=None: {
+                    "api_key": "k",
+                    "provider": requested,
+                    "model": "default-model",
+                    "base_url": "",
+                }
+            )
+            await gateway._handle_chat({
+                "conversation_id": "conv_openrouter",
+                "text": "hello",
+                "model_override": "openrouter/openai/gpt-4o",
+                "provider_override": "openrouter",
+            })
+
+        assert captured_kwargs["provider"] == "openrouter"
+        assert captured_kwargs["model"] == "openai/gpt-4o"
+
+    @pytest.mark.asyncio
+    async def test_default_chat_uses_hermes_config_model_when_runtime_has_no_model(self, sent_messages):
+        captured_kwargs = {}
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+            def run_conversation(self, **kwargs):
+                return {"final_response": "ok"}
+
+        gateway = ClawkeHermesGateway(GatewayConfig(
+            ws_url="ws://127.0.0.1:8766",
+            account_id="test_hermes",
+            model="",
+            provider="deepseek",
+        ))
+        gateway._ws = AsyncMock()
+        gateway._loop = asyncio.get_event_loop()
+        async def capture_send(data):
+            sent_messages.append(data)
+        gateway._send = capture_send
+        gateway._send_sync = lambda data: sent_messages.append(data)
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch("clawke_channel._get_session_db", return_value=None), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": MagicMock(),
+                 "hermes_cli.config": MagicMock(),
+             }):
+            import sys
+            sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
+                lambda requested=None, target_model=None: {
+                    "api_key": "k",
+                    "provider": "deepseek",
+                    "model": None,
+                    "base_url": "https://api.deepseek.com",
+                }
+            )
+            sys.modules["hermes_cli.config"].load_config = lambda: {
+                "model": {"default": "deepseek-v4-pro", "provider": "deepseek"}
+            }
+            await gateway._handle_chat({
+                "conversation_id": "conv_default_model",
+                "text": "hello",
+            })
+
+        assert captured_kwargs["provider"] == "deepseek"
+        assert captured_kwargs["model"] == "deepseek-v4-pro"
+
+    @pytest.mark.asyncio
+    async def test_default_system_session_uses_hermes_config_model_when_runtime_has_no_model(self):
+        captured_kwargs = {}
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                captured_kwargs.update(kwargs)
+
+            def run_conversation(self, **kwargs):
+                return {"final_response": "ok"}
+
+        gateway = ClawkeHermesGateway(GatewayConfig(
+            ws_url="ws://127.0.0.1:8766",
+            account_id="test_hermes",
+            model="",
+            provider="deepseek",
+        ))
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": MagicMock(),
+                 "hermes_cli.config": MagicMock(),
+             }):
+            import sys
+            sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
+                lambda requested=None, target_model=None: {
+                    "api_key": "k",
+                    "provider": "deepseek",
+                    "model": None,
+                    "base_url": "https://api.deepseek.com",
+                }
+            )
+            sys.modules["hermes_cli.config"].load_config = lambda: {
+                "model": {"default": "deepseek-v4-pro", "provider": "deepseek"}
+            }
+            result = await gateway._run_system_session({
+                "request_id": "req_default_model",
+                "prompt": "translate",
+            })
+
+        assert result == "ok"
+        assert captured_kwargs["provider"] == "deepseek"
+        assert captured_kwargs["model"] == "deepseek-v4-pro"
 
     @pytest.mark.asyncio
     async def test_stream_token_generates_text_delta(self, gateway, sent_messages):
@@ -435,7 +730,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_test",
@@ -479,7 +774,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_reason",
@@ -520,7 +815,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_tool",
@@ -568,7 +863,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_abort",
@@ -602,7 +897,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_empty",
@@ -632,7 +927,7 @@ class TestCallbackMapping:
              }):
             import sys
             sys.modules["hermes_cli.runtime_provider"].resolve_runtime_provider = (
-                lambda requested=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
+                lambda requested=None, target_model=None: {"api_key": "k", "provider": "test", "model": "m", "base_url": ""}
             )
             await gateway._handle_chat({
                 "conversation_id": "conv_err",

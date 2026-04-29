@@ -36,6 +36,7 @@ from typing import Any, Optional
 import websockets
 
 logger = logging.getLogger("clawke.hermes")
+_DEFAULT_MODEL_CACHE: dict[str, Any] = {}
 
 # ─── CUP Protocol Message Types (mirror of protocol.ts) ─────────────────────
 
@@ -152,6 +153,71 @@ def _parse_strict_json(value: Any) -> Optional[dict[str, Any]]:
     except (json.JSONDecodeError, TypeError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _strip_provider_prefix(model: str, provider: str) -> str:
+    """Strip only the selected provider prefix from a canonical model id."""
+    if not model or not provider:
+        return model
+    prefix = f"{provider}/"
+    if model.lower().startswith(prefix.lower()):
+        return model[len(prefix):]
+    return model
+
+
+def _configured_default_model() -> str:
+    """读取 Hermes 默认模型 — Read Hermes default model."""
+    env_model = os.getenv("HERMES_INFERENCE_MODEL", "").strip()
+    config_path = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser() / "config.yaml"
+    try:
+        config_mtime_ns = config_path.stat().st_mtime_ns
+    except OSError:
+        config_mtime_ns = None
+
+    cache_key = {
+        "env_model": env_model,
+        "config_path": str(config_path),
+        "config_mtime_ns": config_mtime_ns,
+    }
+    if all(_DEFAULT_MODEL_CACHE.get(k) == v for k, v in cache_key.items()):
+        return str(_DEFAULT_MODEL_CACHE.get("model") or "")
+
+    if env_model:
+        _DEFAULT_MODEL_CACHE.clear()
+        _DEFAULT_MODEL_CACHE.update(cache_key)
+        _DEFAULT_MODEL_CACHE["model"] = env_model
+        return env_model
+
+    try:
+        from hermes_cli.config import load_config
+        config = load_config()
+        model_cfg = config.get("model") or {}
+        if isinstance(model_cfg, str):
+            model = model_cfg.strip()
+        elif isinstance(model_cfg, dict):
+            model = str(model_cfg.get("default") or model_cfg.get("model") or "").strip()
+        else:
+            model = ""
+    except Exception as e:
+        logger.warning("load_config default model failed: %s", e)
+        model = ""
+
+    _DEFAULT_MODEL_CACHE.clear()
+    _DEFAULT_MODEL_CACHE.update(cache_key)
+    _DEFAULT_MODEL_CACHE["model"] = model
+    return model
+
+
+def _canonical_model_id(model: str, provider: str) -> str:
+    """Build the Client-facing canonical model id."""
+    if not model:
+        return ""
+    if not provider:
+        return model
+    prefix = f"{provider}/"
+    if model.lower().startswith(prefix.lower()):
+        return model
+    return f"{provider}/{model}"
 
 
 # ─── Lazy imports for Hermes components ──────────────────────────────────────
@@ -273,6 +339,38 @@ class ClawkeHermesGateway:
         self._pending_clarifies: dict[str, dict] = {}
         self._task_adapter: Any = None
         self._skill_adapter: Any = None
+
+    def _resolve_agent_runtime(self, model_hint: Any, provider_hint: Any) -> tuple[str, str, str, Any]:
+        """统一解析模型运行时 — Resolve model runtime consistently."""
+        resolved_model = str(model_hint or "").strip()
+        resolved_provider = str(provider_hint or "").strip()
+        resolved_base_url = self.config.base_url
+        resolved_api_key = None
+
+        if not resolved_model:
+            resolved_model = _configured_default_model()
+        resolved_model = _strip_provider_prefix(resolved_model, resolved_provider)
+
+        try:
+            from hermes_cli.runtime_provider import resolve_runtime_provider
+            rt = resolve_runtime_provider(
+                requested=resolved_provider or None,
+                target_model=resolved_model or None,
+            )
+            resolved_api_key = rt.get("api_key")
+            if not resolved_provider:
+                resolved_provider = rt.get("provider", "")
+            if not resolved_model:
+                resolved_model = rt.get("model", "")
+            if not resolved_base_url:
+                resolved_base_url = rt.get("base_url", "")
+        except Exception as e:
+            logger.warning("resolve_runtime_provider failed: %s", e)
+
+        if not resolved_model:
+            resolved_model = _configured_default_model()
+        resolved_model = _strip_provider_prefix(str(resolved_model or "").strip(), resolved_provider)
+        return resolved_model, resolved_provider, resolved_base_url, resolved_api_key
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -475,23 +573,10 @@ class ClawkeHermesGateway:
 
         prompt = msg.get("prompt", "")
         session_id = msg.get("system_session_id") or f"__clawke_system__:{self.config.account_id}"
-        resolved_model = self.config.model
-        resolved_provider = self.config.provider
-        resolved_base_url = self.config.base_url
-        resolved_api_key = None
-
-        try:
-            from hermes_cli.runtime_provider import resolve_runtime_provider
-            rt = resolve_runtime_provider(requested=resolved_provider or None)
-            resolved_api_key = rt.get("api_key")
-            if not resolved_provider:
-                resolved_provider = rt.get("provider", "")
-            if not resolved_model:
-                resolved_model = rt.get("model", "")
-            if not resolved_base_url:
-                resolved_base_url = rt.get("base_url", "")
-        except Exception as e:
-            logger.warning("resolve_runtime_provider failed: %s", e)
+        resolved_model, resolved_provider, resolved_base_url, resolved_api_key = self._resolve_agent_runtime(
+            self.config.model,
+            self.config.provider,
+        )
 
         request_id = msg.get("request_id", "")
         logger.info(
@@ -746,24 +831,11 @@ class ClawkeHermesGateway:
 
         session_db = _get_session_db()
 
-        # Resolve model/provider (priority: msg override > config > Hermes defaults)
-        resolved_model = msg.get("model_override") or self.config.model
-        resolved_provider = msg.get("provider_override") or self.config.provider
-        resolved_base_url = self.config.base_url
-        resolved_api_key = None
-
-        try:
-            from hermes_cli.runtime_provider import resolve_runtime_provider
-            rt = resolve_runtime_provider(requested=resolved_provider or None)
-            resolved_api_key = rt.get("api_key")
-            if not resolved_provider:
-                resolved_provider = rt.get("provider", "")
-            if not resolved_model:
-                resolved_model = rt.get("model", "")
-            if not resolved_base_url:
-                resolved_base_url = rt.get("base_url", "")
-        except Exception as e:
-            logger.warning("resolve_runtime_provider failed: %s", e)
+        # 解析优先级：消息覆盖 > Gateway 配置 > Hermes 默认值 — Priority: message override > gateway config > Hermes default.
+        resolved_model, resolved_provider, resolved_base_url, resolved_api_key = self._resolve_agent_runtime(
+            msg.get("model_override") or self.config.model,
+            msg.get("provider_override") or self.config.provider,
+        )
 
         # Resolve toolsets (priority: msg override > config > Hermes defaults)
         toolsets = self.config.toolsets or None
@@ -1226,19 +1298,30 @@ class ClawkeHermesGateway:
         3. config.yaml → model.default + providers.<id>.models
         4. .env API Key scan → infer default models (fallback)
         """
-        models: list[str] = []
+        models: list[dict[str, str]] = []
         seen: set[str] = set()
 
-        def _add(m: str) -> None:
-            if m and m not in seen:
-                seen.add(m)
-                models.append(m)
+        def _add(model: str, provider: str = "") -> None:
+            model = str(model or "").strip()
+            provider = str(provider or "").strip()
+            model_id = _canonical_model_id(model, provider)
+            if not model_id or model_id in seen:
+                return
+            seen.add(model_id)
+            display_name = _strip_provider_prefix(model, provider)
+            item = {
+                "model_id": model_id,
+                "display_name": display_name,
+            }
+            if provider:
+                item["provider"] = provider
+            models.append(item)
 
         # 1. Current runtime model (the one Hermes is actually using)
         try:
             from hermes_cli.runtime_provider import resolve_runtime_provider
             rt = resolve_runtime_provider()
-            _add(rt.get("model", ""))
+            _add(rt.get("model", ""), rt.get("provider", ""))
         except Exception:
             pass
 
@@ -1251,8 +1334,16 @@ class ClawkeHermesGateway:
             if isinstance(available, (list, tuple)):
                 for prov in available:
                     if isinstance(prov, dict):
-                        _add(prov.get("model", ""))
-                        _add(prov.get("default_model", ""))
+                        provider = prov.get("provider", "") or prov.get("id", "")
+                        _add(prov.get("model", ""), provider)
+                        _add(prov.get("default_model", ""), provider)
+                        pmodels = prov.get("models") or []
+                        if isinstance(pmodels, dict):
+                            for mname in pmodels:
+                                _add(str(mname), provider)
+                        elif isinstance(pmodels, (list, tuple)):
+                            for mname in pmodels:
+                                _add(str(mname), provider)
                     elif isinstance(prov, str):
                         _add(prov)
         except ImportError:
@@ -1272,8 +1363,9 @@ class ClawkeHermesGateway:
 
                 # model.default or model.model
                 model_cfg = cfg.get("model") or {}
-                _add(model_cfg.get("default", ""))
-                _add(model_cfg.get("model", ""))
+                model_provider = model_cfg.get("provider", "")
+                _add(model_cfg.get("default", ""), model_provider)
+                _add(model_cfg.get("model", ""), model_provider)
 
                 # providers.<id>.models.<model> section
                 providers = cfg.get("providers") or {}
@@ -1282,10 +1374,10 @@ class ClawkeHermesGateway:
                         pmodels = pcfg.get("models") or {}
                         if isinstance(pmodels, dict):
                             for mname in pmodels:
-                                _add(f"{_pid}/{mname}" if "/" not in mname else mname)
+                                _add(str(mname), str(_pid))
                         elif isinstance(pmodels, list):
                             for mname in pmodels:
-                                _add(str(mname))
+                                _add(str(mname), str(_pid))
         except Exception as e:
             logger.debug("config.yaml model scan failed: %s", e)
 
@@ -1312,7 +1404,7 @@ class ClawkeHermesGateway:
 
             for env_var, (_prov, default_model) in _PROVIDER_DEFAULTS.items():
                 if env_var in env_keys or env_var in os.environ:
-                    _add(default_model)
+                    _add(default_model, _prov)
         except Exception as e:
             logger.debug(".env model scan failed: %s", e)
 

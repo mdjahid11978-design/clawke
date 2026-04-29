@@ -29,6 +29,8 @@ export interface UpstreamMessage {
   media?: UpstreamMediaInfo;
   /** 会话配置：模型覆盖 */
   model_override?: string;
+  /** 会话配置：模型 Provider 覆盖 — Model provider override */
+  provider_override?: string;
   /** 会话配置：优先 skill 列表 */
   skills_hint?: string[];
   /** 会话配置：skill 模式 'priority' | 'exclusive' */

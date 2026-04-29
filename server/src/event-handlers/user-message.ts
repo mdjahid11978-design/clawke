@@ -86,13 +86,14 @@ export function createUserMessageHandler(deps: UserMessageDeps) {
         const convConfig = configStore.get(upstreamMsg.conversation_id);
         if (convConfig) {
           if (convConfig.modelId) upstreamMsg.model_override = convConfig.modelId;
+          if (convConfig.modelProvider) upstreamMsg.provider_override = convConfig.modelProvider;
           if (convConfig.skills) {
             try { upstreamMsg.skills_hint = JSON.parse(convConfig.skills); } catch {}
           }
           if (convConfig.skillMode) upstreamMsg.skill_mode = convConfig.skillMode as 'priority' | 'exclusive';
           if (convConfig.systemPrompt) upstreamMsg.system_prompt = convConfig.systemPrompt;
           if (convConfig.workDir) upstreamMsg.work_dir = convConfig.workDir;
-          console.log(`[Tunnel] ⚙️  Config injected: conv=${conversationId} model=${convConfig.modelId || 'default'} skills=${convConfig.skills || 'none'} skillMode=${convConfig.skillMode || 'default'} workDir=${convConfig.workDir || 'default'} sysPrompt=${convConfig.systemPrompt ? convConfig.systemPrompt.slice(0, 40) + '...' : 'none'}`);
+          console.log(`[Tunnel] ⚙️  Config injected: conv=${conversationId} model=${convConfig.modelId || 'default'} provider=${convConfig.modelProvider || 'default'} skills=${convConfig.skills || 'none'} skillMode=${convConfig.skillMode || 'default'} workDir=${convConfig.workDir || 'default'} sysPrompt=${convConfig.systemPrompt ? convConfig.systemPrompt.slice(0, 40) + '...' : 'none'}`);
         }
       }
 

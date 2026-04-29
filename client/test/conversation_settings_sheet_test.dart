@@ -47,29 +47,70 @@ void main() {
     },
   );
 
-  testWidgets('conversation settings keeps selected stale model visible', (
-    tester,
-  ) async {
-    await _pumpSheet(
-      tester,
-      conversationId: 'conv-1',
-      modelRepo: _FakeModelCacheRepository(
-        cached: [_cachedModel('fresh-model')],
-        syncModels: [_cachedModel('fresh-model')],
-      ),
-      configApi: _FakeConfigApiService(
-        config: const ConvConfig(convId: 'conv-1', modelId: 'old-model'),
-      ),
-    );
+  testWidgets(
+    'conversation settings does not add selected stale model to picker',
+    (tester) async {
+      await _pumpSheet(
+        tester,
+        conversationId: 'conv-1',
+        modelRepo: _FakeModelCacheRepository(
+          cached: [_cachedModel('fresh-model')],
+          syncModels: [_cachedModel('fresh-model')],
+        ),
+        configApi: _FakeConfigApiService(
+          config: const ConvConfig(convId: 'conv-1', modelId: 'old-model'),
+        ),
+      );
 
-    expect(find.text('old-model'), findsOneWidget);
+      expect(find.text('old-model'), findsOneWidget);
 
-    await tester.tap(find.text('old-model'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('old-model'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('old-model'), findsWidgets);
-    expect(find.text('fresh-model'), findsOneWidget);
-  });
+      expect(find.text('old-model'), findsNothing);
+      expect(find.text('fresh-model'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'model picker preserves raw duplicate display names without stale selected alias',
+    (tester) async {
+      await _pumpSheet(
+        tester,
+        conversationId: 'conv-1',
+        modelRepo: _FakeModelCacheRepository(
+          cached: [
+            _cachedModel(
+              'custom/deepseek-v4-pro',
+              displayName: 'deepseek-v4-pro',
+              provider: 'custom',
+            ),
+            _cachedModel(
+              'deepseek-v4-pro/deepseek-v4-pro',
+              displayName: 'deepseek-v4-pro',
+              provider: 'deepseek-v4-pro',
+            ),
+            _cachedModel(
+              'openai/gpt-4o',
+              displayName: 'gpt-4o',
+              provider: 'openai',
+            ),
+          ],
+        ),
+        configApi: _FakeConfigApiService(
+          config: const ConvConfig(
+            convId: 'conv-1',
+            modelId: 'deepseek-v4-pro',
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('deepseek-v4-pro'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('deepseek-v4-pro'), findsNWidgets(2));
+    },
+  );
 
   testWidgets(
     'conversation settings keeps selected stale skill visible with stale label',
@@ -111,6 +152,36 @@ void main() {
 
     expect(modelRepo.syncCalls, 2);
     expect(find.text('refreshed-model'), findsOneWidget);
+  });
+
+  testWidgets('conversation settings saves selected model provider', (
+    tester,
+  ) async {
+    final configApi = _FakeConfigApiService();
+
+    await _pumpSheet(
+      tester,
+      modelRepo: _FakeModelCacheRepository(
+        cached: [
+          _cachedModel(
+            'anthropic/claude-sonnet-4',
+            displayName: 'Claude Sonnet 4',
+            provider: 'anthropic',
+          ),
+        ],
+      ),
+      configApi: configApi,
+    );
+
+    await tester.tap(find.byIcon(Icons.layers_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Claude Sonnet 4'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    expect(configApi.savedConfig?.modelId, 'anthropic/claude-sonnet-4');
+    expect(configApi.savedConfig?.modelProvider, 'anthropic');
   });
 
   testWidgets('skill picker refresh triggers repository sync', (tester) async {
@@ -219,10 +290,15 @@ Future<void> _pumpSheet(
 
 const _defaultCachedAt = 123;
 
-CachedGatewayModel _cachedModel(String modelId) {
+CachedGatewayModel _cachedModel(
+  String modelId, {
+  String? displayName,
+  String? provider,
+}) {
   return CachedGatewayModel(
     modelId: modelId,
-    displayName: modelId,
+    displayName: displayName ?? modelId,
+    provider: provider,
     updatedAt: _defaultCachedAt,
     lastSeenAt: _defaultCachedAt,
   );
@@ -328,18 +404,35 @@ class _FakeConfigApiService implements ConfigApiService {
   _FakeConfigApiService({this.config = const ConvConfig(convId: 'conv-1')});
 
   final ConvConfig config;
+  String? savedConvId;
+  ConvConfig? savedConfig;
 
   @override
   Future<ConvConfig> getConvConfig(String convId) async => config;
 
   @override
-  Future<bool> saveConvConfig(String convId, ConvConfig config) async => true;
+  Future<bool> saveConvConfig(String convId, ConvConfig config) async {
+    savedConvId = convId;
+    savedConfig = config;
+    return true;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _FakeConversationRepository implements ConversationRepository {
+  @override
+  Future<String> createConversation({
+    required String accountId,
+    required String type,
+    String? conversationId,
+    String? name,
+    String? iconUrl,
+  }) async {
+    return conversationId ?? 'conv-created';
+  }
+
   @override
   Future<String?> getConversationName(String conversationId) async => 'Chat';
 

@@ -226,9 +226,10 @@ export function untrackStreamingId(msgId: string): void {
  * 通过 WS 查询指定 Gateway 的可用模型列表
  *
  * 发送 { type: "query_models" }，等待 { type: "models_response", models: [...] }
- * 超时 5 秒返回空数组。
+ * 超时 60 秒返回空数组。— Returns an empty array after a 60-second timeout.
  */
 export type GatewayModelResponseItem = string | Record<string, unknown>;
+export const GATEWAY_QUERY_TIMEOUT_MS = 60_000;
 
 export function queryGatewayModels(accountId: string): Promise<GatewayModelResponseItem[]> {
   return _queryGateway<GatewayModelResponseItem[]>(accountId, 'query_models', 'models_response', 'models', []);
@@ -238,7 +239,7 @@ export function queryGatewayModels(accountId: string): Promise<GatewayModelRespo
  * 通过 WS 查询指定 Gateway 的可用 Skills 列表
  *
  * 发送 { type: "query_skills" }，等待 { type: "skills_response", skills: [...] }
- * 超时 5 秒返回空数组。
+ * 超时 60 秒返回空数组。— Returns an empty array after a 60-second timeout.
  */
 export function queryGatewaySkills(accountId: string): Promise<Array<{ name: string; description: string }>> {
   return _queryGateway(accountId, 'query_skills', 'skills_response', 'skills', []);
@@ -261,10 +262,10 @@ function _queryGateway<T>(
     }
 
     const timeout = setTimeout(() => {
-      console.warn(`[Gateway] ${queryType}: timeout (5s) for account=${accountId}`);
+      console.warn(`[Gateway] ${queryType}: timeout (${GATEWAY_QUERY_TIMEOUT_MS / 1000}s) for account=${accountId}`);
       cleanup();
       resolve(fallback);
-    }, 5000);
+    }, GATEWAY_QUERY_TIMEOUT_MS);
 
     const handler = (raw: Buffer) => {
       try {

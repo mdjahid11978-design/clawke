@@ -182,13 +182,14 @@ export function getConvConfig(req: Request, res: Response): void {
   }
   const config = configStore.get(convId);
   if (!config) {
-    res.json({ conv_id: convId, model_id: null, skills: null, skill_mode: null, system_prompt: null, work_dir: null });
+    res.json({ conv_id: convId, model_id: null, model_provider: null, skills: null, skill_mode: null, system_prompt: null, work_dir: null });
     return;
   }
   res.json({
     conv_id: config.convId,
     account_id: config.accountId,
     model_id: config.modelId,
+    model_provider: config.modelProvider,
     skills: config.skills,
     skill_mode: config.skillMode,
     system_prompt: config.systemPrompt,
@@ -210,11 +211,12 @@ export function putConvConfig(req: Request, res: Response): void {
   }
   configStore.set(convId, accountId, {
     modelId: body.model_id,
+    modelProvider: body.model_provider,
     skills: body.skills,
     skillMode: body.skill_mode,
     systemPrompt: body.system_prompt,
     workDir: body.work_dir,
   });
-  console.log(`[ConfigAPI] Saved config for conv=${convId}: model=${body.model_id}, skills=${body.skills}, mode=${body.skill_mode}, workDir=${body.work_dir || 'default'}`);
+  console.log(`[ConfigAPI] Saved config for conv=${convId}: model=${body.model_id}, provider=${body.model_provider || 'default'}, skills=${body.skills}, mode=${body.skill_mode}, workDir=${body.work_dir || 'default'}`);
   res.json({ ok: true });
 }
