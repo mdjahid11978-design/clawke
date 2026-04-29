@@ -7,6 +7,7 @@
  *   clawke openclaw-gateway install       — 安装 Gateway 插件到本机 OpenClaw（别名）
  *   clawke nanobot-gateway install        — 安装 Clawke channel 到本机 nanobot（别名）
  *   clawke server start                   — 启动 Clawke Server
+ *   clawke doctor                         — 检查本机 Clawke 配置和运行状态
  *   clawke update                         — 更新 Clawke / Update Clawke
  *   clawke --version                      — 显示版本 / Show version
  *   clawke --help                         — 显示帮助
@@ -456,6 +457,11 @@ async function main(): Promise<void> {
     const code = runClawkeUpdate({ checkOnly: args.includes('--check') });
     if (code !== 0) process.exit(code);
 
+  } else if (command === 'doctor') {
+    const { runClawkeDoctor } = await import('./clawke-doctor.js');
+    const result = runClawkeDoctor();
+    if (result.errorCount > 0) process.exit(1);
+
   // 统一入口：clawke gateway install
   } else if (command === 'gateway' && subCommand === 'install') {
     await installGateway();
@@ -501,6 +507,7 @@ function printHelp(): void {
   Commands:
     update                     Update Clawke to the latest version
     update --check             Check for updates without installing
+    doctor                     Check local Clawke setup and runtime status
     server start               Start Clawke Server
     server stop                Stop Clawke Server
     server restart             Restart Clawke Server

@@ -98,6 +98,26 @@ process.exit(0);
   ]);
 });
 
+test('clawke doctor prints a read-only setup report', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
+  const clawkeHome = path.join(dir, '.clawke');
+
+  const result = spawnSync(process.execPath, [cliPath, 'doctor'], {
+    cwd: serverRoot,
+    env: {
+      ...process.env,
+      CLAWKE_DATA_DIR: clawkeHome,
+      HOME: dir,
+    },
+    encoding: 'utf-8',
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(fs.existsSync(path.join(clawkeHome, 'clawke.json')), false);
+  assert.match(result.stdout, /Clawke Doctor/);
+  assert.match(result.stdout, /clawke\.json is missing/);
+});
+
 test('clawke update switches to main, autostashes local changes, and rebuilds server', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
   const binDir = path.join(dir, 'bin');

@@ -79,6 +79,20 @@ The server will:
 1. Start WebSocket server on port 8765 (client) and 8766 (upstream)
 2. Start HTTP/media server on port 8781
 
+### Common Commands
+
+```bash
+clawke --version          # Show installed Clawke version
+clawke doctor             # Check local Clawke setup and runtime status
+clawke update             # Update Clawke to the latest version
+clawke update --check     # Check for updates without installing
+clawke gateway install    # Auto-detect and install gateway plugin
+clawke server start       # Start Clawke Server
+clawke server stop        # Stop Clawke Server
+clawke server restart     # Restart Clawke Server
+clawke server status      # Check server status
+```
+
 ### Install Client
 
 - **iOS**: Download from the [App Store](https://apps.apple.com/us/app/clawke/id6760453431).

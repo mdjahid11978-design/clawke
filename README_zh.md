@@ -79,6 +79,20 @@ npx clawke server start                   # 启动 Clawke 服务
 1. 启动 WebSocket 服务（8765 端口：客户端，8766 端口：上行）
 2. 启动 HTTP/媒体服务（8781 端口）
 
+### 常用命令
+
+```bash
+clawke --version          # 查看已安装的 Clawke 版本
+clawke doctor             # 检查本机 Clawke 配置和运行状态
+clawke update             # 更新 Clawke 到最新版本
+clawke update --check     # 只检查更新，不安装
+clawke gateway install    # 自动检测并安装 Gateway 插件
+clawke server start       # 启动 Clawke 服务
+clawke server stop        # 停止 Clawke 服务
+clawke server restart     # 重启 Clawke 服务
+clawke server status      # 查看 Clawke 服务状态
+```
+
 ### 安装客户端
 
 - **iOS**：请在 [App Store](https://apps.apple.com/us/app/clawke/id6760453431) 下载。
