@@ -5,7 +5,7 @@
 
 A secure, edge-cloud collaborative AI workspace. Clawke connects your local server to AI providers through the CUP (Clawke Unified Protocol) and delivers a rich native client experience via SDUI (Server-Driven UI).
 
-[📱 iOS App](https://apps.apple.com/app/clawke/id6744313782) • 🖥 Mac App (coming soon) • 🤖 Android (coming soon) • [🔧 Build from Source](#build-from-source)
+[📱 iOS App](https://apps.apple.com/us/app/clawke/id6760453431) • 🖥 Mac App (coming soon) • 🤖 Android (coming soon) • [🔧 Build from Source](#build-from-source)
 
 ## Architecture
 
@@ -81,7 +81,7 @@ The server will:
 
 ### Install Client
 
-- **iOS**: Download from the [App Store](https://apps.apple.com/app/clawke/id6744313782).
+- **iOS**: Download from the [App Store](https://apps.apple.com/us/app/clawke/id6760453431).
 - **Android**: Download from [Google Play](#) *(Coming soon)*.
 - **macOS / Windows / Linux**: Download compiled binaries from the [Releases](https://github.com/clawke/clawke/releases) page.
 
