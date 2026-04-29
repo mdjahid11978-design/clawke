@@ -4,6 +4,21 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.17 (2026-04-29)
+
+**[New Feature]** Clawke Doctor command.
+- Added `clawke doctor` to inspect project files, runtime status, local configuration, and configured gateway instances.
+- Added clearer gateway diagnostics for OpenClaw-managed and Clawke-managed gateway modes.
+
+**[Enhancement]** Multi-agent positioning and mobile management messaging.
+- Updated README messaging to emphasize online management for OpenClaw, Hermes, Nanobot, and other agents.
+- Clarified that Clawke can manage multiple agents from desktop and mobile clients.
+
+**[Bug Fix]** Disconnect recovery for streamed chat replies.
+- Fixed a state recovery bug where the UI could keep showing `Thinking`, a running tool, and the stop button after reconnecting.
+- Sync now acts as a completion recovery path when the client missed `text_done` or `tool_call_done` during a WebSocket disconnect.
+- Added persistent provider and UI E2E regression coverage for this failure mode.
+
 ## v1.1.15 (2026-04-29)
 
 **[New Feature]** Hermes gateway support.

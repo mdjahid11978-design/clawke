@@ -132,6 +132,12 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.17 (2026-04-29)
+
+**[New Feature]** Added `clawke doctor` runtime and gateway diagnostics.
+**[Enhancement]** Clarified multi-agent online management across OpenClaw, Hermes, Nanobot, and mobile clients.
+**[Bug Fix]** Fixed streamed reply recovery after disconnect so `Thinking`, tool state, and stop button no longer get stuck.
+
 ### v1.1.15 (2026-04-29)
 
 **[New Feature]** Hermes gateway support.

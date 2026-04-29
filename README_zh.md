@@ -132,6 +132,12 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.17 (2026-04-29)
+
+**[新功能]** 新增 `clawke doctor` 运行时与 Gateway 诊断命令。
+**[功能优化]** 明确支持 OpenClaw、Hermes、Nanobot 等多 Agent 在线管理，并强调移动端随时管理能力。
+**[问题修复]** 修复流式回复断线后 `Thinking`、工具状态和停止按钮残留的问题。
+
 ### v1.1.15 (2026-04-29)
 
 **[新功能]** 新增 Hermes 网关支持。

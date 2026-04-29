@@ -4,6 +4,21 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.17 (2026-04-29)
+
+**[新功能]** 新增 Clawke Doctor 命令。
+- 新增 `clawke doctor`，用于检查项目文件、运行状态、本地配置和已配置的 Gateway 实例。
+- 优化 Gateway 诊断文案，区分 OpenClaw 内嵌管理和 Clawke 本地管理两种模式。
+
+**[功能优化]** 强化多 Agent 在线管理定位。
+- README 重点说明 Clawke 支持 OpenClaw、Hermes、Nanobot 等多 Agent 在线管理。
+- 明确桌面端和移动端都可以随时管理 Agent。
+
+**[问题修复]** 修复流式回复断线后的界面卡住问题。
+- 修复客户端重连后可能残留 `Thinking`、工具执行中状态和停止按钮的问题。
+- 当客户端断线漏收 `text_done` 或 `tool_call_done` 时，`sync_response` 现在会补齐完成事件的清理效果。
+- 新增 provider 单测和 UI E2E 持久化用例，覆盖该断线恢复场景。
+
 ## v1.1.15 (2026-04-29)
 
 **[新功能]** 新增 Hermes 网关支持。
