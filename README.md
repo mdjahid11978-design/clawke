@@ -3,6 +3,8 @@
 
 # Clawke
 
+Clawke currently supports online management for multiple AI agents, including OpenClaw, Hermes, Nanobot, and more. It is especially useful on mobile: you can manage your agents anytime, anywhere from the iOS client, with Android support coming soon.
+
 A secure, edge-cloud collaborative AI workspace. Clawke connects your local server to AI providers through the CUP (Clawke Unified Protocol) and delivers a rich native client experience via SDUI (Server-Driven UI).
 
 [📱 iOS App](https://apps.apple.com/us/app/clawke/id6760453431) • 🖥 Mac App (coming soon) • 🤖 Android (coming soon) • [🔧 Build from Source](#build-from-source)
@@ -23,7 +25,7 @@ graph TD
 
     subgraph Agent ["🤖 Agent"]
         direction LR
-        A1["OpenClaw"] ~~~ A2["Nanobot"] ~~~ A3["NemoClaw"]
+        A1["OpenClaw"] ~~~ A2["Hermes"] ~~~ A3["Nanobot"]
     end
 
     subgraph LLM ["🧠 LLM"]
@@ -40,7 +42,7 @@ graph TD
 
 - **CUP Protocol** — Streaming AI responses with thinking blocks, tool calls, and usage tracking
 - **SDUI** — Server-driven UI: dashboards, forms, dialogs rendered from server instructions
-- **Multi-gateway** — Pluggable AI backends: [OpenClaw](https://github.com/nicepkg/openclaw) and [nanobot](https://github.com/swuecho/nanobot) supported
+- **Multi-agent online management** — Manage OpenClaw, Hermes, Nanobot, and other agents from mobile or desktop clients
 - **Media** — Image/PDF/text file upload and inline rendering
 - **Relay** — Built-in tunnel for remote access without port forwarding
 
@@ -120,7 +122,7 @@ clawke/
 │   └── test/            # Tests (42 cases)
 ├── gateways/            # Gateway plugins
 │   ├── openclaw/clawke/ # OpenClaw gateway
-│   └── nanobot/clawke/  # nanobot gateway
+│   └── nanobot/clawke/  # Nanobot gateway
 └── relay-server/        # Relay server config
 ```
 

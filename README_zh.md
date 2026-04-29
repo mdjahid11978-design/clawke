@@ -3,6 +3,8 @@
 
 # Clawke
 
+Clawke 目前支持多 Agent 在线管理，包括 OpenClaw、Hermes、Nanobot 等。尤其适合移动端使用：你可以通过 iOS 客户端随时随地管理自己的 Agent，Android 支持即将上线。
+
 安全的边缘-云端协作 AI 工作空间。Clawke 通过 CUP 协议（Clawke Unified Protocol）连接本地服务器与 AI 提供商，并通过 SDUI（Server-Driven UI）提供丰富的原生客户端体验。
 
 [📱 iOS App](https://apps.apple.com/us/app/clawke/id6760453431) • 🖥 Mac App（即将上线） • 🤖 Android（即将上线） • [🔧 从源码构建](#从源码构建)
@@ -23,7 +25,7 @@ graph TD
 
     subgraph Agent ["🤖 Agent"]
         direction LR
-        A1["OpenClaw"] ~~~ A2["Nanobot"] ~~~ A3["NemoClaw"]
+        A1["OpenClaw"] ~~~ A2["Hermes"] ~~~ A3["Nanobot"]
     end
 
     subgraph LLM ["🧠 LLM"]
@@ -40,7 +42,7 @@ graph TD
 
 - **CUP 协议** — AI 流式响应，支持思考块、工具调用和用量统计
 - **SDUI** — 服务端驱动 UI：仪表盘、表单、对话框由服务端指令渲染
-- **多网关** — 可插拔 AI 后端：已支持 [OpenClaw](https://github.com/nicepkg/openclaw) 和 [nanobot](https://github.com/swuecho/nanobot)
+- **多 Agent 在线管理** — 可通过移动端或桌面端管理 OpenClaw、Hermes、Nanobot 等 Agent
 - **媒体** — 图片/PDF/文本文件上传与内联渲染
 - **Relay** — 内置隧道，无需端口转发即可远程访问
 
@@ -120,7 +122,7 @@ clawke/
 │   └── test/            # 测试（42 个用例）
 ├── gateways/            # Gateway 插件
 │   ├── openclaw/clawke/ # OpenClaw Gateway
-│   └── nanobot/clawke/  # nanobot Gateway
+│   └── nanobot/clawke/  # Nanobot Gateway
 └── relay-server/        # Relay 服务配置
 ```
 
