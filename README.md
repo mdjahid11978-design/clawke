@@ -116,6 +116,14 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.15 (2026-04-29)
+
+**[New Feature]** Hermes gateway support.
+**[New Feature]** Native Skills Center and task management pages.
+**[Enhancement]** Gateway-backed model, skill, and translation refresh flows.
+**[Bug Fix]** OpenClaw model routing and startup configuration fixes.
+**[Architecture]** Expanded gateway and UI E2E regression coverage.
+
 ### v1.1.5 (2026-04-18)
 
 **[New Feature]** One-click installation and unified CLI commands.  

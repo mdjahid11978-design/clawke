@@ -4,6 +4,30 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.15 (2026-04-29)
+
+**[New Feature]** Hermes gateway support.
+- Added Hermes gateway integration so Clawke can connect to Hermes-backed agent sessions.
+- Added Hermes model and skill discovery through the gateway layer.
+
+**[New Feature]** Native management pages for skills and tasks.
+- Added Skills Center support for listing, searching, creating, editing, disabling, and deleting managed skills.
+- Added task management UI and APIs for viewing, triggering, and managing agent-side tasks without moving execution into Clawke.
+
+**[Enhancement]** Gateway-backed resource discovery and translation.
+- Moved model and skill metadata reads to gateway-backed APIs.
+- Added gateway system sessions for background translation and refresh flows.
+- Added batch translation, cache reuse, and detailed logs to make production diagnosis easier.
+
+**[Bug Fix]** OpenClaw model routing and startup configuration.
+- Fixed OpenClaw model switching to align with the dispatcher API.
+- Fixed gateway model metadata fallback and channel configuration writing during install.
+- Hardened startup behavior for gateways that do not provide a runnable start command.
+
+**[Architecture]** Broader gateway test and release coverage.
+- Added regression tests for OpenClaw, Hermes, nanobot, skill management, task management, and gateway system requests.
+- Added UI E2E harness and high-priority cases for conversation settings, skills, tasks, approvals, choices, and streaming replies.
+
 ## v1.1.5 (2026-04-18)
 
 **[New Feature]** One-click installation and unified CLI commands.
