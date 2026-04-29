@@ -243,6 +243,63 @@ class WsMessageHandler with WidgetsBindingObserver {
     }
   }
 
+  /// 按会话清理回复运行态 — Clear reply runtime state for one conversation.
+  Future<void> _clearReplyRuntimeState(
+    String convId, {
+    bool yieldBeforeClearingThinking = false,
+  }) async {
+    if (convId.isEmpty) return;
+
+    final clearsWaiting = _ref.read(waitingForReplyProvider) == convId;
+    if (clearsWaiting) {
+      _ref.read(waitingForReplyProvider.notifier).state = null;
+    }
+
+    final activeTool = _ref.read(activeToolProvider);
+    final clearsActiveTool = activeTool?.convId == convId;
+    if (clearsActiveTool) {
+      _ref.read(activeToolProvider.notifier).state = null;
+    }
+
+    final streamingMsg = _ref.read(streamingMessageProvider);
+    final streamingMsgConvId =
+        streamingMsg?.conversationId ?? _streamingConversationId;
+    final clearsStreamingMsg = streamingMsgConvId == convId;
+    if (clearsStreamingMsg) {
+      _ref.read(streamingMessageProvider.notifier).state = null;
+      _textFlushTimer?.cancel();
+      _textFlushTimer = null;
+      _textBuffer = '';
+      _textBufferMsgId = null;
+    }
+
+    final thinkingMsg = _ref.read(streamingThinkingProvider);
+    final thinkingMsgConvId =
+        thinkingMsg?.conversationId ?? _streamingConversationId;
+    final clearsThinking =
+        thinkingMsgConvId == convId ||
+        (thinkingMsg != null &&
+            thinkingMsg.conversationId == null &&
+            (clearsWaiting || clearsActiveTool || clearsStreamingMsg));
+    if (clearsThinking) {
+      if (yieldBeforeClearingThinking) {
+        // 等待消息 watch 先刷新 UI，避免 text_done 后 Thinking 短暂闪烁。
+        // Let message watchers refresh first to avoid a short Thinking flicker after text_done.
+        await Future<void>.delayed(Duration.zero);
+      }
+      _ref.read(streamingThinkingProvider.notifier).state = null;
+      _thinkingFlushTimer?.cancel();
+      _thinkingFlushTimer = null;
+      _thinkingBuffer = '';
+      _thinkingBufferMsgId = null;
+    }
+
+    if (_streamingConversationId == convId) {
+      _streamingAccountId = null;
+      _streamingConversationId = null;
+    }
+  }
+
   void sendCheckUpdate() {
     _ws.sendJson({
       'event_type': 'check_update',
@@ -654,6 +711,10 @@ class WsMessageHandler with WidgetsBindingObserver {
     final repo = _ref.read(messageRepositoryProvider);
     final selectedConvId = _ref.read(selectedConversationIdProvider);
     final touchedConvIds = <String>{};
+    final recoveredAgentConvIds = <String>{};
+    final db = _ref.read(databaseProvider);
+    final stored = await db.getMetadata(_kLastSyncSeq);
+    final oldSeq = int.tryParse(stored ?? '0') ?? 0;
 
     for (final m in messages) {
       final map = m as Map<String, dynamic>;
@@ -676,6 +737,9 @@ class WsMessageHandler with WidgetsBindingObserver {
       touchedConvIds.add(conversationId);
 
       final msgType = map['type'] as String? ?? 'text';
+      final rawSenderId = map['sender_id'] as String?;
+      final senderId = rawSenderId ?? 'agent';
+      final seq = map['seq'] as int? ?? 0;
       final String msgContent;
       if (msgType == 'image' &&
           (map.containsKey('mediaUrl') || map.containsKey('thumbHash'))) {
@@ -702,13 +766,17 @@ class WsMessageHandler with WidgetsBindingObserver {
         messageId: msgId,
         accountId: accountId,
         conversationId: conversationId,
-        senderId: map['sender_id'] as String? ?? 'agent',
+        senderId: senderId,
         type: msgType,
         content: msgContent,
         serverId: map['message_id'] as String?,
-        seq: map['seq'] as int? ?? 0,
+        seq: seq,
         createdAt: map['ts'] as int?,
       );
+
+      if (rawSenderId == 'agent' && seq > oldSeq) {
+        recoveredAgentConvIds.add(conversationId);
+      }
     }
 
     // 当前选中的会话在 sync 中被更新了，清零未读
@@ -716,12 +784,13 @@ class WsMessageHandler with WidgetsBindingObserver {
       _ref.read(conversationRepositoryProvider).markAsRead(selectedConvId);
     }
 
+    for (final convId in recoveredAgentConvIds) {
+      await _clearReplyRuntimeState(convId);
+    }
+
     // 始终用服务端的 current_seq 更新本地 sync 基线
     // 即使 current_seq < 本地值（服务端被重装），也直接覆盖
     if (currentSeq != null && currentSeq >= 0) {
-      final db = _ref.read(databaseProvider);
-      final stored = await db.getMetadata(_kLastSyncSeq);
-      final oldSeq = int.tryParse(stored ?? '0') ?? 0;
       await db.setMetadata(_kLastSyncSeq, currentSeq.toString());
       if (currentSeq < oldSeq) {
         debugPrint(
@@ -1161,19 +1230,10 @@ class WsMessageHandler with WidgetsBindingObserver {
           _ref.read(conversationRepositoryProvider).markAsRead(convId);
         }
 
-        // DB 写入完成后清除流式状态
-        _ref.read(waitingForReplyProvider.notifier).state = null;
-        _ref.read(activeToolProvider.notifier).state = null;
-        _ref.read(streamingMessageProvider.notifier).state = null;
-        // 让出事件循环，等 Drift watchMessages 流通知 UI 刷新后再清 thinking → 无闪烁
-        await Future<void>.delayed(Duration.zero);
-        _ref.read(streamingThinkingProvider.notifier).state = null;
-
-        // 重置 debounce 缓冲区
-        _textBuffer = '';
-        _textBufferMsgId = null;
-        _thinkingBuffer = '';
-        _thinkingBufferMsgId = null;
+        await _clearReplyRuntimeState(
+          convId,
+          yieldBeforeClearingThinking: true,
+        );
       } finally {
         if (_finalizingStreamMessageId == streamMessageId) {
           _finalizingStreamMessageId = null;

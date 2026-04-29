@@ -107,6 +107,7 @@ test/ui-e2e/suites/<suite-id>/result.json
 ## 当前用例
 
 - `p0-send-message`: 新建会话，发送消息，验证流式中间态和最终回复。
+- `p0-disconnect-sync-recovers-stream-state`: 模拟流式回复收尾阶段断线，验证 sync 补回最终消息后清理 Thinking 和工具状态。
 - `p0-openclaw-inline-approval`: OpenClaw markdown approval 代码块，点击原生审批按钮后以普通 chat 回复 `y`。
 - `p0-openclaw-inline-choice`: OpenClaw markdown clarify 代码块，点击原生选项后以普通 chat 回复选项文本。
 - `p0-hermes-approval`: Hermes 结构化 `approval_request`，点击原生审批按钮后透传 `approval_response`。

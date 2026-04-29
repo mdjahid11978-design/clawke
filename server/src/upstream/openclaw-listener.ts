@@ -4,7 +4,7 @@
  * 接收 Gateway WebSocket 连接，按 accountId 路由消息。
  */
 import { WebSocketServer, WebSocket } from 'ws';
-import { broadcastToClients } from '../downstream/client-server.js';
+import { broadcastToClients, getClientConnections } from '../downstream/client-server.js';
 import type { GatewayInfo } from '../types/gateways.js';
 
 // accountId → WebSocket 路由表
@@ -100,6 +100,20 @@ export function startOpenClawListener(
 
       if (accountId) {
         payload.account_id = payload.account_id || accountId;
+      }
+
+      if (payload.type === 'e2e_disconnect_clients') {
+        if (process.env.NODE_TEST === '1') {
+          let closed = 0;
+          for (const client of getClientConnections()) {
+            if (client.readyState === 1) {
+              client.close(1012, 'e2e_disconnect_clients');
+              closed += 1;
+            }
+          }
+          console.log(`[Gateway] UI E2E disconnected ${closed} client connection(s)`);
+        }
+        return;
       }
 
       // Transient gateway responses are handled by per-request listeners, not the main route.

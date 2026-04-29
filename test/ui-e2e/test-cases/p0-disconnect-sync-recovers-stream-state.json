@@ -1,0 +1,93 @@
+{
+  "id": "p0-disconnect-sync-recovers-stream-state",
+  "title": "会话页断线后通过 sync 恢复最终回复并清理 Thinking 和工具状态",
+  "module": "会话",
+  "objective": "验证客户端在收到 thinking/tool_call_start 后发生 WebSocket 断线、漏收 text_done/tool_call_done 时，重连 sync 补回最终 agent 消息后，界面会清理残留的 Thinking 和工具执行中状态。",
+  "coverage": [
+    "新建会话",
+    "发送文本消息",
+    "显示 Thinking 中间态",
+    "显示工具执行中状态",
+    "模拟客户端 WebSocket 断线",
+    "通过 sync_response 补回最终 agent 消息",
+    "验证最终回复渲染",
+    "验证 Thinking 和工具执行中状态被清理",
+    "验证停止按钮恢复为发送按钮"
+  ],
+  "tags": ["p0", "chat", "disconnect", "sync", "streaming", "ui"],
+  "setup": {
+    "serverMode": "openclaw",
+    "accountId": "e2e_mock",
+    "agentName": "E2E Mock Gateway",
+    "httpPort": 18780,
+    "upstreamPort": 18766,
+    "mediaPort": 18781
+  },
+  "steps": [
+    { "action": "launch_app" },
+    { "action": "create_conversation", "name": "E2E Disconnect Sync Recovery" },
+    { "action": "send_message", "text": "模拟断线恢复" },
+    { "action": "wait_for_text", "text": "Thinking", "timeoutMs": 20000 },
+    { "action": "wait_for_text", "text": "read from ~/MyProject/clawke/AGENTS.md", "timeoutMs": 20000 },
+    { "action": "wait_for_text", "text": "断线恢复后的最终回复", "timeoutMs": 30000 },
+    { "action": "wait_for_absent_text", "text": "read from ~/MyProject/clawke/AGENTS.md", "durationMs": 1200 },
+    { "action": "wait_for_absent_text", "text": "Thinking", "durationMs": 1200 },
+    { "action": "wait_for_icon", "icon": "send", "timeoutMs": 10000 },
+    { "action": "wait_for_absent_icon", "icon": "stop", "durationMs": 800 }
+  ],
+  "mockGateway": {
+    "interactions": [
+      {
+        "on": {
+          "type": "chat",
+          "contains": "模拟断线恢复"
+        },
+        "replies": [
+          {
+            "type": "agent_thinking_delta",
+            "message_id": "think_p0_disconnect_sync_1",
+            "delta": "正在准备读取项目说明",
+            "delayMs": 80
+          },
+          {
+            "type": "agent_thinking_done",
+            "message_id": "think_p0_disconnect_sync_1",
+            "delayMs": 80
+          },
+          {
+            "type": "agent_tool_call",
+            "message_id": "agent_msg_p0_disconnect_sync_1",
+            "toolCallId": "tool_p0_disconnect_sync_read",
+            "toolName": "read",
+            "toolTitle": "read from ~/MyProject/clawke/AGENTS.md",
+            "delayMs": 80
+          },
+          {
+            "type": "e2e_disconnect_clients",
+            "delayMs": 1000
+          },
+          {
+            "type": "agent_text_done",
+            "message_id": "agent_msg_p0_disconnect_sync_1",
+            "fullText": "断线恢复后的最终回复",
+            "delayMs": 20
+          },
+          {
+            "type": "agent_tool_result",
+            "message_id": "agent_msg_p0_disconnect_sync_1",
+            "toolCallId": "tool_p0_disconnect_sync_read",
+            "toolName": "read",
+            "durationMs": 120,
+            "delayMs": 20
+          }
+        ]
+      }
+    ]
+  },
+  "assert": [
+    { "uiTextVisible": "模拟断线恢复" },
+    { "uiTextVisible": "断线恢复后的最终回复" },
+    { "uiTextAbsent": "read from ~/MyProject/clawke/AGENTS.md" },
+    { "uiTextAbsent": "Thinking" }
+  ]
+}
