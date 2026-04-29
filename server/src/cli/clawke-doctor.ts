@@ -14,6 +14,7 @@ interface DoctorCheck {
 
 interface GatewayInstance {
   id?: unknown;
+  type?: string;
   start_shell?: unknown;
 }
 
@@ -84,10 +85,30 @@ function collectGatewayInstances(config: any): GatewayInstance[] {
   }
 
   const instances: GatewayInstance[] = [];
-  for (const value of Object.values(config.gateways)) {
-    if (Array.isArray(value)) instances.push(...value);
+  for (const [type, value] of Object.entries(config.gateways)) {
+    if (Array.isArray(value)) {
+      instances.push(...value.map((item) => ({ ...(item as GatewayInstance), type })));
+    }
   }
   return instances;
+}
+
+function formatGatewayName(gateway: GatewayInstance, id: string): string {
+  const type = gateway.type;
+  if (type === 'hermes') return id === 'hermes' ? 'Clawke Hermes Gateway' : `Clawke Hermes Gateway (${id})`;
+  if (type === 'openclaw') return id === 'OpenClaw' ? 'Clawke OpenClaw Gateway' : `Clawke OpenClaw Gateway (${id})`;
+  if (type === 'nanobot') return id === 'nanobot' ? 'Clawke nanobot Gateway' : `Clawke nanobot Gateway (${id})`;
+  return `Clawke Gateway (${id})`;
+}
+
+function formatGatewayOwner(gateway: GatewayInstance): string {
+  if (gateway.type === 'openclaw') return 'OpenClaw';
+  if (gateway.type === 'nanobot') return 'nanobot';
+  return 'external agent process';
+}
+
+function shouldCheckLocalStartShell(gateway: GatewayInstance): boolean {
+  return gateway.type === 'hermes';
 }
 
 function validatePort(checks: DoctorCheck[], config: any, key: string): void {
@@ -179,24 +200,48 @@ function inspectGatewayPids(checks: DoctorCheck[], clawkeHome: string, gateways:
       continue;
     }
 
+    const name = formatGatewayName(gateway, id);
+    if (!shouldCheckLocalStartShell(gateway)) {
+      const owner = formatGatewayOwner(gateway);
+      addCheck(
+        checks,
+        'Gateways',
+        'info',
+        `${name} is managed by ${owner}`,
+        `It starts inside ${owner} and connects to Clawke Server.`,
+      );
+      continue;
+    }
+
     const startShell = resolveGatewayStartShell(gateway);
+    if (!startShell) {
+      addCheck(
+        checks,
+        'Gateways',
+        'warn',
+        `${name} is missing start_shell`,
+        'Run `clawke gateway install` to register the local Hermes gateway launcher.',
+      );
+      continue;
+    }
+
     addCheck(
       checks,
       'Gateways',
-      startShell ? 'ok' : 'info',
-      startShell ? `${id} has local start command` : `${id} has no local start command`,
-      startShell || 'External gateway should connect to Clawke Server by itself.',
+      'ok',
+      `${name} has local start command`,
+      startShell,
     );
 
     const pidPath = path.join(clawkeHome, `${id}-gateway.pid`);
     if (!fs.existsSync(pidPath)) {
-      addCheck(checks, 'Gateways', 'info', `${id} gateway is not running`, 'No gateway PID file.');
+      addCheck(checks, 'Gateways', 'info', `${name} is not running`, 'No gateway PID file.');
       continue;
     }
 
     const pid = readPidFile(pidPath);
     if (!pid) {
-      addCheck(checks, 'Gateways', 'warn', `${id} gateway PID file is invalid`, pidPath);
+      addCheck(checks, 'Gateways', 'warn', `${name} PID file is invalid`, pidPath);
       continue;
     }
 
@@ -204,7 +249,7 @@ function inspectGatewayPids(checks: DoctorCheck[], clawkeHome: string, gateways:
       checks,
       'Gateways',
       isProcessAlive(pid) ? 'ok' : 'warn',
-      isProcessAlive(pid) ? `${id} gateway is running (PID ${pid})` : `${id} gateway PID is stale (${pid})`,
+      isProcessAlive(pid) ? `${name} is running (PID ${pid})` : `${name} PID is stale (${pid})`,
       pidPath,
     );
   }
