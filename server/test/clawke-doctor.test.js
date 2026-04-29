@@ -84,7 +84,7 @@ test('clawke doctor reports configured gateways and stale gateway pid files', ()
   assert.equal(result.warningCount > 0, true);
   assert.match(capture.output(), /2 gateway instance/);
   assert.match(capture.output(), /Clawke Hermes Gateway \(hermes-local\) PID is stale/);
-  assert.match(capture.output(), /Clawke OpenClaw Gateway \(openclaw-remote\) is managed by OpenClaw/);
+  assert.match(capture.output(), /✅ Clawke OpenClaw Gateway \(openclaw-remote\) is registered/);
   assert.doesNotMatch(capture.output(), /openclaw-remote.*start_shell/);
   assert.doesNotMatch(capture.output(), /openclaw-remote\) is not running/);
   assert.doesNotMatch(capture.output(), /openclaw-remote.*No gateway PID file/);

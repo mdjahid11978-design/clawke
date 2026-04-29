@@ -206,9 +206,9 @@ function inspectGatewayPids(checks: DoctorCheck[], clawkeHome: string, gateways:
       addCheck(
         checks,
         'Gateways',
-        'info',
-        `${name} is managed by ${owner}`,
-        `It starts inside ${owner} and connects to Clawke Server.`,
+        'ok',
+        `${name} is registered`,
+        `startup: embedded in ${owner}`,
       );
       continue;
     }
