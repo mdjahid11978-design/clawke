@@ -446,6 +446,53 @@ class TestQueryHandlers:
         } in sent_messages[0]["models"]
 
     @pytest.mark.asyncio
+    async def test_query_models_infers_minimax_cn_from_env_file(
+        self,
+        gateway,
+        sent_messages,
+        tmp_path,
+        monkeypatch,
+    ):
+        hermes_home = tmp_path / "hermes"
+        hermes_home.mkdir()
+        (hermes_home / ".env").write_text("MINIMAX_CN_API_KEY=test-key\n", encoding="utf-8")
+        monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+        for env_var in (
+            "ANTHROPIC_API_KEY",
+            "OPENROUTER_API_KEY",
+            "OPENAI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "GOOGLE_API_KEY",
+            "GEMINI_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "GLM_API_KEY",
+            "HF_TOKEN",
+            "MINIMAX_API_KEY",
+            "MINIMAX_CN_API_KEY",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
+
+        runtime_provider = MagicMock()
+        runtime_provider.resolve_runtime_provider = (
+            lambda: {"model": "", "provider": ""}
+        )
+        models_module = MagicMock()
+        models_module.list_available_providers = lambda: []
+
+        with patch.dict("sys.modules", {
+            "hermes_cli": MagicMock(),
+            "hermes_cli.runtime_provider": runtime_provider,
+            "hermes_cli.models": models_module,
+        }):
+            await gateway._handle_query_models()
+
+        assert {
+            "model_id": "minimax-cn/MiniMax-M2.7",
+            "provider": "minimax-cn",
+            "display_name": "MiniMax-M2.7",
+        } in sent_messages[0]["models"]
+
+    @pytest.mark.asyncio
     async def test_query_models_preserves_same_display_from_runtime_and_config(
         self,
         gateway,
@@ -702,6 +749,130 @@ class TestCallbackMapping:
         assert result == "ok"
         assert captured_kwargs["provider"] == "deepseek"
         assert captured_kwargs["model"] == "deepseek-v4-pro"
+
+    @pytest.mark.asyncio
+    async def test_inbound_image_media_reaches_aiagent_as_native_content_parts(
+        self,
+        gateway,
+        sent_messages,
+        tmp_path,
+    ):
+        captured_run = {}
+        image_path = tmp_path / "shot.png"
+        image_path.write_bytes(b"fake-image")
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                pass
+
+            def run_conversation(self, **kwargs):
+                captured_run.update(kwargs)
+                return {"final_response": "ok"}
+
+        runtime_provider = MagicMock()
+        runtime_provider.resolve_runtime_provider = (
+            lambda requested=None, target_model=None: {
+                "api_key": "k",
+                "provider": "vision-provider",
+                "model": "vision-model",
+                "base_url": "",
+            }
+        )
+        config_module = MagicMock()
+        config_module.load_config = lambda: {}
+        image_routing = MagicMock()
+        image_routing.decide_image_input_mode = lambda provider, model, cfg: "native"
+        image_routing.build_native_content_parts = lambda text, paths: ([
+            {"type": "text", "text": text},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA"}},
+        ], [])
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch("clawke_channel._get_session_db", return_value=None), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": runtime_provider,
+                 "hermes_cli.config": config_module,
+                 "agent": MagicMock(),
+                 "agent.image_routing": image_routing,
+             }):
+            await gateway._handle_chat({
+                "conversation_id": "conv_image_native",
+                "text": "这是什么",
+                "media": {
+                    "paths": [str(image_path)],
+                    "types": ["image/png"],
+                    "names": ["shot.png"],
+                },
+            })
+
+        assert isinstance(captured_run["user_message"], list)
+        assert captured_run["user_message"][1]["type"] == "image_url"
+        assert "用户发送了 1 张图片" in captured_run["persist_user_message"]
+
+    @pytest.mark.asyncio
+    async def test_inbound_image_media_falls_back_to_vision_text_for_text_mode(
+        self,
+        gateway,
+        sent_messages,
+        tmp_path,
+    ):
+        captured_run = {}
+        image_path = tmp_path / "shot.png"
+        image_path.write_bytes(b"fake-image")
+
+        class MockAIAgent:
+            def __init__(self, **kwargs):
+                pass
+
+            def run_conversation(self, **kwargs):
+                captured_run.update(kwargs)
+                return {"final_response": "ok"}
+
+        async def fake_vision_analyze_tool(image_url, user_prompt):
+            return json.dumps({"success": True, "analysis": "a man in a city street"})
+
+        runtime_provider = MagicMock()
+        runtime_provider.resolve_runtime_provider = (
+            lambda requested=None, target_model=None: {
+                "api_key": "k",
+                "provider": "text-provider",
+                "model": "text-model",
+                "base_url": "",
+            }
+        )
+        config_module = MagicMock()
+        config_module.load_config = lambda: {}
+        image_routing = MagicMock()
+        image_routing.decide_image_input_mode = lambda provider, model, cfg: "text"
+        vision_tools = MagicMock()
+        vision_tools.vision_analyze_tool = fake_vision_analyze_tool
+
+        with patch("clawke_channel._get_ai_agent", return_value=MockAIAgent), \
+             patch("clawke_channel._get_session_db", return_value=None), \
+             patch.dict("sys.modules", {
+                 "hermes_cli": MagicMock(),
+                 "hermes_cli.runtime_provider": runtime_provider,
+                 "hermes_cli.config": config_module,
+                 "agent": MagicMock(),
+                 "agent.image_routing": image_routing,
+                 "tools": MagicMock(),
+                 "tools.vision_tools": vision_tools,
+             }):
+            await gateway._handle_chat({
+                "conversation_id": "conv_image_text",
+                "text": "这是什么",
+                "media": {
+                    "paths": [str(image_path)],
+                    "types": ["image/png"],
+                    "names": ["shot.png"],
+                },
+            })
+
+        assert isinstance(captured_run["user_message"], str)
+        assert "a man in a city street" in captured_run["user_message"]
+        assert "这是什么" in captured_run["user_message"]
+        assert captured_run["persist_user_message"] == captured_run["user_message"]
 
     @pytest.mark.asyncio
     async def test_stream_token_generates_text_delta(self, gateway, sent_messages):

@@ -37,6 +37,7 @@ import websockets
 
 logger = logging.getLogger("clawke.hermes")
 _DEFAULT_MODEL_CACHE: dict[str, Any] = {}
+_IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"})
 
 # ─── CUP Protocol Message Types (mirror of protocol.ts) ─────────────────────
 
@@ -295,6 +296,199 @@ def _sanitize_messages(messages: list[dict]) -> list[dict]:
         if sanitized.get('role'):
             clean.append(sanitized)
     return clean
+
+
+def _as_str_list(value: Any) -> list[str]:
+    """标准化字符串列表 — Normalize a possibly mixed list into strings."""
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, str) and v.strip()]
+
+
+def _is_image_media(path: str, media_type: str = "") -> bool:
+    """判断媒体是否为图片 — Determine whether a media item is an image."""
+    if media_type.lower().startswith("image/"):
+        return True
+    return Path(path).suffix.lower() in _IMAGE_SUFFIXES
+
+
+def _extract_existing_image_paths(media: Any) -> list[str]:
+    """提取可读图片路径 — Extract readable image paths from Clawke media."""
+    if not isinstance(media, dict):
+        return []
+
+    paths = _as_str_list(media.get("paths") or media.get("mediaPaths"))
+    types = _as_str_list(media.get("types") or media.get("mediaTypes"))
+    image_paths: list[str] = []
+
+    for idx, raw_path in enumerate(paths):
+        media_type = types[idx] if idx < len(types) else ""
+        if not _is_image_media(raw_path, media_type):
+            continue
+
+        path = Path(raw_path).expanduser()
+        if path.is_file():
+            image_paths.append(str(path))
+        else:
+            logger.warning("[Media] Image path not readable: %s", raw_path)
+
+    return image_paths
+
+
+def _image_persist_text(text: str, image_paths: list[str]) -> str:
+    """生成可持久化图片提示 — Build compact persisted image context."""
+    count = len(image_paths)
+    names = ", ".join(Path(p).name for p in image_paths[:3])
+    more = "" if count <= 3 else f", +{count - 3} more"
+    prefix = f"[用户发送了 {count} 张图片: {names}{more}]"
+    text = (text or "").strip()
+    return f"{text}\n\n{prefix}" if text else prefix
+
+
+def _decide_image_input_mode(provider: str, model: str) -> str:
+    """复用 Hermes 图片路由策略 — Reuse Hermes image routing policy."""
+    try:
+        from agent.image_routing import decide_image_input_mode
+        from hermes_cli.config import load_config
+
+        return decide_image_input_mode(provider or "", model or "", load_config())
+    except Exception as exc:
+        logger.debug("Image routing decision failed; falling back to text: %s", exc)
+        return "text"
+
+
+def _enrich_text_with_vision(text: str, image_paths: list[str]) -> str:
+    """用视觉工具补充图片上下文 — Enrich text with vision tool output."""
+    try:
+        from tools.vision_tools import vision_analyze_tool
+    except Exception as exc:
+        logger.warning("Vision tool unavailable: %s", exc)
+        return _image_persist_text(text, image_paths)
+
+    analysis_prompt = (
+        "Describe everything visible in this image in thorough detail. "
+        "Include any text, code, data, objects, people, layout, colors, "
+        "and any other notable visual information."
+    )
+    enriched_parts: list[str] = []
+
+    for path in image_paths:
+        try:
+            result_json = asyncio.run(vision_analyze_tool(
+                image_url=path,
+                user_prompt=analysis_prompt,
+            ))
+            result = json.loads(result_json)
+            if result.get("success"):
+                description = str(result.get("analysis") or "").strip()
+                enriched_parts.append(
+                    "[The user sent an image. Here is what I can see:\n"
+                    f"{description}]\n"
+                    f"[If you need a closer look, use vision_analyze with image_url: {path}]"
+                )
+            else:
+                enriched_parts.append(
+                    "[The user sent an image, but automatic vision analysis failed. "
+                    f"You can inspect it with vision_analyze using image_url: {path}]"
+                )
+        except Exception as exc:
+            logger.warning("Vision enrichment failed for %s: %s", path, exc)
+            enriched_parts.append(
+                "[The user sent an image, but automatic vision analysis errored. "
+                f"You can inspect it with vision_analyze using image_url: {path}]"
+            )
+
+    user_text = (text or "").strip()
+    if user_text:
+        enriched_parts.append(user_text)
+    return "\n\n".join(part for part in enriched_parts if part).strip()
+
+
+def _prepare_user_message_with_images(
+    text: str,
+    image_paths: list[str],
+    *,
+    provider: str,
+    model: str,
+) -> tuple[Any, Optional[str]]:
+    """准备 Hermes 图片输入 — Prepare Hermes image input for AIAgent."""
+    if not image_paths:
+        return text, None
+
+    mode = _decide_image_input_mode(provider, model)
+    if mode == "native":
+        try:
+            from agent.image_routing import build_native_content_parts
+
+            parts, skipped = build_native_content_parts(text, image_paths)
+            if skipped:
+                logger.warning("Native image attachment skipped paths: %s", skipped)
+            if any(isinstance(p, dict) and p.get("type") == "image_url" for p in parts):
+                return parts, _image_persist_text(text, image_paths)
+        except Exception as exc:
+            logger.warning("Native image attachment failed; falling back to text: %s", exc)
+
+    enriched = _enrich_text_with_vision(text, image_paths)
+    return enriched, enriched
+
+
+def _normalize_session_work_dir(raw_work_dir: Any) -> Optional[str]:
+    """校验会话工作目录 — Validate a session-scoped working directory."""
+    if not isinstance(raw_work_dir, str):
+        return None
+
+    raw = raw_work_dir.strip()
+    if not raw:
+        return None
+
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        logger.warning("[ConvConfig] Ignoring non-absolute workDir: %s", raw)
+        return None
+    if not path.is_dir():
+        logger.warning("[ConvConfig] Ignoring missing workDir: %s", raw)
+        return None
+    return str(path.resolve())
+
+
+def _apply_session_work_dir(task_id: str, raw_work_dir: Any) -> Optional[str]:
+    """注册会话级 cwd — Register task-level cwd without changing global env."""
+    work_dir = _normalize_session_work_dir(raw_work_dir)
+    try:
+        from tools.terminal_tool import (
+            clear_task_env_overrides,
+            register_task_env_overrides,
+        )
+
+        clear_task_env_overrides(task_id)
+        if work_dir:
+            register_task_env_overrides(task_id, {"cwd": work_dir})
+            logger.info("[ConvConfig] workDir=%s", work_dir)
+    except Exception as exc:
+        logger.warning("[ConvConfig] Failed to apply workDir override: %s", exc)
+        return None
+    return work_dir
+
+
+def _build_session_work_dir_prompt(work_dir: str) -> str:
+    """构建会话 cwd 提示 — Build session-scoped cwd context prompt."""
+    parts = [
+        (
+            "Current session working directory: "
+            f"{work_dir}\n"
+            "Use this directory as the active workspace for file and terminal tools.\n"
+            'Do not change to "/" unless explicitly requested.'
+        )
+    ]
+    try:
+        from agent.prompt_builder import build_context_files_prompt
+
+        context_prompt = build_context_files_prompt(cwd=work_dir)
+        if context_prompt:
+            parts.append(context_prompt)
+    except Exception as exc:
+        logger.warning("[ConvConfig] Failed to load workDir context files: %s", exc)
+    return "\n\n".join(parts)
 
 
 # ─── Gateway ─────────────────────────────────────────────────────────────────
@@ -673,6 +867,12 @@ class ClawkeHermesGateway:
         if system_prompt:
             text = f"{text}\n\n---\n{system_prompt}"
 
+        image_paths = _extract_existing_image_paths(msg.get("media"))
+        if image_paths:
+            logger.info("[Media] Inbound image(s): %d", len(image_paths))
+        elif msg.get("media"):
+            logger.warning("[Media] Inbound media present but no readable image paths")
+
         logger.info("📥 Inbound: %s (conv=%s)", text[:80], sender_id)
 
         # Create cancel event for this dispatch
@@ -949,6 +1149,13 @@ class ClawkeHermesGateway:
                 logger.debug("Approval module not available")
 
             try:
+                session_work_dir = _apply_session_work_dir(sender_id, msg.get("work_dir"))
+                session_work_dir_prompt = (
+                    _build_session_work_dir_prompt(session_work_dir)
+                    if session_work_dir
+                    else None
+                )
+
                 agent = AIAgent(
                     model=resolved_model,
                     provider=resolved_provider,
@@ -959,6 +1166,8 @@ class ClawkeHermesGateway:
                     enabled_toolsets=toolsets,
                     session_id=sender_id,
                     session_db=session_db,
+                    ephemeral_system_prompt=session_work_dir_prompt,
+                    skip_context_files=bool(session_work_dir),
                     stream_delta_callback=on_token,
                     reasoning_callback=on_reasoning,
                     tool_progress_callback=on_tool,
@@ -984,11 +1193,21 @@ class ClawkeHermesGateway:
                     except Exception as e:
                         logger.warning("Failed to load history from SessionDB: %s", e)
 
-                result = agent.run_conversation(
-                    user_message=text,
-                    conversation_history=_sanitize_messages(history),
-                    task_id=sender_id,
+                user_message, persist_user_message = _prepare_user_message_with_images(
+                    text,
+                    image_paths,
+                    provider=resolved_provider,
+                    model=resolved_model,
                 )
+                run_kwargs = {
+                    "user_message": user_message,
+                    "conversation_history": _sanitize_messages(history),
+                    "task_id": sender_id,
+                }
+                if persist_user_message is not None:
+                    run_kwargs["persist_user_message"] = persist_user_message
+
+                result = agent.run_conversation(**run_kwargs)
 
                 return result
 
@@ -1391,6 +1610,8 @@ class ClawkeHermesGateway:
             "GEMINI_API_KEY":       ("gemini", "gemini-2.5-pro"),
             "DASHSCOPE_API_KEY":    ("alibaba", "qwen-max"),
             "GLM_API_KEY":          ("zai", "glm-4"),
+            "MINIMAX_API_KEY":      ("minimax", "MiniMax-M2.7"),
+            "MINIMAX_CN_API_KEY":   ("minimax-cn", "MiniMax-M2.7"),
             "HF_TOKEN":            ("huggingface", "meta-llama/Llama-3-70b"),
         }
         try:
