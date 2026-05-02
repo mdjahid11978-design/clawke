@@ -1,13 +1,14 @@
 /**
- * 上游 OpenClaw/Gateway 监听器
+ * 上游 Gateway 监听器 — Upstream Gateway listener.
  *
- * 接收 Gateway WebSocket 连接，按 accountId 路由消息。
+ * 接收 OpenClaw / Hermes / Nanobot 等 Gateway WebSocket 连接，按 accountId 路由消息。
+ * Accepts Gateway WebSocket connections and routes messages by accountId.
  */
 import { WebSocketServer, WebSocket } from 'ws';
 import { broadcastToClients, getClientConnections } from '../downstream/client-server.js';
 import type { GatewayInfo } from '../types/gateways.js';
 
-// accountId → WebSocket 路由表
+// accountId → WebSocket 路由表 — accountId to WebSocket routing table.
 const upstreamConnections = new Map<string, WebSocket>();
 const upstreamGatewayInfo = new Map<string, GatewayInfo>();
 const activeStreamingIds = new Set<string>();
@@ -30,13 +31,13 @@ export function isTransientGatewayResponseType(type: unknown): boolean {
   return typeof type === 'string' && TRANSIENT_GATEWAY_RESPONSE_TYPES.has(type);
 }
 
-export function startOpenClawListener(
+export function startGatewayListener(
   port: number,
   messageHandler: (payload: Record<string, unknown>) => void,
   onGatewayIdentified?: (accountId: string, agentName: string) => void,
 ): WebSocketServer {
   const wss = new WebSocketServer({ port });
-  console.log(`[Gateway] Upstream OpenClaw listener started, waiting on ws://127.0.0.1:${port}`);
+  console.log(`[Gateway] Upstream Gateway listener started, waiting on ws://127.0.0.1:${port}`);
 
   wss.on('connection', (ws: WebSocket) => {
     let accountId: string | null = null;
@@ -46,7 +47,7 @@ export function startOpenClawListener(
       try {
         payload = JSON.parse(raw.toString());
       } catch {
-        console.error('[Gateway] OpenClaw JSON parse failed:', raw.toString());
+        console.error('[Gateway] Gateway JSON parse failed:', raw.toString());
         return;
       }
 
@@ -82,7 +83,7 @@ export function startOpenClawListener(
           last_seen_at: now,
         });
 
-        // 通知 server 层处理自动创建会话等逻辑
+        // 通知 server 层处理自动创建会话等逻辑 — Notify server layer for default conversation setup.
         if (onGatewayIdentified) {
           onGatewayIdentified(accountId!, displayName);
         }
@@ -116,12 +117,12 @@ export function startOpenClawListener(
         return;
       }
 
-      // Transient gateway responses are handled by per-request listeners, not the main route.
+      // 临时响应由单次请求监听器处理，不走主路由 — Transient responses are handled by per-request listeners.
       if (isTransientGatewayResponseType(payload.type)) {
         return;
       }
 
-      // 上行消息入口日志：记录 Gateway 发来的每条消息摘要
+      // 上行消息入口日志：记录 Gateway 发来的每条消息摘要 — Log each upstream message summary.
       const pType = payload.type || '?';
       const pMsgId = (payload.message_id as string) || '';
       const pConvId = (payload.conversation_id as string) || '';
@@ -139,7 +140,7 @@ export function startOpenClawListener(
       if (upstreamConnections.get(accountId) === ws) {
         upstreamConnections.delete(accountId);
         upstreamGatewayInfo.delete(accountId);
-        console.log(`[Gateway] OpenClaw Gateway disconnected: account=${accountId} (remaining: ${upstreamConnections.size})`);
+        console.log(`[Gateway] Gateway disconnected: account=${accountId} (remaining: ${upstreamConnections.size})`);
         finalizeAllStreaming();
         broadcastToClients({
           payload_type: 'system_status',
@@ -149,7 +150,7 @@ export function startOpenClawListener(
       }
     });
 
-    ws.on('error', (err: Error) => console.error('[Gateway] OpenClaw WebSocket error:', err.message));
+    ws.on('error', (err: Error) => console.error('[Gateway] Gateway WebSocket error:', err.message));
   });
 
   return wss;
@@ -167,18 +168,18 @@ export function finalizeAllStreaming(): void {
   });
 }
 
-/** 按 accountId 路由发送给对应的 upstream */
-export function sendToOpenClaw(accountId: string, jsonObj: Record<string, unknown>): void {
+/** 按 accountId 路由发送给对应的 Gateway upstream — Route outbound messages to the Gateway upstream by accountId. */
+export function sendToGateway(accountId: string, jsonObj: Record<string, unknown>): void {
   const ws = upstreamConnections.get(accountId);
   if (ws && ws.readyState === 1) {
     try {
       if ((jsonObj as any).media) {
-        console.log(`[Gateway] 📤 sendToOpenClaw(${accountId}): media=${JSON.stringify((jsonObj as any).media)}`);
+        console.log(`[Gateway] 📤 sendToGateway(${accountId}): media=${JSON.stringify((jsonObj as any).media)}`);
       }
-      console.log(`[Gateway] ➡️  sendToOpenClaw(${accountId}): type=${jsonObj.type}, text=${((jsonObj as any).text || '').slice(0, 50)}`);
+      console.log(`[Gateway] ➡️  sendToGateway(${accountId}): type=${jsonObj.type}, text=${((jsonObj as any).text || '').slice(0, 50)}`);
       ws.send(JSON.stringify(jsonObj));
     } catch (err: any) {
-      console.error(`[Gateway] ❌ sendToOpenClaw(${accountId}) failed:`, err.message);
+      console.error(`[Gateway] ❌ sendToGateway(${accountId}) failed:`, err.message);
     }
   } else {
     const state = ws ? `readyState=${ws.readyState}` : 'no ws';

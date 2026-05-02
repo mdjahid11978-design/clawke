@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { SkillGatewayRequest, SkillGatewayResponse } from '../types/skills.js';
-import { getUpstreamConnection } from './openclaw-listener.js';
+import { getUpstreamConnection } from './gateway-listener.js';
 
 type SkillGatewayWebSocket = Pick<WebSocket, 'send' | 'on' | 'removeListener' | 'readyState'>;
 

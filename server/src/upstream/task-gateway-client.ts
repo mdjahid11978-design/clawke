@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
 import type { TaskGatewayRequest, TaskGatewayResponse } from '../types/tasks.js';
-import { getUpstreamConnection } from './openclaw-listener.js';
+import { getUpstreamConnection } from './gateway-listener.js';
 
 type TaskGatewayWebSocket = Pick<WebSocket, 'send' | 'on' | 'removeListener' | 'readyState'>;
 

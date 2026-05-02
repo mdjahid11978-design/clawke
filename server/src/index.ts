@@ -315,8 +315,8 @@ async function main() {
     });
 
   } else if (MODE === 'openclaw') {
-    const { startOpenClawListener, sendToOpenClaw, isUpstreamConnected, getConnectedAccountIds, getConnectedGateways, queryGatewayModels, queryGatewaySkills } =
-      await import('./upstream/openclaw-listener.js');
+    const { startGatewayListener, sendToGateway, isUpstreamConnected, getConnectedAccountIds, getConnectedGateways, queryGatewayModels, queryGatewaySkills } =
+      await import('./upstream/gateway-listener.js');
     const { initConfigRoutes } = await import('./routes/config-routes.js');
     const { initConversationRoutes } = await import('./routes/conversation-routes.js');
     const { initTasksRoutes } = await import('./routes/tasks-routes.js');
@@ -376,7 +376,7 @@ async function main() {
       stats: statsCollector,
       forwardToUpstream: (accountId: string, upstreamMsg: unknown) => {
         // UpstreamMessage 标准协议直接发给 Gateway，不再翻译
-        sendToOpenClaw(accountId, upstreamMsg as Record<string, unknown>);
+        sendToGateway(accountId, upstreamMsg as Record<string, unknown>);
       },
       broadcastToClients,
       messageRouter,
@@ -387,21 +387,21 @@ async function main() {
       forwardToUpstream: (accountId: string, msg: unknown) => {
         const m = msg as Record<string, unknown>;
         const conversationId = (m.conversation_id as string) || '';
-        sendToOpenClaw(accountId, { type: 'abort', conversation_id: conversationId });
+        sendToGateway(accountId, { type: 'abort', conversation_id: conversationId });
       },
       messageRouter,
     }));
     // Hermes Gateway 专用：结构化审批/澄清响应透传 — Hermes-only: structured approval/clarify response passthrough
     // OpenClaw 不使用此路径 — 其审批通过 Markdown 按钮 → 普通 chat 消息实现
     registry.register('approval_response', createApprovalResponseHandler({
-      forwardToUpstream: (accountId, msg) => sendToOpenClaw(accountId, msg),
+      forwardToUpstream: (accountId, msg) => sendToGateway(accountId, msg),
     }));
     registry.register('clarify_response', createClarifyResponseHandler({
-      forwardToUpstream: (accountId, msg) => sendToOpenClaw(accountId, msg),
+      forwardToUpstream: (accountId, msg) => sendToGateway(accountId, msg),
     }));
 
     // 上游消息处理 — 使用 MessageRouter
-    const upstreamWss = startOpenClawListener(UPSTREAM_PORT, (payload: Record<string, unknown>) => {
+    const upstreamWss = startGatewayListener(UPSTREAM_PORT, (payload: Record<string, unknown>) => {
       console.log('[Gateway] Upstream message:', JSON.stringify(payload).slice(0, 200));
       const gatewayId = (payload.gateway_id as string) || (payload.account_id as string) || 'default';
       messageRouter.handleUpstreamMessage(payload as any, gatewayId);

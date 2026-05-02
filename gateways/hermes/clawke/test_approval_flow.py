@@ -51,7 +51,7 @@ async def main():
             print("[Test] ✅ Sent! Check Server terminal for:")
             print("       [Tunnel] 📥 event_type=approval_response, account=hermes")
             print("       [Tunnel] ✅ approval_response: conv=test-conv-123 choice=once")
-            print("       [Gateway] ➡️  sendToOpenClaw(hermes): type=approval_response")
+            print("       [Gateway] ➡️  sendToGateway(hermes): type=approval_response")
             print()
             print("[Test] If you see 'Unknown event_type: approval_response' → Server not rebuilt")
             print("[Test] If you see NO log at all → message not reaching Server")

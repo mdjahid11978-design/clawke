@@ -133,7 +133,7 @@ describe('GatewayManageService', () => {
   });
 
   it('marks gateway_system_response as transient', async () => {
-    const { isTransientGatewayResponseType } = require('../dist/upstream/openclaw-listener');
+    const { isTransientGatewayResponseType } = require('../dist/upstream/gateway-listener');
 
     assert.equal(isTransientGatewayResponseType('gateway_system_response'), true);
     assert.equal(isTransientGatewayResponseType('agent_text'), false);

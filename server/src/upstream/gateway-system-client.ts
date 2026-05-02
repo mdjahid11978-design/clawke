@@ -6,7 +6,7 @@ import type {
   GatewaySystemWireRequest,
   GatewaySystemWireResponse,
 } from '../types/gateway-session.js';
-import { getUpstreamConnection } from './openclaw-listener.js';
+import { getUpstreamConnection } from './gateway-listener.js';
 
 type GatewaySystemWebSocket = Pick<WebSocket, 'send' | 'on' | 'removeListener' | 'readyState'>;
 

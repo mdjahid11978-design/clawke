@@ -137,8 +137,8 @@ test('task gateway request cleans up listener when send throws', async () => {
   assert.equal(ws.listenerCount('message'), 0);
 });
 
-test('openclaw listener identifies task gateway responses as transient responses', async () => {
-  const { isTransientGatewayResponseType } = await import('../dist/upstream/openclaw-listener.js');
+test('gateway listener identifies task gateway responses as transient responses', async () => {
+  const { isTransientGatewayResponseType } = await import('../dist/upstream/gateway-listener.js');
 
   assert.equal(isTransientGatewayResponseType('models_response'), true);
   assert.equal(isTransientGatewayResponseType('skills_response'), true);
