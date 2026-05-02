@@ -1,0 +1,1779 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frontend B · 当前任务管理 UI Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f0e8;
+      --surface: #fffdf8;
+      --surface-2: #f8f4ec;
+      --surface-3: #eee8dc;
+      --text: #231f1a;
+      --muted: #746b60;
+      --line: #d8d0c2;
+      --line-strong: #b5aa99;
+      --primary: #315f72;
+      --primary-soft: #e5f0f3;
+      --warn: #9f3d1e;
+      --warn-bg: #fff0df;
+      --warn-line: #d99367;
+      --ok: #3d7148;
+      --ok-bg: #e7f2e7;
+      --shadow: 0 14px 34px rgba(71, 55, 33, .08);
+      --radius: 8px;
+      --body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--body);
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    svg { display: block; }
+
+    .shell {
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 58px;
+      padding: 0 18px;
+      background: rgba(255, 253, 248, .94);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 19px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+    .topbar .note {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .stage {
+      padding: 16px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: minmax(310px, 430px) minmax(340px, 1fr) minmax(360px, 520px);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel {
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: visible;
+    }
+    .panel-head {
+      min-height: 56px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-family: var(--display);
+      font-size: 17px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+    .panel-body { padding: 14px; }
+
+    .btn {
+      min-height: 38px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line-strong);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 13px;
+      font-weight: 760;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .btn.primary {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: white;
+    }
+    .btn.danger {
+      border-color: #d45555;
+      background: transparent;
+      color: #d45555;
+    }
+    .btn.danger:hover {
+      background: rgba(212, 85, 85, .12);
+    }
+
+    .pill {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 26px;
+      border-radius: 999px;
+      padding: 0 9px;
+      font-size: 12px;
+      font-weight: 820;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      flex: 0 0 auto;
+    }
+    .pill.warn {
+      background: var(--warn-bg);
+      color: var(--warn);
+      border-color: var(--warn-line);
+    }
+    .pill.ok {
+      background: var(--ok-bg);
+      color: var(--ok);
+    }
+    .pill.neutral {
+      background: var(--surface-3);
+      color: var(--muted);
+    }
+    .tooltip {
+      position: relative;
+    }
+    .tooltip::after {
+      content: attr(data-tip);
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(320px, 78vw);
+      padding: 10px 12px;
+      border: 1px solid var(--warn-line);
+      border-radius: var(--radius);
+      background: #221a13;
+      color: #fff7ea;
+      box-shadow: 0 12px 28px rgba(35, 31, 26, .22);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 680;
+      white-space: normal;
+      opacity: 0;
+      transform: translateY(-3px);
+      pointer-events: none;
+      transition: opacity .14s ease, transform .14s ease;
+    }
+    .tooltip:hover::after,
+    .tooltip:focus-visible::after {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .task-list {
+      display: grid;
+      gap: 8px;
+    }
+    .task {
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 10px 11px;
+      display: grid;
+      gap: 6px;
+    }
+    .task.selected {
+      border-left-color: var(--warn);
+      background: #fffaf1;
+    }
+    .task-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      min-width: 0;
+    }
+    .iconbox {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius);
+      background: var(--primary-soft);
+      color: var(--primary);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+    .task-main {
+      min-width: 0;
+      flex: 1;
+    }
+    .task-name {
+      font-weight: 850;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .task-desc {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding-left: 46px;
+    }
+
+    .alert {
+      border: 1px solid var(--warn-line);
+      background: var(--warn-bg);
+      color: #663800;
+      border-radius: var(--radius);
+      padding: 11px 12px;
+      display: grid;
+      gap: 6px;
+    }
+    .alert-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 840;
+    }
+    .alert p {
+      margin: 0;
+      color: #754408;
+      font-size: 14px;
+    }
+    code {
+      background: rgba(255,255,255,.76);
+      border: 1px solid rgba(121, 83, 28, .25);
+      border-radius: 6px;
+      padding: 2px 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px;
+      padding: 8px 0;
+      border-top: 1px solid var(--line);
+    }
+    .kv:first-child { border-top: 0; }
+    .kv dt {
+      color: var(--muted);
+      font-weight: 760;
+    }
+    .kv dd {
+      margin: 0;
+      min-width: 0;
+      font-weight: 680;
+      overflow-wrap: anywhere;
+    }
+    .value-pair {
+      display: grid;
+      gap: 4px;
+    }
+    .value-pair-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .value-pair-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+
+    .form {
+      display: grid;
+      gap: 12px;
+    }
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+    .twocol {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 820;
+    }
+    input, textarea {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      padding: 9px 11px;
+    }
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+    .picker-trigger {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 11px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+    }
+    .picker-trigger:hover {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+    .picker-copy {
+      min-width: 0;
+      flex: 1;
+      display: grid;
+      gap: 1px;
+    }
+    .picker-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+    .picker-value {
+      font-size: 14px;
+      font-weight: 840;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .picker-icon,
+    .picker-chevron {
+      color: var(--primary);
+      flex: 0 0 auto;
+    }
+    .helper {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    @media (max-width: 1180px) {
+      .board {
+        grid-template-columns: 1fr 1fr;
+      }
+      .edit {
+        grid-column: 1 / -1;
+      }
+    }
+    @media (max-width: 760px) {
+      .topbar {
+        height: auto;
+        min-height: 58px;
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 12px;
+      }
+      .topbar .note {
+        white-space: normal;
+      }
+      .stage {
+        padding: 12px;
+      }
+      .board {
+        grid-template-columns: 1fr;
+      }
+      .edit {
+        grid-column: auto;
+      }
+      .twocol,
+      .kv {
+        grid-template-columns: 1fr;
+      }
+      .meta {
+        padding-left: 0;
+      }
+      .quick-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .segmented,
+      .weekday-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(35, 31, 26, .34);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease;
+    }
+    .sheet-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .bottom-sheet {
+      position: fixed;
+      z-index: 41;
+      left: 50%;
+      bottom: 0;
+      width: min(560px, calc(100vw - 24px));
+      max-height: min(74dvh, 520px);
+      transform: translate(-50%, calc(100% + 20px));
+      transition: transform .22s ease;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -18px 42px rgba(35, 31, 26, .2);
+      overflow: hidden;
+    }
+    .bottom-sheet.open {
+      transform: translate(-50%, 0);
+    }
+    .sheet-handle {
+      width: 38px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--line-strong);
+      margin: 10px auto 8px;
+    }
+    .sheet-title {
+      padding: 0 16px 8px;
+      font-weight: 840;
+      font-size: 15px;
+    }
+    .sheet-list {
+      max-height: calc(min(74dvh, 520px) - 56px);
+      overflow: auto;
+      padding: 0 8px 12px;
+    }
+    .sheet-item {
+      width: 100%;
+      min-height: 64px;
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 8px;
+      text-align: left;
+    }
+    .sheet-item:hover,
+    .sheet-item.selected {
+      background: var(--primary-soft);
+    }
+    .sheet-item-main {
+      min-width: 0;
+      flex: 1;
+    }
+    .sheet-item-title {
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sheet-check {
+      color: var(--primary);
+      flex: 0 0 auto;
+    }
+    .schedule-dialog {
+      position: fixed;
+      z-index: 41;
+      left: 50%;
+      bottom: 0;
+      width: min(680px, calc(100vw - 24px));
+      max-height: min(78dvh, 680px);
+      transform: translate(-50%, calc(100% + 20px));
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .22s ease;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -18px 42px rgba(35, 31, 26, .2);
+      overflow: hidden;
+    }
+    .schedule-dialog.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translate(-50%, 0);
+    }
+    .dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 16px 10px;
+    }
+    .dialog-head .sheet-title {
+      padding: 0;
+    }
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--muted);
+      display: inline-grid;
+      place-items: center;
+    }
+    .icon-btn:hover {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: var(--primary-soft);
+    }
+    .sheet-section {
+      padding: 0 16px 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .schedule-dialog .sheet-section {
+      max-height: calc(min(78dvh, 680px) - 64px);
+      overflow: auto;
+    }
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+    .segmented button {
+      min-height: 34px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 840;
+    }
+    .segmented button.active {
+      background: var(--surface);
+      color: var(--primary);
+      box-shadow: 0 1px 0 rgba(35, 31, 26, .06);
+    }
+    .schedule-pane {
+      display: none;
+      gap: 12px;
+    }
+    .schedule-pane.active {
+      display: grid;
+    }
+    .quick-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .quick-option {
+      min-height: 58px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 10px;
+      font-weight: 820;
+      display: grid;
+      gap: 2px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .quick-option span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .quick-option.active,
+    .quick-option:hover {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    .interval-option {
+      grid-template-columns: auto minmax(74px, 100px) auto;
+      align-items: center;
+      justify-content: start;
+      gap: 8px;
+      font-size: 16px;
+    }
+    .interval-option span {
+      color: inherit;
+      font-size: 16px;
+      font-weight: 840;
+    }
+    .interval-option select {
+      min-height: 36px;
+      padding: 6px 8px;
+      font-size: 15px;
+    }
+    .inline-select-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 42px;
+      color: var(--muted);
+      font-weight: 820;
+    }
+    .inline-select-row select {
+      width: 96px;
+      flex: 0 0 auto;
+    }
+    .weekday-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .weekday {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 820;
+    }
+    .weekday:not(.active):hover {
+      border-color: var(--line-strong);
+      background: var(--surface-3);
+      color: var(--text);
+    }
+    .weekday.active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+      box-shadow: 0 1px 0 rgba(35, 31, 26, .06);
+    }
+    .time-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 8px;
+      align-items: end;
+    }
+    .time-separator {
+      align-self: center;
+      color: var(--muted);
+      font-size: 24px;
+      font-weight: 850;
+      padding-top: 18px;
+    }
+    select,
+    .cron-input {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 10px;
+      font-weight: 760;
+    }
+    .preview-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+    }
+    .preview-line strong {
+      color: var(--text);
+      font-size: 15px;
+    }
+    .error-helper {
+      margin-top: -4px;
+      color: #b4232c;
+      font-size: 13px;
+      font-weight: 760;
+    }
+    .sheet-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .mobile-demo {
+      margin-bottom: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(300px, 380px));
+      gap: 16px;
+      align-items: start;
+      justify-content: center;
+    }
+    .phone {
+      width: min(100%, 378px);
+      min-height: 720px;
+      border: 1px solid var(--line-strong);
+      border-radius: 28px;
+      background: #191611;
+      box-shadow: 0 22px 46px rgba(35, 31, 26, .18);
+      padding: 10px;
+    }
+    .phone-screen {
+      position: relative;
+      min-height: 700px;
+      overflow: hidden;
+      border-radius: 22px;
+      background: var(--bg);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    .mobile-appbar {
+      min-height: 56px;
+      padding: 12px 14px;
+      background: rgba(255, 253, 248, .94);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .mobile-appbar h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 860;
+      letter-spacing: 0;
+    }
+    .mobile-content {
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+    .mobile-filter {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      font-weight: 760;
+    }
+    .mobile-task {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--warn);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .mobile-task-title {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 860;
+    }
+    .mobile-task p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .mobile-row {
+      display: grid;
+      gap: 3px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .mobile-row:first-child {
+      border-top: 0;
+    }
+    .mobile-row label {
+      font-size: 12px;
+    }
+    .mobile-row strong {
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+    .mobile-alert {
+      border: 1px solid var(--warn-line);
+      border-radius: var(--radius);
+      background: var(--warn-bg);
+      color: #663800;
+      padding: 10px 11px;
+      font-size: 13px;
+      font-weight: 760;
+    }
+    .mobile-field {
+      display: grid;
+      gap: 6px;
+    }
+    .mobile-picker {
+      min-height: 50px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      text-align: left;
+    }
+    .mobile-picker small {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+    }
+    .mobile-picker span {
+      display: block;
+      margin-top: 2px;
+      color: var(--text);
+      font-weight: 840;
+      overflow-wrap: anywhere;
+    }
+    .mobile-modal-layer {
+      position: absolute;
+      inset: 0;
+      background: rgba(35, 31, 26, .34);
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+    .mobile-dialog {
+      width: 100%;
+      max-height: 88%;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: 0 22px 52px rgba(35, 31, 26, .24);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .mobile-dialog-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 860;
+    }
+    .mobile-tabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+    .mobile-tabs span {
+      min-height: 30px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 820;
+    }
+    .mobile-tabs .active {
+      background: var(--surface);
+      color: var(--primary);
+    }
+    .mobile-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 5px;
+    }
+    .mobile-weekdays span {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: grid;
+      place-items: center;
+      font-weight: 820;
+    }
+    .mobile-weekdays .active {
+      border-color: var(--primary);
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    .mobile-time {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 7px;
+      align-items: center;
+      color: var(--muted);
+      font-weight: 840;
+    }
+    .mobile-time .box {
+      min-height: 40px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      display: grid;
+      place-items: center;
+      color: var(--text);
+      font-weight: 860;
+    }
+    .mobile-preview-line {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+      display: grid;
+      gap: 2px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 760;
+    }
+    .mobile-preview-line strong {
+      color: var(--text);
+      font-size: 14px;
+    }
+    @media (max-width: 1180px) {
+      .mobile-demo {
+        grid-template-columns: repeat(2, minmax(300px, 380px));
+      }
+    }
+    @media (max-width: 760px) {
+      .mobile-demo {
+        grid-template-columns: 1fr;
+      }
+      .phone {
+        margin: 0 auto;
+      }
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 120px;
+    }
+    .topbar-center {
+      min-width: 0;
+      justify-self: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .topbar h1 {
+      justify-self: center;
+      font-family: var(--body);
+      font-size: 18px;
+      font-weight: 880;
+    }
+    .topbar .btn {
+      justify-self: end;
+    }
+    .topbar-icon {
+      width: 42px;
+      height: 42px;
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+    }
+    .topbar-icon:hover {
+      color: var(--primary);
+      background: var(--primary-soft);
+    }
+    .mobile-demo {
+      display: none;
+    }
+    .view-switch {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+    }
+    .view-switch button {
+      min-height: 30px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 12px;
+      font-weight: 820;
+    }
+    .view-switch button.active {
+      background: var(--surface);
+      color: var(--primary);
+      box-shadow: 0 1px 0 rgba(35, 31, 26, .06);
+    }
+    .board {
+      display: block;
+      max-width: 1852px;
+      margin: 0 auto;
+    }
+    .view-page {
+      display: none;
+    }
+    .view-page.active {
+      display: block;
+    }
+    .edit-page {
+      display: none;
+      gap: 16px;
+    }
+    .edit-page.active {
+      display: grid;
+    }
+    .list-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .detail-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .prompt-box {
+      min-height: 180px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 680;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .danger-copy {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-weight: 760;
+    }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .section-copy {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-weight: 760;
+    }
+    .picker-row {
+      margin-top: 14px;
+    }
+    .picker-value {
+      font-size: 15px;
+    }
+    .prompt-textarea {
+      min-height: 520px;
+      line-height: 1.55;
+    }
+    @media (max-width: 760px) {
+      .topbar {
+        grid-template-columns: 48px minmax(0, 1fr) 96px;
+        align-items: center;
+      }
+      .topbar-center {
+        gap: 8px;
+      }
+      .topbar h1 {
+        display: none;
+      }
+      .view-switch button {
+        padding: 0 8px;
+      }
+      .stage {
+        padding: 12px;
+      }
+      .list-grid,
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+      .prompt-textarea {
+        min-height: 360px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <button class="topbar-icon" type="button" aria-label="返回">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="topbar-center">
+        <h1 id="pageTitle">编辑任务</h1>
+        <div class="view-switch" role="tablist" aria-label="Demo 页面">
+          <button type="button" data-view-tab="list">List</button>
+          <button type="button" data-view-tab="detail">Detail</button>
+          <button class="active" type="button" data-view-tab="edit">Edit</button>
+        </div>
+      </div>
+      <button class="btn primary" id="saveAction" type="button">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M17 21v-8H7v8M7 3v5h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        保存
+      </button>
+    </header>
+
+    <main class="stage">
+      <div class="board">
+        <section class="view-page" data-view-panel="list">
+          <div class="panel">
+            <div class="panel-body">
+              <h2 class="section-title">任务列表</h2>
+              <div class="list-grid">
+                <article class="task selected">
+                  <div class="task-row">
+                    <div class="iconbox" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M8 2v4M16 2v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      </svg>
+                    </div>
+                    <div class="task-main">
+                      <div class="task-name">杭州每日天气提醒</div>
+                      <div class="task-desc">用 Open-Meteo API 查询杭州天气预报。</div>
+                    </div>
+                    <span class="pill warn tooltip" tabindex="0" data-tip="投递目标不是当前 Gateway 下的有效会话，需要进入编辑页选择一个会话。">投递异常</span>
+                  </div>
+                  <div class="meta">
+                    <span>每天 07:43</span>
+                    <span>Hermes</span>
+                  </div>
+                </article>
+
+                <article class="task">
+                  <div class="task-row">
+                    <div class="iconbox" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      </svg>
+                    </div>
+                    <div class="task-main">
+                      <div class="task-name">每日 AI 资讯</div>
+                      <div class="task-desc">汇总 AI 行业新闻，交付到 OpenClaw 会话。</div>
+                    </div>
+                    <span class="pill ok">正常</span>
+                  </div>
+                  <div class="meta">
+                    <span>每天 06:45</span>
+                    <span>OpenClaw</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view-page" data-view-panel="detail">
+          <div class="panel">
+            <div class="panel-body">
+              <h2 class="section-title">基础信息</h2>
+              <div class="detail-grid">
+                <dl>
+                  <div class="kv"><dt>名称</dt><dd>杭州每日天气提醒</dd></div>
+                  <div class="kv"><dt>Gateway</dt><dd>hermes</dd></div>
+                  <div class="kv"><dt>执行计划</dt><dd>每天 07:43</dd></div>
+                  <div class="kv"><dt>交付会话</dt><dd>New Chat（hermes）</dd></div>
+                </dl>
+                <dl>
+                  <div class="kv"><dt>状态</dt><dd>已启用</dd></div>
+                  <div class="kv"><dt>下次运行</dt><dd>2026-05-03 07:43:00</dd></div>
+                </dl>
+              </div>
+              <div class="detail-actions">
+                <button class="btn primary" type="button">立即执行</button>
+                <button class="btn" type="button">执行记录</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:16px">
+            <div class="panel-body">
+              <h2 class="section-title">任务提示词</h2>
+              <div class="prompt-box">用 curl 请求 Open-Meteo API（免费，无需 key）查询杭州的天气预报，并把结果作为普通文字消息发回来。</div>
+            </div>
+          </div>
+        </section>
+
+        <form class="edit-page view-page active" data-view-panel="edit">
+          <section class="panel">
+            <div class="panel-body">
+              <h2 class="section-title">基础信息</h2>
+              <div class="field">
+                <label>名称</label>
+                <input value="杭州每日天气提醒" />
+                <div class="helper">用于任务列表和详情页标题。</div>
+              </div>
+              <div class="twocol picker-row">
+                <div class="field">
+                  <label>执行计划</label>
+                  <button class="picker-trigger" id="schedulePicker" type="button" aria-haspopup="dialog">
+                    <svg class="picker-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <span class="picker-copy">
+                      <span class="picker-value" id="schedulePickerValue">每天 07:43</span>
+                    </span>
+                    <svg class="picker-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="field">
+                  <label>交付会话</label>
+                  <button class="picker-trigger" id="conversationPicker" type="button" aria-haspopup="dialog">
+                    <svg class="picker-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span class="picker-copy">
+                      <span class="picker-value" id="conversationPickerValue">New Chat（hermes）</span>
+                    </span>
+                    <svg class="picker-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="field" style="margin-top:14px">
+                <label>技能</label>
+                <input placeholder="技能" />
+                <div class="helper">可选。逗号分隔；留空表示由 Agent 自行选择。</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-body">
+              <h2 class="section-title">任务提示词</h2>
+              <div class="field">
+                <textarea class="prompt-textarea" aria-label="提示词内容">用 curl 请求 Open-Meteo API（免费，无需 key）查询杭州的天气预报：
+- 坐标：杭州 30.274, 120.155
+- API: https://api.open-meteo.com/v1/forecast?latitude=30.274&longitude=120.155&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min&timezone=Asia%2FShanghai
+
+解析 JSON，判断今天（date 字段的第一天）是否会下雨：
+- 判断标准：precipitation_sum > 0.1mm 或者 precipitation_probability_max >= 50%，则视为“会下雨”
+- 构造回复，例如：
+  - 晴天："☀️ 今天杭州晴天，不会下雨。最高气温 X°C，最低 X°C。"
+  - 雨天："🌧️ 今天杭州可能会下雨！降水概率 X%，降雨量 Xmm。最高气温 X°C，最低 X°C。"
+  - 带概率："🌦️ 今天杭州有 X% 概率下雨，可能降雨量 Xmm。最高气温 X°C，最低 X°C。"
+
+把结果作为普通文字消息发回来（hermes 会自动投递到当前对话）。只发这条天气消息，不要多余内容。</textarea>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-body">
+              <h2 class="section-title">危险操作</h2>
+              <p class="danger-copy">删除任务后，任务定义和执行计划会被移除，此操作不可撤销。</p>
+              <button class="btn danger" type="button">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15M10 11v6M14 11v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                删除任务
+              </button>
+            </div>
+          </section>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <div class="sheet-backdrop" id="sheetBackdrop" hidden></div>
+  <aside class="schedule-dialog" id="scheduleSheet" role="dialog" aria-modal="true" aria-labelledby="scheduleSheetTitle" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="dialog-head">
+      <div class="sheet-title" id="scheduleSheetTitle">设置计划</div>
+    </div>
+    <div class="sheet-section">
+      <div class="segmented" role="tablist" aria-label="计划模式">
+        <button class="active" type="button" data-schedule-tab="daily">每天</button>
+        <button type="button" data-schedule-tab="weekly">每周</button>
+        <button type="button" data-schedule-tab="monthly">每月</button>
+        <button type="button" data-schedule-tab="preset">高频</button>
+        <button type="button" data-schedule-tab="advanced">高级</button>
+      </div>
+
+      <div class="schedule-pane" id="presetSchedulePane">
+        <div class="quick-grid" aria-label="高频计划">
+          <div class="quick-option interval-option active" role="button" tabindex="0" data-preset="minute">
+            <span>每</span>
+            <select id="minuteIntervalSelect" aria-label="分钟间隔"></select>
+            <span>分钟</span>
+          </div>
+          <div class="quick-option interval-option" role="button" tabindex="0" data-preset="hour">
+            <span>每</span>
+            <select id="hourIntervalSelect" aria-label="小时间隔"></select>
+            <span>小时</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-pane active" id="dailySchedulePane">
+        <div class="time-row">
+          <div class="field">
+            <label>小时</label>
+            <select id="dailyHourSelect" aria-label="每天小时"></select>
+          </div>
+          <div class="time-separator">:</div>
+          <div class="field">
+            <label>分钟</label>
+            <select id="dailyMinuteSelect" aria-label="每天分钟"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-pane" id="weeklySchedulePane">
+        <div class="weekday-grid" aria-label="选择星期">
+          <button class="weekday active" type="button" data-weekday="1">一</button>
+          <button class="weekday" type="button" data-weekday="2">二</button>
+          <button class="weekday" type="button" data-weekday="3">三</button>
+          <button class="weekday" type="button" data-weekday="4">四</button>
+          <button class="weekday" type="button" data-weekday="5">五</button>
+          <button class="weekday" type="button" data-weekday="6">六</button>
+          <button class="weekday" type="button" data-weekday="0">日</button>
+        </div>
+        <div class="time-row">
+          <div class="field">
+            <label>小时</label>
+            <select id="weeklyHourSelect" aria-label="每周小时"></select>
+          </div>
+          <div class="time-separator">:</div>
+          <div class="field">
+            <label>分钟</label>
+            <select id="weeklyMinuteSelect" aria-label="每周分钟"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-pane" id="monthlySchedulePane">
+        <div class="field">
+          <label>日期</label>
+          <select id="monthDaySelect" aria-label="每月日期"></select>
+        </div>
+        <div class="time-row">
+          <div class="field">
+            <label>小时</label>
+            <select id="monthlyHourSelect" aria-label="每月小时"></select>
+          </div>
+          <div class="time-separator">:</div>
+          <div class="field">
+            <label>分钟</label>
+            <select id="monthlyMinuteSelect" aria-label="每月分钟"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="schedule-pane" id="advancedSchedulePane">
+        <div class="field">
+          <label>Cron</label>
+          <input class="cron-input" id="advancedCronInput" value="57 22 * * *" />
+        </div>
+      </div>
+
+      <div class="preview-line">
+        <span id="schedulePreview">每天 07:43</span>
+        <strong id="scheduleCronPreview">43 7 * * *</strong>
+      </div>
+      <div class="error-helper" id="scheduleError" hidden>Cron 不合法，请检查 5 段表达式和数值范围。</div>
+
+      <div class="sheet-actions">
+        <button class="btn primary" id="scheduleApply" type="button">应用</button>
+      </div>
+    </div>
+  </aside>
+
+  <aside class="bottom-sheet" id="conversationSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-title" id="sheetTitle">选择交付会话</div>
+    <div class="sheet-list">
+      <button class="sheet-item selected" type="button" data-name="New Chat（hermes）" data-id="041085ae-c97a-455f-9d67-06b67f976517">
+        <svg class="picker-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="sheet-item-main">
+          <span class="sheet-item-title">New Chat（hermes）</span>
+        </span>
+        <svg class="sheet-check" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="m20 6-11 11-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="sheet-item" type="button" data-name="Hermes" data-id="992ca166-26fb-4a1d-bcfb-4b7fb35559d4">
+        <svg class="picker-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="sheet-item-main">
+          <span class="sheet-item-title">Hermes</span>
+        </span>
+      </button>
+      <button class="sheet-item" type="button" data-name="Weather Archive" data-id="8e6bde63-52be-4e8d-9d78-622b6e2c3120">
+        <svg class="picker-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="sheet-item-main">
+          <span class="sheet-item-title">Weather Archive</span>
+        </span>
+      </button>
+    </div>
+  </aside>
+
+  <script>
+    const pageTitle = document.querySelector("#pageTitle");
+    const saveAction = document.querySelector("#saveAction");
+    const viewTabs = [...document.querySelectorAll("[data-view-tab]")];
+    const viewPanels = [...document.querySelectorAll("[data-view-panel]")];
+    const viewTitles = {
+      list: "任务管理",
+      detail: "任务详情",
+      edit: "编辑任务"
+    };
+    const schedulePicker = document.querySelector("#schedulePicker");
+    const schedulePickerValue = document.querySelector("#schedulePickerValue");
+    const scheduleSheet = document.querySelector("#scheduleSheet");
+    const scheduleTabs = [...document.querySelectorAll("[data-schedule-tab]")];
+    const panes = [...document.querySelectorAll(".schedule-pane")];
+    const presetSchedulePane = document.querySelector("#presetSchedulePane");
+    const dailySchedulePane = document.querySelector("#dailySchedulePane");
+    const weeklySchedulePane = document.querySelector("#weeklySchedulePane");
+    const monthlySchedulePane = document.querySelector("#monthlySchedulePane");
+    const advancedSchedulePane = document.querySelector("#advancedSchedulePane");
+    const quickOptions = [...document.querySelectorAll(".quick-option")];
+    const minuteIntervalSelect = document.querySelector("#minuteIntervalSelect");
+    const hourIntervalSelect = document.querySelector("#hourIntervalSelect");
+    const weekdayOptions = [...document.querySelectorAll(".weekday")];
+    const dailyHourSelect = document.querySelector("#dailyHourSelect");
+    const dailyMinuteSelect = document.querySelector("#dailyMinuteSelect");
+    const weeklyHourSelect = document.querySelector("#weeklyHourSelect");
+    const weeklyMinuteSelect = document.querySelector("#weeklyMinuteSelect");
+    const monthlyHourSelect = document.querySelector("#monthlyHourSelect");
+    const monthlyMinuteSelect = document.querySelector("#monthlyMinuteSelect");
+    const monthDaySelect = document.querySelector("#monthDaySelect");
+    const schedulePreview = document.querySelector("#schedulePreview");
+    const scheduleCronPreview = document.querySelector("#scheduleCronPreview");
+    const scheduleError = document.querySelector("#scheduleError");
+    const advancedCronInput = document.querySelector("#advancedCronInput");
+    const scheduleApply = document.querySelector("#scheduleApply");
+    const picker = document.querySelector("#conversationPicker");
+    const pickerValue = document.querySelector("#conversationPickerValue");
+    const backdrop = document.querySelector("#sheetBackdrop");
+    const conversationSheet = document.querySelector("#conversationSheet");
+    const items = [...document.querySelectorAll(".sheet-item")];
+    let activeSheet = null;
+    let scheduleMode = "daily";
+    let activePresetType = "minute";
+    let activeWeekdays = new Set(["1"]);
+
+    function setView(view) {
+      viewTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.viewTab === view));
+      viewPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === view));
+      pageTitle.textContent = viewTitles[view] || "任务管理";
+      saveAction.hidden = view !== "edit";
+    }
+
+    function pad(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function fillSelect(select, start, end, selected, labeler = (value) => value) {
+      select.innerHTML = Array.from({ length: end - start + 1 }, (_, index) => {
+        const value = start + index;
+        const isSelected = value === selected ? " selected" : "";
+        return `<option value="${value}"${isSelected}>${labeler(value)}</option>`;
+      }).join("");
+    }
+
+    function fillTimeSelects() {
+      fillSelect(minuteIntervalSelect, 1, 59, 5);
+      fillSelect(hourIntervalSelect, 1, 23, 1);
+      fillSelect(dailyHourSelect, 0, 23, 7, pad);
+      [weeklyHourSelect, monthlyHourSelect].forEach((select) => fillSelect(select, 0, 23, 9, pad));
+      fillSelect(dailyMinuteSelect, 0, 59, 43, pad);
+      [weeklyMinuteSelect, monthlyMinuteSelect].forEach((select) => fillSelect(select, 0, 59, 0, pad));
+      fillSelect(monthDaySelect, 1, 31, 1, (value) => `${value} 日`);
+    }
+
+    function timeLabel(prefix) {
+      const hour = document.querySelector(`#${prefix}HourSelect`).value;
+      const minute = document.querySelector(`#${prefix}MinuteSelect`).value;
+      return `${pad(hour)}:${pad(minute)}`;
+    }
+
+    function timeCron(prefix, day = "*", month = "*", weekday = "*") {
+      const minute = document.querySelector(`#${prefix}MinuteSelect`).value;
+      const hour = document.querySelector(`#${prefix}HourSelect`).value;
+      return `${minute} ${hour} ${day} ${month} ${weekday}`;
+    }
+
+    function weekdayName(value) {
+      const names = { "0": "周日", "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六" };
+      return names[value] || "周一";
+    }
+
+    function orderedWeekdays() {
+      return ["1", "2", "3", "4", "5", "6", "0"].filter((day) => activeWeekdays.has(day));
+    }
+
+    function presetSchedule() {
+      if (activePresetType === "hour") {
+        const hours = hourIntervalSelect.value;
+        return { label: `每 ${hours} 小时`, cron: `0 */${hours} * * *` };
+      }
+      const minutes = minuteIntervalSelect.value;
+      return { label: `每 ${minutes} 分钟`, cron: `*/${minutes} * * * *` };
+    }
+
+    function currentSchedule() {
+      if (scheduleMode === "preset") return presetSchedule();
+      if (scheduleMode === "daily") {
+        return { label: `每天 ${timeLabel("daily")}`, cron: timeCron("daily") };
+      }
+      if (scheduleMode === "weekly") {
+        const days = orderedWeekdays();
+        const label = days.map(weekdayName).join("、");
+        const isWorkday = days.length === 5 && ["1", "2", "3", "4", "5"].every((day) => days.includes(day));
+        const cronDays = isWorkday ? "1-5" : days.join(",");
+        const text = isWorkday ? `工作日 ${timeLabel("weekly")}` : `每${label} ${timeLabel("weekly")}`;
+        return { label: text, cron: timeCron("weekly", "*", "*", cronDays) };
+      }
+      if (scheduleMode === "monthly") {
+        const day = monthDaySelect.value;
+        return { label: `每月 ${day} 日 ${timeLabel("monthly")}`, cron: timeCron("monthly", day, "*", "*") };
+      }
+      const cron = advancedCronInput.value.trim();
+      return { label: parseCronLabel(cron) || "高级 Cron", cron };
+    }
+
+    function cronNumber(value, min, max) {
+      if (!/^\d+$/.test(value)) return false;
+      const number = Number(value);
+      return number >= min && number <= max;
+    }
+
+    function cronToken(token, min, max) {
+      const parts = token.split("/");
+      if (parts.length > 2) return false;
+      const base = parts[0];
+      const step = parts[1];
+      if (step !== undefined && !cronNumber(step, 1, 999)) return false;
+      if (base === "*") return true;
+      if (base.includes("-")) {
+        const range = base.split("-");
+        if (range.length !== 2) return false;
+        if (!cronNumber(range[0], min, max) || !cronNumber(range[1], min, max)) return false;
+        return Number(range[0]) <= Number(range[1]);
+      }
+      return step === undefined && cronNumber(base, min, max);
+    }
+
+    function cronField(field, min, max) {
+      if (!field) return false;
+      return field.split(",").every((token) => cronToken(token, min, max));
+    }
+
+    function validateCron(value) {
+      const parts = value.trim().split(/\s+/);
+      if (parts.length !== 5) return false;
+      return cronField(parts[0], 0, 59)
+        && cronField(parts[1], 0, 23)
+        && cronField(parts[2], 1, 31)
+        && cronField(parts[3], 1, 12)
+        && cronField(parts[4], 0, 7);
+    }
+
+    function parseCronLabel(value) {
+      const cron = value.trim();
+      if (!validateCron(cron)) return null;
+      const [minute, hour, day, month, weekday] = cron.split(/\s+/);
+      if (/^\*\/\d+$/.test(minute) && hour === "*" && day === "*" && month === "*" && weekday === "*") {
+        return `每 ${minute.slice(2)} 分钟`;
+      }
+      if (minute === "0" && /^\*\/\d+$/.test(hour) && day === "*" && month === "*" && weekday === "*") {
+        return `每 ${hour.slice(2)} 小时`;
+      }
+      if (/^\d+$/.test(minute) && /^\d+$/.test(hour)) {
+        if (day === "*" && month === "*" && weekday === "*") return `每天 ${pad(hour)}:${pad(minute)}`;
+        if (day === "*" && month === "*" && weekday !== "*") {
+          if (weekday === "1-5") return `工作日 ${pad(hour)}:${pad(minute)}`;
+          return `每周 ${pad(hour)}:${pad(minute)}`;
+        }
+        if (day !== "*" && month === "*" && weekday === "*") return `每月 ${pad(hour)}:${pad(minute)}`;
+      }
+      return "高级 Cron";
+    }
+
+    function refreshSchedulePreview() {
+      const current = currentSchedule();
+      schedulePreview.textContent = current.label;
+      scheduleCronPreview.textContent = current.cron || "未填写";
+      const valid = validateCron(current.cron || "");
+      scheduleError.hidden = valid;
+      return valid;
+    }
+
+    function openSheet(target) {
+      activeSheet = target;
+      backdrop.hidden = false;
+      target.hidden = false;
+      requestAnimationFrame(() => {
+        backdrop.classList.add("open");
+        target.classList.add("open");
+      });
+    }
+
+    function closeSheet() {
+      backdrop.classList.remove("open");
+      if (activeSheet) activeSheet.classList.remove("open");
+      setTimeout(() => {
+        backdrop.hidden = true;
+        if (activeSheet) activeSheet.hidden = true;
+        activeSheet = null;
+      }, 220);
+    }
+
+    fillTimeSelects();
+    refreshSchedulePreview();
+
+    viewTabs.forEach((tab) => {
+      tab.addEventListener("click", () => setView(tab.dataset.viewTab));
+    });
+
+    schedulePicker.addEventListener("click", () => openSheet(scheduleSheet));
+    scheduleApply.addEventListener("click", () => {
+      const current = currentSchedule();
+      if (!refreshSchedulePreview()) return;
+      schedulePickerValue.textContent = current.label;
+      closeSheet();
+    });
+    scheduleTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        scheduleMode = tab.dataset.scheduleTab;
+        scheduleTabs.forEach((item) => item.classList.toggle("active", item === tab));
+        panes.forEach((pane) => pane.classList.remove("active"));
+        if (scheduleMode === "preset") presetSchedulePane.classList.add("active");
+        if (scheduleMode === "daily") dailySchedulePane.classList.add("active");
+        if (scheduleMode === "weekly") weeklySchedulePane.classList.add("active");
+        if (scheduleMode === "monthly") monthlySchedulePane.classList.add("active");
+        if (scheduleMode === "advanced") advancedSchedulePane.classList.add("active");
+        refreshSchedulePreview();
+      });
+    });
+    quickOptions.forEach((option) => {
+      const activate = () => {
+        activePresetType = option.dataset.preset;
+        quickOptions.forEach((item) => item.classList.toggle("active", item === option));
+        refreshSchedulePreview();
+      };
+      option.addEventListener("click", activate);
+      option.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        }
+      });
+    });
+    weekdayOptions.forEach((option) => {
+      option.addEventListener("click", () => {
+        const day = option.dataset.weekday;
+        if (activeWeekdays.has(day) && activeWeekdays.size === 1) return;
+        if (activeWeekdays.has(day)) activeWeekdays.delete(day);
+        else activeWeekdays.add(day);
+        option.classList.toggle("active", activeWeekdays.has(day));
+        refreshSchedulePreview();
+      });
+    });
+    [
+      minuteIntervalSelect,
+      hourIntervalSelect,
+      dailyHourSelect,
+      dailyMinuteSelect,
+      weeklyHourSelect,
+      weeklyMinuteSelect,
+      monthlyHourSelect,
+      monthlyMinuteSelect,
+      monthDaySelect
+    ].forEach((select) => select.addEventListener("change", refreshSchedulePreview));
+    advancedCronInput.addEventListener("input", refreshSchedulePreview);
+
+    picker.addEventListener("click", () => openSheet(conversationSheet));
+    backdrop.addEventListener("click", closeSheet);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && activeSheet) closeSheet();
+    });
+
+    items.forEach((item) => {
+      item.addEventListener("click", () => {
+        const name = item.dataset.name;
+        pickerValue.textContent = name;
+        items.forEach((entry) => {
+          entry.classList.toggle("selected", entry === item);
+          const existing = entry.querySelector(".sheet-check");
+          if (existing) existing.remove();
+        });
+        item.insertAdjacentHTML("beforeend", '<svg class="sheet-check" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m20 6-11 11-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+        closeSheet();
+      });
+    });
+  </script>
+</body>
+</html>

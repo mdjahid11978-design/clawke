@@ -76,6 +76,94 @@ def sent_messages(gateway):
     return messages
 
 
+@pytest.mark.asyncio
+async def test_send_gateway_alert_uses_gateway_id_without_account_id(gateway):
+    sent = []
+    gateway.config.gateway_id = "hermes"
+    gateway._loop = asyncio.get_running_loop()
+    gateway._ws = object()
+
+    async def capture(data):
+        sent.append(data)
+
+    gateway._send = capture
+    gateway._send_gateway_alert({
+        "severity": "error",
+        "source": "cron_delivery",
+        "title": "Delivery failed",
+        "message": "Attempt 1 / 3 failed.",
+        "target_conversation_id": "conv_1",
+        "dedupe_key": "alert_1",
+    })
+    await asyncio.sleep(0.01)
+
+    assert sent == [{
+        "type": "gateway_alert",
+        "gateway_id": "hermes",
+        "message_id": "alert_1",
+        "severity": "error",
+        "source": "cron_delivery",
+        "title": "Delivery failed",
+        "message": "Attempt 1 / 3 failed.",
+        "target_conversation_id": "conv_1",
+        "dedupe_key": "alert_1",
+        "metadata": {},
+    }]
+    assert "account_id" not in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_start_creates_one_cron_sync_task(config):
+    gateway = ClawkeHermesGateway(config)
+
+    class FakeSyncer:
+        def __init__(self):
+            self.started = 0
+            self.running = True
+
+        async def start(self):
+            self.started += 1
+            while self.running:
+                await asyncio.sleep(0.01)
+
+        async def stop(self):
+            self.running = False
+
+    fake_syncer = FakeSyncer()
+    gateway._cron_syncer = fake_syncer
+
+    async def fake_connect():
+        gateway._running = False
+
+    gateway._connect = fake_connect
+    await gateway.start()
+    await asyncio.sleep(0)
+    assert fake_syncer.started == 1
+    assert gateway._cron_sync_task is not None
+    await gateway.stop()
+
+
+@pytest.mark.asyncio
+async def test_stop_stops_cron_sync_task(config):
+    gateway = ClawkeHermesGateway(config)
+
+    class FakeSyncer:
+        def __init__(self):
+            self.stopped = False
+
+        async def stop(self):
+            self.stopped = True
+
+    fake_syncer = FakeSyncer()
+    gateway._cron_syncer = fake_syncer
+    gateway._cron_sync_task = asyncio.create_task(asyncio.sleep(10))
+
+    await gateway.stop()
+
+    assert fake_syncer.stopped is True
+    assert gateway._cron_sync_task is None
+
+
 # ── Protocol Message Type Tests ─────────────────────────────────────────────
 
 class TestProtocolTypes:

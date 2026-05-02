@@ -9,6 +9,7 @@
 // 文件名：client-YYYY-MM-DD.log
 // 仅记录关键路由事件，不会过度写入
 import 'dart:io';
+import 'package:client/core/debug_runtime_directory.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -74,37 +75,10 @@ Directory? resolveDebugLogDirectory({
   Directory? startDirectory,
   bool debugMode = kDebugMode,
 }) {
-  if (!debugMode) return null;
-
-  for (final start in _debugSearchStarts(startDirectory)) {
-    final clientDir = _findClientDirectory(start);
-    if (clientDir == null) continue;
-    return Directory('${clientDir.parent.path}/.runtime/logs');
-  }
-
-  return null;
-}
-
-List<Directory> _debugSearchStarts(Directory? startDirectory) {
-  if (startDirectory != null) return [startDirectory];
-  return [Directory.current, File(Platform.resolvedExecutable).parent];
-}
-
-Directory? _findClientDirectory(Directory start) {
-  var current = start.absolute;
-  for (var depth = 0; depth < 24; depth += 1) {
-    final directClient = Directory('${current.path}/client');
-    if (_isFlutterClientDirectory(directClient)) return directClient;
-    if (_isFlutterClientDirectory(current)) return current;
-
-    final parent = current.parent;
-    if (parent.path == current.path) break;
-    current = parent;
-  }
-  return null;
-}
-
-bool _isFlutterClientDirectory(Directory dir) {
-  final name = dir.path.split(Platform.pathSeparator).last;
-  return name == 'client' && File('${dir.path}/pubspec.yaml').existsSync();
+  final runtimeDir = resolveDebugRuntimeDirectory(
+    startDirectory: startDirectory,
+    debugMode: debugMode,
+  );
+  if (runtimeDir == null) return null;
+  return Directory('${runtimeDir.path}/logs');
 }

@@ -6,6 +6,7 @@ import importlib
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,14 @@ class HermesTaskAdapter:
     """Map Clawke task commands to Hermes cron APIs."""
 
     agent = "hermes"
+
+    def __init__(
+        self,
+        deliver_result: Callable[[dict[str, Any], str], str | None] | None = None,
+        mark_output_delivered: Callable[[dict[str, Any], Path], None] | None = None,
+    ):
+        self._deliver_result = deliver_result
+        self._mark_output_delivered = mark_output_delivered
 
     def list_tasks(self, account_id: str) -> list[dict[str, Any]]:
         jobs_api = self._jobs()
@@ -140,6 +149,8 @@ class HermesTaskAdapter:
         output = ""
         final_response: Any = None
         error: Any = None
+        delivery_error: str | None = None
+        saved_output_path: Any = None
 
         try:
             result = self._scheduler().run_job(job)
@@ -155,11 +166,36 @@ class HermesTaskAdapter:
                 success = False
                 error = "Agent completed but produced empty response (model error, timeout, or misconfiguration)"
 
+            deliver_content = self._deliver_content(raw_job, success, final_response, error)
+            if deliver_content and self._deliver_result:
+                try:
+                    delivery_error = self._deliver_result(raw_job, deliver_content)
+                except Exception as exc:
+                    delivery_error = str(exc)
+                    logger.warning(
+                        "Hermes task delivery failed: task_id=%s error=%s",
+                        task_id,
+                        exc,
+                    )
+
             jobs = self._jobs()
             if output and hasattr(jobs, "save_job_output"):
-                jobs.save_job_output(task_id, output)
+                saved_output_path = jobs.save_job_output(task_id, output)
+            if (
+                saved_output_path
+                and delivery_error is None
+                and self._mark_output_delivered
+            ):
+                try:
+                    self._mark_output_delivered(raw_job, Path(saved_output_path))
+                except Exception as exc:
+                    logger.warning(
+                        "Hermes task output marker failed: task_id=%s error=%s",
+                        task_id,
+                        exc,
+                    )
             if hasattr(jobs, "mark_job_run"):
-                jobs.mark_job_run(task_id, success, error)
+                jobs.mark_job_run(task_id, success, error, delivery_error=delivery_error)
         except Exception as exc:
             logger.warning("Hermes task run failed: task_id=%s error=%s", task_id, exc)
             jobs = self._jobs()
@@ -168,6 +204,21 @@ class HermesTaskAdapter:
                     jobs.mark_job_run(task_id, False, str(exc))
                 except Exception:
                     logger.exception("Failed to mark Hermes task run failure: task_id=%s", task_id)
+
+    @staticmethod
+    def _deliver_content(
+        job: dict[str, Any],
+        success: bool,
+        final_response: Any,
+        error: Any,
+    ) -> str:
+        if success:
+            content = str(final_response or "")
+            if "[SILENT]" in content.strip().upper():
+                return ""
+            return content
+        name = job.get("name") or job.get("id") or job.get("job_id") or "unknown"
+        return f"Cron job '{name}' failed:\n{error or 'unknown error'}"
 
     def _normalize_task(self, account_id: str, job: Any) -> dict[str, Any]:
         raw = self._as_dict(job)

@@ -1,7 +1,9 @@
+import 'package:client/data/database/app_database.dart';
 import 'package:client/data/repositories/gateway_repository.dart';
 import 'package:client/data/repositories/task_cache_repository.dart';
 import 'package:client/models/gateway_info.dart';
 import 'package:client/models/managed_task.dart';
+import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/screens/tasks_management_screen.dart';
@@ -12,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/provider_overrides.dart';
 import 'helpers/pump_helpers.dart';
 
 const _hermesGateway = GatewayInfo(
@@ -74,6 +77,7 @@ class _FakeGatewayRepository implements GatewayRepository {
 List<Override> _taskOverrides({
   required TasksApiService api,
   List<GatewayInfo> gateways = const [_hermesGateway],
+  List<Conversation>? conversations,
 }) {
   final repository = _FakeGatewayRepository(gateways);
   return [
@@ -81,6 +85,23 @@ List<Override> _taskOverrides({
     taskCacheRepositoryProvider.overrideWithValue(_ApiTaskCacheRepository(api)),
     gatewayRepositoryProvider.overrideWithValue(repository),
     gatewayListProvider.overrideWith((ref) => Stream.value(gateways)),
+    conversationListProvider.overrideWith(
+      (ref) => Stream.value(
+        conversations ??
+            [
+              makeConversation(
+                conversationId: '11111111-1111-4111-8111-111111111111',
+                accountId: 'hermes',
+                name: 'Hermes',
+              ),
+              makeConversation(
+                conversationId: '22222222-2222-4222-8222-222222222222',
+                accountId: 'openclaw',
+                name: 'OpenClaw',
+              ),
+            ],
+      ),
+    ),
   ];
 }
 
@@ -203,6 +224,7 @@ class _LifecycleTasksApiService extends TasksApiService {
       enabled: true,
       status: 'active',
       skills: ['notes'],
+      deliver: 'conversation:11111111-1111-4111-8111-111111111111',
       lastRun: TaskRun(
         id: 'run_latest',
         taskId: 'task_daily',
@@ -219,6 +241,7 @@ class _LifecycleTasksApiService extends TasksApiService {
       prompt: '会失败的任务',
       enabled: true,
       status: 'error',
+      deliver: 'conversation:11111111-1111-4111-8111-111111111111',
     ),
   ];
   final runs = const [
@@ -706,7 +729,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('任务管理'), findsNothing);
     expect(find.text('新建任务'), findsOneWidget);
-    expect(find.text('计划'), findsOneWidget);
+    expect(find.text('执行计划'), findsOneWidget);
   });
 
   testWidgets('mobile task subpages do not keep the list app bar', (
@@ -803,7 +826,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.createdDraft, isNull);
-    expect(find.text('必填'), findsNWidgets(2));
+    expect(find.text('必填'), findsNWidgets(3));
   });
 
   testWidgets('task screen creates a new agent-side task', (tester) async {
@@ -820,20 +843,568 @@ void main() {
     await tester.tap(find.text('新建任务'));
     await tester.pumpAndSettle();
 
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), '天气提醒');
-    await tester.enterText(fields.at(1), '0 8 * * *');
-    await tester.enterText(fields.at(2), 'local');
-    await tester.enterText(fields.at(3), 'weather, notes');
-    await tester.enterText(fields.at(4), '查询天气并提醒');
+    await tester.enterText(
+      find.byKey(const ValueKey('task_name_field')),
+      '天气提醒',
+    );
+    await tester.tap(find.byKey(const ValueKey('task_schedule_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('高级'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task_schedule_advanced_input')),
+      '0 8 * * *',
+    );
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task_delivery_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task_skills_field')),
+      'weather, notes',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('task_prompt_field')),
+      '查询天气并提醒',
+    );
     await tester.tap(find.text('创建'));
     await tester.pumpAndSettle();
 
     expect(api.createdDraft?.accountId, 'hermes');
     expect(api.createdDraft?.name, '天气提醒');
     expect(api.createdDraft?.skills, ['weather', 'notes']);
+    expect(
+      api.createdDraft?.deliver,
+      'conversation:11111111-1111-4111-8111-111111111111',
+    );
     expect(find.text('天气提醒'), findsWidgets);
   });
+
+  testWidgets('task delivery warning appears in list and detail', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_openclaw_bad_delivery',
+        accountId: 'openclaw',
+        agent: 'OpenClaw',
+        name: 'GitHub 热门项目',
+        schedule: '0 7 * * *',
+        scheduleText: '后端展示值不应使用',
+        prompt: '汇总热门项目',
+        enabled: true,
+        status: 'active',
+        deliver: 'user:OpenClaw',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api, gateways: const [_openClawGateway]),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('GitHub 热门项目'), findsOneWidget);
+    expect(find.text('投递异常'), findsOneWidget);
+
+    await tester.tap(find.text('GitHub 热门项目'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('task_delivery_warning_notice')),
+      findsOneWidget,
+    );
+    expect(find.text('投递配置异常'), findsOneWidget);
+    expect(find.text('编辑'), findsOneWidget);
+  });
+
+  testWidgets('task detail displays delivery conversation name', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_openclaw_good_delivery',
+        accountId: 'openclaw',
+        agent: 'OpenClaw',
+        name: 'GitHub 热门项目',
+        schedule: '0 7 * * *',
+        prompt: '汇总热门项目',
+        enabled: true,
+        status: 'active',
+        deliver: 'conversation:22222222-2222-4222-8222-222222222222',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(
+        api: api,
+        gateways: const [_openClawGateway],
+        conversations: [
+          makeConversation(
+            conversationId: '22222222-2222-4222-8222-222222222222',
+            accountId: 'openclaw',
+            name: 'OpenClaw 主会话',
+          ),
+        ],
+      ),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('GitHub 热门项目'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务详情'), findsOneWidget);
+    expect(find.text('OpenClaw 主会话'), findsOneWidget);
+    expect(
+      find.text('conversation:22222222-2222-4222-8222-222222222222'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('OpenClaw task hides unsupported skills field', (tester) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_openclaw_skills_hidden',
+        accountId: 'openclaw',
+        agent: 'OpenClaw',
+        name: 'OpenClaw 技能字段',
+        schedule: '0 7 * * *',
+        prompt: '汇总热门项目',
+        enabled: true,
+        status: 'active',
+        skills: ['web-search'],
+        deliver: 'conversation:22222222-2222-4222-8222-222222222222',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api, gateways: const [_openClawGateway]),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('OpenClaw 技能字段'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('任务详情'), findsOneWidget);
+    expect(find.text('技能'), findsNothing);
+    expect(find.text('web-search'), findsNothing);
+
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('编辑任务'), findsOneWidget);
+    expect(find.byKey(const ValueKey('task_skills_field')), findsNothing);
+    expect(find.text('技能'), findsNothing);
+  });
+
+  testWidgets('task detail displays translated execution schedule', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_openclaw_schedule_value',
+        accountId: 'openclaw',
+        agent: 'OpenClaw',
+        name: 'GitHub 热门项目',
+        schedule: '0 7 * * *',
+        prompt: '汇总热门项目',
+        enabled: true,
+        status: 'active',
+        deliver: 'conversation:22222222-2222-4222-8222-222222222222',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(
+        api: api,
+        gateways: const [_openClawGateway],
+        conversations: [
+          makeConversation(
+            conversationId: '22222222-2222-4222-8222-222222222222',
+            accountId: 'openclaw',
+            name: 'OpenClaw 主会话',
+          ),
+        ],
+      ),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('GitHub 热门项目'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('执行计划'), findsOneWidget);
+    expect(find.text('每天 07:00'), findsWidgets);
+    expect(find.text('后端展示值不应使用'), findsNothing);
+    expect(find.text('翻译值'), findsNothing);
+    expect(find.text('保存值'), findsNothing);
+    expect(find.text('0 7 * * *'), findsNothing);
+  });
+
+  testWidgets('task detail displays workday schedule text', (tester) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_workday_schedule',
+        accountId: 'hermes',
+        agent: 'Hermes',
+        name: '工作日提醒',
+        schedule: '0 9 * * 1-5',
+        prompt: '工作日提醒',
+        enabled: true,
+        status: 'active',
+        deliver: 'conversation:11111111-1111-4111-8111-111111111111',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('工作日提醒').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('工作日 09:00'), findsWidgets);
+    expect(find.text('0 9 * * 1-5'), findsNothing);
+  });
+
+  testWidgets('task detail calculates next run when gateway omits it', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_calculated_next_run',
+        accountId: 'hermes',
+        agent: 'Hermes',
+        name: '晚间提醒',
+        schedule: '0 23 * * *',
+        prompt: '晚间提醒',
+        enabled: true,
+        status: 'active',
+        deliver: 'conversation:11111111-1111-4111-8111-111111111111',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('晚间提醒').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('下次运行'), findsOneWidget);
+    expect(find.textContaining('23:00:00'), findsOneWidget);
+    expect(find.text('未计划'), findsNothing);
+  });
+
+  testWidgets('task editor always derives schedule display from schedule', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    api.items = [
+      const ManagedTask(
+        id: 'task_raw_schedule_text',
+        accountId: 'hermes',
+        agent: 'Hermes',
+        name: '杭州每日天气提醒',
+        schedule: '57 22 * * *',
+        scheduleText: '后端展示值不应使用',
+        prompt: '查询天气',
+        enabled: true,
+        status: 'active',
+        deliver: 'conversation:11111111-1111-4111-8111-111111111111',
+      ),
+    ];
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('杭州每日天气提醒'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('执行计划'), findsOneWidget);
+    expect(find.text('每天 22:57'), findsOneWidget);
+    expect(find.text('后端展示值不应使用'), findsNothing);
+    expect(find.textContaining('保存值：57 22 * * *'), findsNothing);
+    expect(find.text('57 22 * * *'), findsNothing);
+    expect(find.text('Hermes'), findsWidgets);
+    expect(find.text('11111111-1111-4111-8111-111111111111'), findsNothing);
+  });
+
+  testWidgets('task editor picks weekly multi-select schedule from dialog', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('新建任务'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('task_name_field')), '周报');
+    await tester.tap(find.byKey(const ValueKey('task_schedule_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('每周'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('task_schedule_weekday_3')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('task_delivery_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('task_prompt_field')),
+      '生成周报',
+    );
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdDraft?.schedule, '0 9 * * 1,3');
+  });
+
+  testWidgets('task editor compresses Monday to Friday as workdays', (
+    tester,
+  ) async {
+    final api = _LifecycleTasksApiService();
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('新建任务'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('task_name_field')),
+      '工作日提醒',
+    );
+    await tester.tap(find.byKey(const ValueKey('task_schedule_picker')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置计划'), findsWidgets);
+    await tester.tap(find.text('每周'));
+    await tester.pumpAndSettle();
+    for (final weekday in [2, 3, 4, 5]) {
+      await tester.tap(find.byKey(ValueKey('task_schedule_weekday_$weekday')));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('工作日 09:00'), findsOneWidget);
+    expect(find.text('0 9 * * 1-5'), findsOneWidget);
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('task_delivery_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('task_prompt_field')),
+      '发送提醒',
+    );
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdDraft?.schedule, '0 9 * * 1-5');
+  });
+
+  testWidgets('task editor rejects invalid advanced cron', (tester) async {
+    final api = _LifecycleTasksApiService();
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(api: api),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.text('新建任务'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('task_schedule_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('高级'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task_schedule_advanced_input')),
+      '99 9 * * *',
+    );
+    await tester.tap(find.text('应用'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cron 表达式不合法'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('task_schedule_advanced_input')),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('关闭'), findsNothing);
+    expect(find.text('取消'), findsNothing);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('task_name_field')),
+      '坏计划',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('task_prompt_field')),
+      '不会提交',
+    );
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdDraft, isNull);
+  });
+
+  testWidgets(
+    'task delivery picker filters conversations for Hermes and OpenClaw',
+    (tester) async {
+      final api = _LifecycleTasksApiService();
+      await pumpApp(
+        tester,
+        const TasksManagementScreen(),
+        overrides: _taskOverrides(
+          api: api,
+          gateways: const [_hermesGateway, _openClawGateway],
+        ),
+        screenSize: const Size(1280, 800),
+      );
+
+      await tester.pump();
+      await tester.pump();
+
+      await tester.tap(find.text('新建任务'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('task_delivery_picker')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey(
+            'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const ValueKey(
+            'task_delivery_conversation_22222222-2222-4222-8222-222222222222',
+          ),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey(
+            'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('task_app_bar_back')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('openclaw').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('新建任务'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('task_delivery_picker')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey(
+            'task_delivery_conversation_11111111-1111-4111-8111-111111111111',
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const ValueKey(
+            'task_delivery_conversation_22222222-2222-4222-8222-222222222222',
+          ),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('new task stays in create mode after returning from detail', (
     tester,
@@ -955,14 +1526,19 @@ void main() {
     expect(find.byKey(const ValueKey('task_page_app_bar')), findsOneWidget);
     expect(find.text('任务详情'), findsOneWidget);
     expect(find.text('返回任务列表'), findsNothing);
+    expect(find.text('Hermes / hermes'), findsNothing);
+    expect(find.text('hermes'), findsWidgets);
     expect(find.byKey(const ValueKey('task_detail_overview')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_detail_prompt')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_detail_definition')), findsNothing);
     expect(find.byKey(const ValueKey('task_detail_recent')), findsNothing);
     expect(find.byKey(const ValueKey('task_detail_execution')), findsNothing);
     expect(find.text('基本信息'), findsOneWidget);
-    expect(find.text('任务定义'), findsOneWidget);
-    expect(find.text('最近状态'), findsOneWidget);
+    expect(find.text('任务定义'), findsNothing);
+    expect(find.text('最近状态'), findsNothing);
+    expect(find.text('最近执行'), findsNothing);
+    expect(find.text('结果'), findsNothing);
+    expect(find.text('输出'), findsNothing);
     expect(find.text('任务提示词'), findsOneWidget);
     expect(find.text('编辑'), findsOneWidget);
     expect(find.text('编辑任务'), findsNothing);
@@ -979,7 +1555,11 @@ void main() {
     expect(find.byKey(const ValueKey('task_runs_overview')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_runs_list_panel')), findsOneWidget);
     expect(find.text('基本信息'), findsOneWidget);
-    expect(find.text('运行概览'), findsOneWidget);
+    expect(find.text('运行概览'), findsNothing);
+    expect(find.text('Hermes / hermes'), findsNothing);
+    expect(find.text('交付会话'), findsOneWidget);
+    expect(find.text('Hermes'), findsWidgets);
+    expect(find.text('任务'), findsNothing);
     expect(find.text('任务摘要'), findsNothing);
     expect(find.byKey(const ValueKey('task_page_app_bar')), findsOneWidget);
     expect(find.text('返回详情'), findsNothing);
@@ -997,6 +1577,15 @@ void main() {
     expect(find.text('返回执行记录'), findsNothing);
     expect(find.byKey(const ValueKey('task_output_info')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_output_content')), findsOneWidget);
+    expect(find.text('Hermes / hermes'), findsNothing);
+    expect(find.text('交付会话'), findsOneWidget);
+    expect(
+      find.text('Hermes (11111111-1111-4111-8111-111111111111)'),
+      findsNothing,
+    );
+    expect(find.text('11111111-1111-4111-8111-111111111111'), findsOneWidget);
+    expect(find.text('任务'), findsNothing);
+    expect(find.text('状态'), findsNothing);
     expect(find.text('输出内容'), findsOneWidget);
     final copyButton = find.widgetWithText(TextButton, '复制');
     expect(copyButton, findsOneWidget);
@@ -1018,7 +1607,8 @@ void main() {
     expect(find.byKey(const ValueKey('task_page_app_bar')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_edit_basic_info')), findsOneWidget);
     expect(find.byKey(const ValueKey('task_edit_prompt')), findsOneWidget);
-    expect(find.text('保存时提交到当前 Gateway。提示词是 Agent 执行任务的主体内容。'), findsOneWidget);
+    expect(find.text('保存时提交到当前 Gateway。提示词是 Agent 执行任务的主体内容。'), findsNothing);
+    expect(find.text('提示词内容'), findsNothing);
     expect(find.text('立即执行一次'), findsNothing);
     expect(find.text('删除任务'), findsWidgets);
     expect(find.text('取消'), findsNothing);

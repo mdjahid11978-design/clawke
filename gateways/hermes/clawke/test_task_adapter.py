@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import threading
 import time
@@ -369,6 +370,169 @@ def test_run_task_persists_output_and_marks_job_after_completion(adapter, cron_j
     assert runs[0]["output_preview"].endswith("Done")
 
 
+def test_run_task_delivers_final_response_after_completion(cron_jobs, monkeypatch):
+    from task_adapter import HermesTaskAdapter
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    delivered = []
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def deliver_result(job, content):
+        delivered.append((job["id"], job["deliver"], content))
+        return None
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+    adapter = HermesTaskAdapter(deliver_result=deliver_result)
+
+    run = adapter.run_task("job_1")
+
+    assert run["status"] == "running"
+    assert completed.wait(timeout=0.5)
+    assert delivered == [("job_1", "conversation:conv_1", "Done")]
+    assert cron_jobs.marked_runs == [("job_1", True, None, None)]
+
+
+def test_run_task_marks_saved_output_delivered_after_success(cron_jobs, monkeypatch):
+    from task_adapter import HermesTaskAdapter
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    marked = []
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def deliver_result(job, content):
+        return None
+
+    def mark_output_delivered(job, path):
+        marked.append((job["id"], str(path.name)))
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+    adapter = HermesTaskAdapter(
+        deliver_result=deliver_result,
+        mark_output_delivered=mark_output_delivered,
+    )
+
+    adapter.run_task("job_1")
+
+    assert completed.wait(timeout=0.5)
+    assert marked == [("job_1", "manual_saved.md")]
+    assert cron_jobs.marked_runs == [("job_1", True, None, None)]
+
+
+def test_run_task_does_not_mark_output_delivered_after_delivery_error(cron_jobs, monkeypatch):
+    from task_adapter import HermesTaskAdapter
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    marked = []
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+    adapter = HermesTaskAdapter(
+        deliver_result=lambda _job, _content: "delivery failed",
+        mark_output_delivered=lambda job, path: marked.append((job, path)),
+    )
+
+    adapter.run_task("job_1")
+
+    assert completed.wait(timeout=0.5)
+    assert marked == []
+    assert cron_jobs.marked_runs == [("job_1", True, None, "delivery failed")]
+
+
+def test_run_task_marker_exception_does_not_fail_run(cron_jobs, monkeypatch):
+    from task_adapter import HermesTaskAdapter
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def mark_output_delivered(job, path):
+        raise RuntimeError("marker failed")
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+    adapter = HermesTaskAdapter(
+        deliver_result=lambda _job, _content: None,
+        mark_output_delivered=mark_output_delivered,
+    )
+
+    adapter.run_task("job_1")
+
+    assert completed.wait(timeout=0.5)
+    assert cron_jobs.marked_runs == [("job_1", True, None, None)]
+
+
+def test_run_task_records_delivery_error_after_completion(cron_jobs, monkeypatch):
+    from task_adapter import HermesTaskAdapter
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def deliver_result(job, content):
+        return "Clawke websocket is not connected"
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+    adapter = HermesTaskAdapter(deliver_result=deliver_result)
+
+    run = adapter.run_task("job_1")
+
+    assert run["status"] == "running"
+    assert completed.wait(timeout=0.5)
+    assert cron_jobs.marked_runs == [(
+        "job_1",
+        True,
+        None,
+        "Clawke websocket is not connected",
+    )]
+
+
 def test_run_task_starts_scheduler_in_background(adapter, cron_jobs, monkeypatch):
     scheduler_mod = types.ModuleType("cron.scheduler")
     started = threading.Event()
@@ -533,6 +697,54 @@ async def test_channel_task_run_then_runs_returns_persisted_output(cron_jobs, mo
     assert sent[-1]["ok"] is True
     assert [run["id"] for run in sent[-1]["runs"]] == ["manual_saved"]
     assert sent[-1]["runs"][0]["output_preview"].endswith("Done")
+
+
+@pytest.mark.asyncio
+async def test_channel_task_run_sends_final_response_to_delivery_conversation(cron_jobs, monkeypatch):
+    from clawke_channel import ClawkeHermesGateway, GatewayConfig
+
+    scheduler_mod = types.ModuleType("cron.scheduler")
+    completed = threading.Event()
+    cron_jobs.jobs[0]["deliver"] = "conversation:conv_1"
+
+    def run_job(job):
+        return True, "# Cron Job: Daily brief\n\n## Response\n\nDone", "Done", None
+
+    def mark_job_run(job_id, success, error=None, delivery_error=None):
+        cron_jobs.marked_runs.append((job_id, success, error, delivery_error))
+        completed.set()
+
+    scheduler_mod.run_job = run_job
+    cron_jobs.mark_job_run = mark_job_run
+    monkeypatch.setitem(sys.modules, "cron.scheduler", scheduler_mod)
+
+    sent = []
+    gateway = ClawkeHermesGateway(GatewayConfig(account_id="acct_1"))
+    gateway._loop = asyncio.get_running_loop()
+    gateway._ws = object()
+
+    async def capture(data):
+        sent.append(data)
+
+    gateway._send = capture
+
+    await gateway._handle_task_command({
+        "type": "task_run",
+        "request_id": "req_run",
+        "account_id": "acct_1",
+        "task_id": "job_1",
+    })
+
+    loop = asyncio.get_running_loop()
+    assert await loop.run_in_executor(None, completed.wait, 0.5)
+    agent_messages = [item for item in sent if item.get("type") == "agent_text"]
+    assert len(agent_messages) == 1
+    assert agent_messages[0]["message_id"].startswith("task_job_1_")
+    assert agent_messages[0]["account_id"] == "acct_1"
+    assert agent_messages[0]["conversation_id"] == "conv_1"
+    assert agent_messages[0]["to"] == "conversation:conv_1"
+    assert agent_messages[0]["text"] == "Done"
+    assert cron_jobs.marked_runs == [("job_1", True, None, None)]
 
 
 @pytest.mark.asyncio

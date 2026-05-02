@@ -8,6 +8,7 @@ import type { OpenClawMessage } from '../types/openclaw.js';
 import type { TranslatedResult, CupEncodedMessage } from '../translator/cup-encoder.js';
 import type { CupV2Handler } from '../protocol/cup-v2-handler.js';
 import type { ConversationStore } from '../store/conversation-store.js';
+import { resolveGatewayAlertConversation } from '../services/gateway-alert-service.js';
 
 /** 统计收集器接口（解耦具体实现） */
 export interface StatsCollectorLike {
@@ -56,21 +57,36 @@ export class MessageRouter {
    * 处理上游消息
    */
   handleUpstreamMessage(msg: OpenClawMessage, accountId: string): void {
+    const gatewayId = accountId;
     // 入口日志：记录原始上游消息摘要
     const textPreview = ((msg as any).text || (msg as any).delta || '').slice(0, 60);
-    console.log(`[MessageRouter] ⬅️  Incoming: type=${msg.type} msgId=${msg.message_id || ''} conv=${msg.conversation_id || ''} account=${accountId}${textPreview ? ` text="${textPreview}"` : ''}`);
+    console.log(`[MessageRouter] ⬅️  Incoming: type=${msg.type} msgId=${msg.message_id || ''} conv=${msg.conversation_id || ''} gateway=${gatewayId}${textPreview ? ` text="${textPreview}"` : ''}`);
 
     let conversationId = msg.conversation_id || accountId;
+
+    if (msg.type === 'gateway_alert' && this.conversationStore) {
+      const alertGatewayId = msg.gateway_id || gatewayId;
+      conversationId = resolveGatewayAlertConversation(
+        this.conversationStore,
+        alertGatewayId,
+        msg.target_conversation_id,
+      );
+      msg.conversation_id = conversationId;
+    }
 
     // 会话路由兜底：conversationId 不是已知会话时，回退到最近活跃的会话
     // 解决 sendText 路径传入 peer 标识符（如 "clawke_user"）导致消息成为 DB 孤儿的问题
     if (this.conversationStore) {
       const existing = this.conversationStore.get(conversationId);
       if (!existing) {
-        const allConvs = this.conversationStore.list();
-        if (allConvs.length > 0) {
-          const fallback = allConvs[0].id; // list() 按 updated_at DESC 排序
-          console.log(`[MessageRouter] Unknown conversation="${conversationId}", re-routing to default="${fallback}"`);
+        const sameGatewayConvs = this.conversationStore.listByAccount(gatewayId);
+        if (sameGatewayConvs.length > 0) {
+          const fallback = sameGatewayConvs[0].id; // listByAccount() 按 updated_at DESC 排序
+          console.log(`[MessageRouter] Unknown conversation="${conversationId}", gateway="${gatewayId}", re-routing to default="${fallback}"`);
+          conversationId = fallback;
+        } else {
+          const fallback = this.conversationStore.create(gatewayId, 'ai', gatewayId, gatewayId).id;
+          console.log(`[MessageRouter] Unknown conversation="${conversationId}", gateway="${gatewayId}", created default="${fallback}"`);
           conversationId = fallback;
         }
       }

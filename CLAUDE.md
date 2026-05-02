@@ -189,6 +189,7 @@ Flutter Client ←ws:8765→ Clawke Server ←ws:8766→ OpenClaw Gateway（192.
 - **Clawke Server**：本地服务端（原名 Mini Server，已统一改名）
 - **OpenClaw**：AI Agent 框架，通过渠道插件连接 Clawke Server
 - **CUP**：Clawke UI Protocol，Server ↔ Client 的通信协议
+- **Gateway ID**：Gateway 的唯一身份标识。`account_id` 是历史命名，新增代码、协议字段、日志、测试和文档必须优先使用 `gateway_id` / `gatewayId` / Gateway ID；只有维护旧接口兼容或迁移代码时才允许继续读写 `account_id`
 - 函数名：`sendToClawkeServer()`（原 `sendToMiniServer`，已统一改名）
 
 ## 日志规范

@@ -399,12 +399,12 @@ export class OpenClawTaskAdapter {
   }
 
   private deliveryFromText(value?: string): CronDelivery {
-    const channel = value?.trim();
-    return channel ? { mode: "announce", channel } : { mode: "none" };
+    const to = value?.trim();
+    return to ? { mode: "announce", channel: "clawke", to } : { mode: "none" };
   }
 
   private deliveryText(delivery?: CronDelivery): string | undefined {
-    return delivery?.channel ?? delivery?.to ?? delivery?.mode;
+    return delivery?.to ?? delivery?.channel ?? delivery?.mode;
   }
 
   private runStatus(value?: string): OpenClawRunStatus {

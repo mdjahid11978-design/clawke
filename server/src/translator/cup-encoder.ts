@@ -10,6 +10,7 @@
  * ✅ 只做格式转换，所有副作用交给调用方（MessageRouter）
  */
 import type { OpenClawMessage, TokenUsage } from '../types/openclaw.js';
+import { buildGatewayAlertMarkdown } from '../services/gateway-alert-service.js';
 
 /** 翻译结果 */
 export interface TranslatedResult {
@@ -252,6 +253,43 @@ export function translateToCup(
         }],
         metadata: {
           usage: msg.usage,
+        },
+      };
+    }
+
+    case 'gateway_alert': {
+      const alertMsgId = msg.dedupe_key || msg.message_id || `alert_${Date.now()}`;
+      const alertText = buildGatewayAlertMarkdown({
+        gatewayId: msg.gateway_id || accountId,
+        severity: msg.severity || 'error',
+        source: msg.source || 'gateway',
+        title: msg.title || 'Gateway alert',
+        message: msg.message || '',
+        targetConversationId: msg.target_conversation_id,
+        dedupeKey: msg.dedupe_key,
+        metadata: msg.metadata,
+      });
+
+      return {
+        cupMessages: [
+          {
+            message_id: alertMsgId,
+            account_id: accountId,
+            payload_type: 'text_delta',
+            content: alertText,
+          },
+          {
+            message_id: alertMsgId,
+            account_id: accountId,
+            payload_type: 'text_done',
+          },
+        ],
+        metadata: {
+          needsStore: {
+            fullText: alertText,
+            type: 'text',
+            upstreamMsgId: alertMsgId,
+          },
         },
       };
     }

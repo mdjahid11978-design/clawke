@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:client/core/debug_runtime_directory.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -205,19 +207,29 @@ class AppDatabase extends _$AppDatabase {
 
 LazyDatabase _openConnection(String uid) {
   return LazyDatabase(() async {
-    final dbFolder = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dbFolder.path, 'clawke', 'clawke_$uid.db'));
+    final file = await resolveDatabaseFile(uid);
 
-    // 确保目录存在
+    // 确保目录存在 — Ensure the database directory exists.
     await file.parent.create(recursive: true);
 
     return NativeDatabase.createInBackground(
       file,
       setup: (db) {
-        // 启用 WAL 模式
+        // 启用 WAL 模式 — Enable WAL mode.
         db.execute('PRAGMA journal_mode=WAL');
         db.execute('PRAGMA foreign_keys=ON');
       },
     );
   });
+}
+
+@visibleForTesting
+Future<File> resolveDatabaseFile(String uid) async {
+  final debugRuntimeDir = resolveDebugRuntimeDirectory();
+  if (debugRuntimeDir != null) {
+    return File(p.join(debugRuntimeDir.path, 'db', 'clawke_$uid.db'));
+  }
+
+  final dbFolder = await getApplicationDocumentsDirectory();
+  return File(p.join(dbFolder.path, 'clawke', 'clawke_$uid.db'));
 }

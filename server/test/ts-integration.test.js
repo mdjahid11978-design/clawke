@@ -472,8 +472,9 @@ describe('TS: MessageRouter', () => {
     const router = new MessageRouter(
       translateToCup, cupHandler, stats,
       (msg) => broadcasted.push(msg),
+      cs,
     );
-    return { router, db, stats, broadcasted };
+    return { router, db, stats, broadcasted, cs };
   }
 
   it('text_delta → broadcast without storage', () => {
@@ -548,6 +549,91 @@ describe('TS: MessageRouter', () => {
     assert.equal(stats.recorded.tools.length, 1);
     assert.equal(stats.recorded.tools[0].n, 'read_file');
     assert.equal(stats.recorded.tools[0].d, 150);
+    db.close();
+  });
+
+  it('gateway_alert stores alert in target conversation under same gateway', () => {
+    const { router, db, cs, broadcasted } = createRouter();
+    cs.create('conv_hermes', 'ai', 'Hermes', 'hermes');
+
+    router.handleUpstreamMessage({
+      type: 'gateway_alert',
+      gateway_id: 'hermes',
+      severity: 'error',
+      source: 'cron_delivery',
+      title: 'Delivery failed',
+      message: 'Attempt 1 / 3 failed.',
+      target_conversation_id: 'conv_hermes',
+      dedupe_key: 'alert:1',
+    }, 'hermes');
+
+    const row = db.raw.prepare('SELECT * FROM messages WHERE client_msg_id = ?').get('alert:1');
+    assert.equal(row.account_id, 'hermes');
+    assert.equal(row.conversation_id, 'conv_hermes');
+    assert.match(row.content, /Gateway Alert: Delivery failed/);
+    assert.equal(broadcasted.at(-1).conversation_id, 'conv_hermes');
+    db.close();
+  });
+
+  it('gateway_alert target from another gateway falls back to same gateway', () => {
+    const { router, db, cs } = createRouter();
+    cs.create('conv_openclaw', 'ai', 'OpenClaw', 'OpenClaw');
+    cs.create('conv_hermes', 'ai', 'Hermes', 'hermes');
+
+    router.handleUpstreamMessage({
+      type: 'gateway_alert',
+      gateway_id: 'hermes',
+      severity: 'error',
+      source: 'cron_delivery',
+      title: 'Delivery failed',
+      message: 'Attempt 1 / 3 failed.',
+      target_conversation_id: 'conv_openclaw',
+      dedupe_key: 'alert:cross-gateway',
+    }, 'hermes');
+
+    const row = db.raw.prepare('SELECT * FROM messages WHERE client_msg_id = ?').get('alert:cross-gateway');
+    assert.equal(row.account_id, 'hermes');
+    assert.equal(row.conversation_id, 'conv_hermes');
+    db.close();
+  });
+
+  it('unknown conversation fallback uses same gateway latest conversation', () => {
+    const { router, db, cs } = createRouter();
+    cs.create('conv_openclaw', 'ai', 'OpenClaw', 'OpenClaw');
+    cs.create('conv_hermes', 'ai', 'Hermes', 'hermes');
+
+    router.handleUpstreamMessage({
+      type: 'agent_text',
+      conversation_id: 'missing_conv',
+      text: 'hello',
+      message_id: 'same_gateway_fallback',
+    }, 'hermes');
+
+    const row = db.raw.prepare('SELECT * FROM messages WHERE content = ?').get('hello');
+    assert.equal(row.account_id, 'hermes');
+    assert.equal(row.conversation_id, 'conv_hermes');
+    db.close();
+  });
+
+  it('gateway_alert dedupe_key prevents duplicate stored messages', () => {
+    const { router, db, cs } = createRouter();
+    cs.create('conv_hermes', 'ai', 'Hermes', 'hermes');
+    const alert = {
+      type: 'gateway_alert',
+      gateway_id: 'hermes',
+      severity: 'error',
+      source: 'cron_delivery',
+      title: 'Delivery failed',
+      message: 'Attempt 1 / 3 failed.',
+      target_conversation_id: 'conv_hermes',
+      dedupe_key: 'alert:dedupe',
+    };
+
+    router.handleUpstreamMessage(alert, 'hermes');
+    router.handleUpstreamMessage(alert, 'hermes');
+
+    const row = db.raw.prepare('SELECT COUNT(*) AS c FROM messages WHERE client_msg_id = ?').get('alert:dedupe');
+    assert.equal(row.c, 1);
     db.close();
   });
 });

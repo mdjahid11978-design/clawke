@@ -27,6 +27,7 @@ export type OpenClawMessageType =
   | 'agent_turn_stats'
   // 用量
   | 'agent_usage'
+  | 'gateway_alert'
   // 交互式请求（Gateway ↔ Client 透传）
   | 'approval_request'
   | 'clarify_request';
@@ -85,4 +86,14 @@ export interface OpenClawMessage {
   // 错误分类（Gateway 异常时发送结构化错误码）
   error_code?: string;
   error_detail?: string;
+
+  // 通用 Gateway 报警（新增字段使用 gateway_id 命名）
+  gateway_id?: string;
+  severity?: 'info' | 'warning' | 'error';
+  source?: string;
+  title?: string;
+  message?: string;
+  target_conversation_id?: string;
+  dedupe_key?: string;
+  metadata?: Record<string, unknown>;
 }

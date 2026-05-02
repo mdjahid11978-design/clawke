@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:client/data/database/app_database.dart';
 import 'package:client/models/gateway_info.dart';
 import 'package:client/models/managed_task.dart';
+import 'package:client/models/task_delivery_validation.dart';
+import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/tasks_provider.dart';
@@ -19,6 +22,10 @@ enum _TaskStatusFilter { all, enabled, running, error }
 enum _TaskPage { list, detail, edit, runs, runOutput }
 
 enum _TaskRunsBackTarget { list, detail }
+
+enum _TaskScheduleMode { daily, weekly, monthly, frequent, advanced }
+
+enum _TaskFrequencyUnit { minute, hour }
 
 class TasksManagementScreen extends ConsumerStatefulWidget {
   final bool showAppBar;
@@ -63,6 +70,9 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
     final state = ref.watch(tasksControllerProvider);
     final gateways =
         ref.watch(gatewayListProvider).valueOrNull ?? const <GatewayInfo>[];
+    final conversations =
+        ref.watch(conversationListProvider).valueOrNull ??
+        const <Conversation>[];
     final colorScheme = Theme.of(context).colorScheme;
 
     final content = Container(
@@ -77,6 +87,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
           final body = _buildBody(
             state,
             gateways,
+            conversations,
             unavailableGateway: unavailableGateway,
             compact: !wide,
           );
@@ -221,7 +232,8 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
       return task.name.toLowerCase().contains(query) ||
           task.schedule.toLowerCase().contains(query) ||
           task.prompt.toLowerCase().contains(query) ||
-          task.skills.any((skill) => skill.toLowerCase().contains(query));
+          (_taskSkillsSupported(task.agent) &&
+              task.skills.any((skill) => skill.toLowerCase().contains(query)));
     }).toList();
   }
 
@@ -263,7 +275,8 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
 
   Widget _buildBody(
     TasksState state,
-    List<GatewayInfo> gateways, {
+    List<GatewayInfo> gateways,
+    List<Conversation> conversations, {
     GatewayInfo? unavailableGateway,
     required bool compact,
   }) {
@@ -273,6 +286,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         child: _buildTaskList(
           state,
           gateways,
+          conversations: conversations,
           unavailableGateway: unavailableGateway,
           compact: compact,
         ),
@@ -291,13 +305,17 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         return _buildTaskList(
           state,
           gateways,
+          conversations: conversations,
           unavailableGateway: unavailableGateway,
           compact: compact,
         );
       }
+      final gateway = gatewayById(gateways, accountId);
       return _TaskEditPage(
         accountId: accountId,
+        gatewayType: gateway?.gatewayType ?? task?.agent ?? accountId,
         initial: task,
+        conversations: conversations,
         isSaving:
             state.isSaving ||
             (task != null && state.busyTaskIds.contains(task.id)),
@@ -311,6 +329,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
       return _buildTaskList(
         state,
         gateways,
+        conversations: conversations,
         unavailableGateway: unavailableGateway,
         compact: compact,
       );
@@ -320,6 +339,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
       return _TaskRunsPage(
         task: task,
         state: state,
+        conversations: conversations,
         onBack: () => _backFromRuns(task),
         onOpenOutput: _showRunOutput,
       );
@@ -331,6 +351,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         return _TaskRunsPage(
           task: task,
           state: state,
+          conversations: conversations,
           onBack: () => _backFromRuns(task),
           onOpenOutput: _showRunOutput,
         );
@@ -339,12 +360,14 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         task: task,
         run: run,
         output: state.selectedRunOutput,
+        conversations: conversations,
         onBack: () => _showRuns(task, backTarget: _runsBackTarget),
       );
     }
 
     return _TaskDetailPage(
       task: task,
+      conversations: conversations,
       onBack: _showList,
       onEdit: () => _openEditor(initial: task),
       onRun: () => _runTask(task),
@@ -355,6 +378,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
   Widget _buildTaskList(
     TasksState state,
     List<GatewayInfo> gateways, {
+    required List<Conversation> conversations,
     GatewayInfo? unavailableGateway,
     required bool compact,
   }) {
@@ -471,6 +495,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
             sliver: SliverToBoxAdapter(
               child: _TaskCardWrap(
                 tasks: filteredTasks,
+                conversations: conversations,
                 compact: compact,
                 selectedTaskId: state.selectedTask?.id,
                 busyTaskIds: state.busyTaskIds,
@@ -1046,6 +1071,7 @@ class _ContentMeta extends StatelessWidget {
 
 class _TaskCardWrap extends StatelessWidget {
   final List<ManagedTask> tasks;
+  final List<Conversation> conversations;
   final bool compact;
   final String? selectedTaskId;
   final Set<String> busyTaskIds;
@@ -1057,6 +1083,7 @@ class _TaskCardWrap extends StatelessWidget {
 
   const _TaskCardWrap({
     required this.tasks,
+    required this.conversations,
     required this.compact,
     required this.selectedTaskId,
     required this.busyTaskIds,
@@ -1085,6 +1112,7 @@ class _TaskCardWrap extends StatelessWidget {
                 width: cardWidth,
                 child: _TaskCard(
                   task: task,
+                  conversations: conversations,
                   selected: selectedTaskId == task.id,
                   isBusy: busyTaskIds.contains(task.id),
                   isToggleBusy: togglingTaskIds.contains(task.id),
@@ -1103,6 +1131,7 @@ class _TaskCardWrap extends StatelessWidget {
 
 class _TaskCard extends StatelessWidget {
   final ManagedTask task;
+  final List<Conversation> conversations;
   final bool selected;
   final bool isBusy;
   final bool isToggleBusy;
@@ -1113,6 +1142,7 @@ class _TaskCard extends StatelessWidget {
 
   const _TaskCard({
     required this.task,
+    required this.conversations,
     required this.selected,
     required this.isBusy,
     required this.isToggleBusy,
@@ -1175,7 +1205,10 @@ class _TaskCard extends StatelessWidget {
                   builder: (context, constraints) {
                     final rightRail = constraints.maxWidth >= 980;
                     final icon = _TaskIcon(task: task, color: statusColor);
-                    final main = _TaskCardMain(task: task);
+                    final main = _TaskCardMain(
+                      task: task,
+                      conversations: conversations,
+                    );
                     final controls = _TaskControls(
                       key: ValueKey('task_card_controls_${task.id}'),
                       task: task,
@@ -1257,13 +1290,19 @@ class _TaskIcon extends StatelessWidget {
 
 class _TaskCardMain extends StatelessWidget {
   final ManagedTask task;
+  final List<Conversation> conversations;
 
-  const _TaskCardMain({required this.task});
+  const _TaskCardMain({required this.task, required this.conversations});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final statusColor = _statusColor(colorScheme, task);
+    final delivery = validateTaskDeliveryTarget(
+      deliver: task.deliver,
+      accountId: task.accountId,
+      conversations: conversations,
+    );
     return Column(
       key: ValueKey('task_card_main_${task.id}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1282,6 +1321,7 @@ class _TaskCardMain extends StatelessWidget {
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
             ),
             _StatusPill(label: _statusLabel(context, task), color: statusColor),
+            if (!delivery.isValid) _TaskDeliveryWarningPill(delivery: delivery),
           ],
         ),
         const SizedBox(height: 9),
@@ -1313,16 +1353,14 @@ class _TaskMetaLine extends StatelessWidget {
     final parts = <String>[
       if (task.nextRunAt != null && task.nextRunAt!.isNotEmpty)
         '${_localized(context, 'Next', '下次')} ${task.nextRunAt}'
-      else if ((task.scheduleText ?? task.schedule).isNotEmpty)
-        task.scheduleText ?? task.schedule
+      else if (task.schedule.isNotEmpty)
+        _taskScheduleDisplayText(context, task.schedule)
       else
         _localized(context, 'No schedule', '无定时计划'),
       if (task.lastRun != null)
         '${_localized(context, 'Last', '上次')}${_runStatusLabel(context, task.lastRun!.status)} ${_formatTaskRunTime(task.lastRun!.startedAt)}',
-      if (task.skills.isNotEmpty)
-        '${_localized(context, 'Skills', '技能')}：${task.skills.take(3).join(', ')}'
-      else if (task.deliver != null && task.deliver!.isNotEmpty)
-        '${_localized(context, 'Deliver', '交付')}：${task.deliver}',
+      if (_taskSkillsSupported(task.agent) && task.skills.isNotEmpty)
+        '${_localized(context, 'Skills', '技能')}：${task.skills.take(3).join(', ')}',
     ];
     return Wrap(
       spacing: 11,
@@ -1599,6 +1637,7 @@ class _TaskAppBarAction extends StatelessWidget {
 
 class _TaskDetailPage extends StatelessWidget {
   final ManagedTask task;
+  final List<Conversation> conversations;
   final VoidCallback onBack;
   final VoidCallback onEdit;
   final VoidCallback onRun;
@@ -1606,6 +1645,7 @@ class _TaskDetailPage extends StatelessWidget {
 
   const _TaskDetailPage({
     required this.task,
+    required this.conversations,
     required this.onBack,
     required this.onEdit,
     required this.onRun,
@@ -1614,6 +1654,11 @@ class _TaskDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final delivery = validateTaskDeliveryTarget(
+      deliver: task.deliver,
+      accountId: task.accountId,
+      conversations: conversations,
+    );
     return _TaskPageShell(
       title: _localized(context, 'Task Detail', '任务详情'),
       onBack: onBack,
@@ -1629,39 +1674,37 @@ class _TaskDetailPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (!delivery.isValid) ...[
+                _TaskDeliveryNotice(delivery: delivery),
+                const SizedBox(height: 18),
+              ],
               LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 720;
-                  final definition = _RunsInfoSection(
-                    title: _localized(context, 'Task Definition', '任务定义'),
-                    rows: [
-                      (
-                        _localized(context, 'Name', '名称'),
-                        task.name.isEmpty ? task.id : task.name,
-                      ),
-                      (
-                        _localized(context, 'Gateway', 'Gateway'),
-                        '${task.agent} / ${task.accountId}',
-                      ),
-                      (
-                        _localized(context, 'Schedule', '计划'),
-                        task.scheduleText ?? task.schedule,
-                      ),
+                  final definitionRows = <(String, Object)>[
+                    (
+                      _localized(context, 'Name', '名称'),
+                      task.name.isEmpty ? task.id : task.name,
+                    ),
+                    (_localized(context, 'Gateway', 'Gateway'), task.accountId),
+                    (
+                      _localized(context, 'Execution schedule', '执行计划'),
+                      _taskScheduleDisplayText(context, task.schedule),
+                    ),
+                    if (_taskSkillsSupported(task.agent))
                       (
                         _localized(context, 'Skills', '技能'),
                         task.skills.isEmpty
                             ? _localized(context, 'Agent default', 'Agent 默认')
                             : task.skills.join(', '),
                       ),
-                      (
-                        _localized(context, 'Delivery', '交付'),
-                        task.deliver ??
-                            _localized(context, 'Not configured', '未配置'),
-                      ),
-                    ],
-                  );
+                    (
+                      _localized(context, 'Delivery conversation', '交付会话'),
+                      _taskDeliveryDisplayText(context, delivery),
+                    ),
+                  ];
+                  final definition = _RunsInfoSection(rows: definitionRows);
                   final recent = _RunsInfoSection(
-                    title: _localized(context, 'Latest State', '最近状态'),
                     rows: [
                       (
                         _localized(context, 'Status', '状态'),
@@ -1669,25 +1712,7 @@ class _TaskDetailPage extends StatelessWidget {
                       ),
                       (
                         _localized(context, 'Next Run', '下次运行'),
-                        task.nextRunAt ??
-                            _localized(context, 'Not scheduled', '未计划'),
-                      ),
-                      (
-                        _localized(context, 'Latest Run', '最近执行'),
-                        task.lastRun == null
-                            ? _localized(context, 'No runs yet', '暂无执行')
-                            : _formatTaskRunTime(task.lastRun!.startedAt),
-                      ),
-                      (
-                        _localized(context, 'Result', '结果'),
-                        task.lastRun == null
-                            ? _localized(context, 'Unknown', '未知')
-                            : _runStatusLabel(context, task.lastRun!.status),
-                      ),
-                      (
-                        _localized(context, 'Output', '输出'),
-                        task.lastRun?.outputPreview ??
-                            _localized(context, 'No output preview', '暂无输出摘要'),
+                        _taskNextRunDisplayText(context, task),
                       ),
                     ],
                   );
@@ -1743,18 +1768,25 @@ class _TaskDetailPage extends StatelessWidget {
 class _TaskRunsPage extends StatelessWidget {
   final ManagedTask task;
   final TasksState state;
+  final List<Conversation> conversations;
   final VoidCallback onBack;
   final ValueChanged<TaskRun> onOpenOutput;
 
   const _TaskRunsPage({
     required this.task,
     required this.state,
+    required this.conversations,
     required this.onBack,
     required this.onOpenOutput,
   });
 
   @override
   Widget build(BuildContext context) {
+    final delivery = validateTaskDeliveryTarget(
+      deliver: task.deliver,
+      accountId: task.accountId,
+      conversations: conversations,
+    );
     return _TaskPageShell(
       title: _localized(context, 'Run History', '执行记录'),
       onBack: onBack,
@@ -1766,24 +1798,23 @@ class _TaskRunsPage extends StatelessWidget {
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 720;
               final taskInfo = _RunsInfoSection(
-                title: _localized(context, 'Task', '任务'),
                 rows: [
                   (
                     _localized(context, 'Name', '名称'),
                     task.name.isEmpty ? task.id : task.name,
                   ),
+                  (_localized(context, 'Gateway', 'Gateway'), task.accountId),
                   (
-                    _localized(context, 'Gateway', 'Gateway'),
-                    '${task.agent} / ${task.accountId}',
+                    _localized(context, 'Delivery conversation', '交付会话'),
+                    _taskDeliveryDisplayText(context, delivery),
                   ),
                   (
-                    _localized(context, 'Schedule', '计划'),
-                    task.scheduleText ?? task.schedule,
+                    _localized(context, 'Execution schedule', '执行计划'),
+                    _taskScheduleDisplayText(context, task.schedule),
                   ),
                 ],
               );
               final runInfo = _RunsInfoSection(
-                title: _localized(context, 'Run Overview', '运行概览'),
                 rows: [
                   (
                     _localized(context, 'Total Runs', '总次数'),
@@ -1838,25 +1869,15 @@ class _TaskRunsPage extends StatelessWidget {
 }
 
 class _RunsInfoSection extends StatelessWidget {
-  final String title;
-  final List<(String, String)> rows;
+  final List<(String, Object)> rows;
 
-  const _RunsInfoSection({required this.title, required this.rows});
+  const _RunsInfoSection({required this.rows});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 10),
-        _KeyValueList(rows: rows),
-      ],
+      children: [_KeyValueList(rows: rows)],
     );
   }
 }
@@ -1908,12 +1929,14 @@ class _TaskRunOutputPage extends StatelessWidget {
   final ManagedTask task;
   final TaskRun run;
   final String? output;
+  final List<Conversation> conversations;
   final VoidCallback onBack;
 
   const _TaskRunOutputPage({
     required this.task,
     required this.run,
     required this.output,
+    required this.conversations,
     required this.onBack,
   });
 
@@ -1923,6 +1946,11 @@ class _TaskRunOutputPage extends StatelessWidget {
     final body = output == null || output!.isEmpty
         ? _localized(context, 'Loading output...', '正在加载结果...')
         : output!;
+    final delivery = validateTaskDeliveryTarget(
+      deliver: task.deliver,
+      accountId: task.accountId,
+      conversations: conversations,
+    );
     return _TaskPageShell(
       title: _localized(context, 'Run Output', '执行结果'),
       onBack: onBack,
@@ -1934,21 +1962,20 @@ class _TaskRunOutputPage extends StatelessWidget {
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 720;
               final taskInfo = _RunsInfoSection(
-                title: _localized(context, 'Task', '任务'),
                 rows: [
                   (
                     _localized(context, 'Name', '名称'),
                     task.name.isEmpty ? task.id : task.name,
                   ),
                   (_localized(context, 'Run ID', 'Run ID'), run.id),
+                  (_localized(context, 'Gateway', 'Gateway'), task.accountId),
                   (
-                    _localized(context, 'Gateway', 'Gateway'),
-                    '${task.agent} / ${task.accountId}',
+                    _localized(context, 'Delivery conversation', '交付会话'),
+                    _TaskDeliveryDisplayValue(delivery: delivery),
                   ),
                 ],
               );
               final statusInfo = _RunsInfoSection(
-                title: _localized(context, 'Status', '状态'),
                 rows: [
                   (
                     _localized(context, 'Result', '结果'),
@@ -2083,8 +2110,57 @@ class _DetailPanel extends StatelessWidget {
   }
 }
 
+class _TaskDeliveryNotice extends StatelessWidget {
+  final TaskDeliveryValidation delivery;
+
+  const _TaskDeliveryNotice({required this.delivery});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('task_delivery_warning_notice'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.error.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: colorScheme.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _localized(context, 'Delivery warning', '投递配置异常'),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _taskDeliveryWarningText(context, delivery),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colorScheme.onErrorContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _KeyValueList extends StatelessWidget {
-  final List<(String, String)> rows;
+  final List<(String, Object)> rows;
 
   const _KeyValueList({required this.rows});
 
@@ -2109,15 +2185,70 @@ class _KeyValueList extends StatelessWidget {
                     ),
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    row.$2,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                Expanded(child: _KeyValueValue(value: row.$2)),
               ],
             ),
           ),
+      ],
+    );
+  }
+}
+
+class _KeyValueValue extends StatelessWidget {
+  final Object value;
+
+  const _KeyValueValue({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final current = value;
+    if (current is Widget) return current;
+    return Text(
+      current.toString(),
+      style: const TextStyle(fontWeight: FontWeight.w600),
+    );
+  }
+}
+
+class _TaskDeliveryDisplayValue extends StatelessWidget {
+  final TaskDeliveryValidation delivery;
+
+  const _TaskDeliveryDisplayValue({required this.delivery});
+
+  @override
+  Widget build(BuildContext context) {
+    final conversation = delivery.conversation;
+    if (conversation == null) {
+      return _KeyValueValue(value: _taskDeliveryDisplayText(context, delivery));
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final title = _conversationTitle(conversation);
+    final conversationId = delivery.conversationId;
+    final valueStyle = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700);
+    if (conversationId == null ||
+        conversationId.isEmpty ||
+        conversationId == title) {
+      return Text(title, style: valueStyle);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: valueStyle),
+        const SizedBox(height: 3),
+        Text(
+          conversationId,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'monospace',
+          ),
+        ),
       ],
     );
   }
@@ -2292,6 +2423,24 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+class _TaskDeliveryWarningPill extends StatelessWidget {
+  final TaskDeliveryValidation delivery;
+
+  const _TaskDeliveryWarningPill({required this.delivery});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.error;
+    return Tooltip(
+      message: _taskDeliveryWarningText(context, delivery),
+      child: _StatusPill(
+        label: _localized(context, 'Delivery warning', '投递异常'),
+        color: color,
+      ),
+    );
+  }
+}
+
 class _FieldHelper extends StatelessWidget {
   final String text;
 
@@ -2350,9 +2499,820 @@ class _CreateTarget extends StatelessWidget {
   }
 }
 
+class _TaskSchedulePicker extends StatelessWidget {
+  final String schedule;
+  final ValueChanged<String> onChanged;
+
+  const _TaskSchedulePicker({required this.schedule, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return FormField<String>(
+      initialValue: schedule,
+      validator: (_) {
+        final current = schedule.trim();
+        if (current.isEmpty) return _localized(context, 'Required', '必填');
+        if (!_isValidCronExpression(current)) {
+          return _localized(context, 'Invalid cron expression', 'Cron 表达式不合法');
+        }
+        return null;
+      },
+      builder: (field) {
+        final current = (field.value ?? schedule).trim();
+        final display = current.isEmpty
+            ? _localized(context, 'Set schedule', '设置计划')
+            : _taskScheduleDisplayText(context, current);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _localized(context, 'Execution schedule', '执行计划'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const ValueKey('task_schedule_picker'),
+              onPressed: () async {
+                final selected = await showModalBottomSheet<String>(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  builder: (sheetContext) =>
+                      _TaskScheduleSheet(initialCron: current),
+                );
+                if (selected == null) return;
+                onChanged(selected);
+                field.didChange(selected);
+              },
+              icon: const Icon(Icons.schedule_outlined),
+              label: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      display,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.expand_more, size: 18),
+                ],
+              ),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 13,
+                ),
+                minimumSize: const Size.fromHeight(52),
+                side: BorderSide(
+                  color: field.hasError
+                      ? colorScheme.error
+                      : colorScheme.outline,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            if (field.hasError)
+              Padding(
+                padding: const EdgeInsets.only(top: 7, left: 12),
+                child: Text(
+                  field.errorText!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TaskScheduleSheet extends StatefulWidget {
+  final String initialCron;
+
+  const _TaskScheduleSheet({required this.initialCron});
+
+  @override
+  State<_TaskScheduleSheet> createState() => _TaskScheduleSheetState();
+}
+
+class _TaskScheduleSheetState extends State<_TaskScheduleSheet> {
+  late _TaskScheduleMode _mode;
+  late _TaskFrequencyUnit _frequencyUnit;
+  late int _frequency;
+  late int _hour;
+  late int _minute;
+  late int _monthDay;
+  late Set<int> _weekdays;
+  late final TextEditingController _advancedController;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = _TaskScheduleDraft.fromCron(widget.initialCron);
+    _mode = initial.mode;
+    _frequencyUnit = initial.frequencyUnit;
+    _frequency = initial.frequency;
+    _hour = initial.hour;
+    _minute = initial.minute;
+    _monthDay = initial.monthDay;
+    _weekdays = {...initial.weekdays};
+    _advancedController = TextEditingController(text: initial.advancedCron);
+    _advancedController.addListener(() {
+      if (_mode == _TaskScheduleMode.advanced) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _advancedController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final cron = _currentCron();
+    final valid = _isValidCronExpression(cron);
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.78;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _localized(context, 'Set schedule', '设置计划'),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 14),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SegmentedButton<_TaskScheduleMode>(
+                  segments: [
+                    ButtonSegment(
+                      value: _TaskScheduleMode.daily,
+                      label: Text(_localized(context, 'Daily', '每天')),
+                    ),
+                    ButtonSegment(
+                      value: _TaskScheduleMode.weekly,
+                      label: Text(_localized(context, 'Weekly', '每周')),
+                    ),
+                    ButtonSegment(
+                      value: _TaskScheduleMode.monthly,
+                      label: Text(_localized(context, 'Monthly', '每月')),
+                    ),
+                    ButtonSegment(
+                      value: _TaskScheduleMode.frequent,
+                      label: Text(_localized(context, 'Frequent', '高频')),
+                    ),
+                    ButtonSegment(
+                      value: _TaskScheduleMode.advanced,
+                      label: Text(_localized(context, 'Advanced', '高级')),
+                    ),
+                  ],
+                  selected: {_mode},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _mode = selection.single;
+                      _errorText = null;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _modeBody(context),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      valid
+                          ? _taskScheduleDisplayText(context, cron)
+                          : _localized(context, 'Invalid schedule', '计划不合法'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      cron.isEmpty ? _localized(context, 'Empty', '空') : cron,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _errorText!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  FilledButton(
+                    onPressed: () {
+                      final current = _currentCron();
+                      if (!_isValidCronExpression(current)) {
+                        setState(() {
+                          _errorText = _localized(
+                            context,
+                            'Invalid cron expression',
+                            'Cron 表达式不合法',
+                          );
+                        });
+                        return;
+                      }
+                      Navigator.of(context).pop(current);
+                    },
+                    child: Text(_localized(context, 'Apply', '应用')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _modeBody(BuildContext context) {
+    return switch (_mode) {
+      _TaskScheduleMode.daily => _timeSelectors(context),
+      _TaskScheduleMode.weekly => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final weekday in [1, 2, 3, 4, 5, 6, 0])
+                FilterChip(
+                  key: ValueKey('task_schedule_weekday_$weekday'),
+                  label: Text(_weekdayShort(context, weekday)),
+                  selected: _weekdays.contains(weekday),
+                  showCheckmark: false,
+                  onSelected: (_) {
+                    if (_weekdays.contains(weekday) && _weekdays.length == 1) {
+                      return;
+                    }
+                    setState(() {
+                      if (_weekdays.contains(weekday)) {
+                        _weekdays.remove(weekday);
+                      } else {
+                        _weekdays.add(weekday);
+                      }
+                      _errorText = null;
+                    });
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _timeSelectors(context),
+        ],
+      ),
+      _TaskScheduleMode.monthly => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<int>(
+            key: const ValueKey('task_schedule_month_day'),
+            initialValue: _monthDay,
+            decoration: InputDecoration(
+              labelText: _localized(context, 'Day', '日期'),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (var day = 1; day <= 31; day++)
+                DropdownMenuItem(
+                  value: day,
+                  child: Text(_localized(context, 'Day $day', '$day 日')),
+                ),
+            ],
+            onChanged: (value) => setState(() => _monthDay = value ?? 1),
+          ),
+          const SizedBox(height: 14),
+          _timeSelectors(context),
+        ],
+      ),
+      _TaskScheduleMode.frequent => _frequencySelectors(context),
+      _TaskScheduleMode.advanced => TextField(
+        key: const ValueKey('task_schedule_advanced_input'),
+        controller: _advancedController,
+        decoration: InputDecoration(
+          labelText: _localized(context, 'Cron', 'Cron'),
+          hintText: '0 9 * * *',
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    };
+  }
+
+  Widget _timeSelectors(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<int>(
+            key: const ValueKey('task_schedule_hour'),
+            initialValue: _hour,
+            decoration: InputDecoration(
+              labelText: _localized(context, 'Hour', '小时'),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (var hour = 0; hour < 24; hour++)
+                DropdownMenuItem(value: hour, child: Text(_two(hour))),
+            ],
+            onChanged: (value) => setState(() => _hour = value ?? 9),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: DropdownButtonFormField<int>(
+            key: const ValueKey('task_schedule_minute'),
+            initialValue: _minute,
+            decoration: InputDecoration(
+              labelText: _localized(context, 'Minute', '分钟'),
+              border: const OutlineInputBorder(),
+            ),
+            items: [
+              for (var minute = 0; minute < 60; minute++)
+                DropdownMenuItem(value: minute, child: Text(_two(minute))),
+            ],
+            onChanged: (value) => setState(() => _minute = value ?? 0),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _frequencySelectors(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _FrequencyOption(
+          key: const ValueKey('task_schedule_frequency_minute'),
+          selected: _frequencyUnit == _TaskFrequencyUnit.minute,
+          unitLabel: _localized(context, 'minutes', '分钟'),
+          value: _frequencyUnit == _TaskFrequencyUnit.minute ? _frequency : 5,
+          min: 1,
+          max: 59,
+          onSelected: (value) {
+            setState(() {
+              _frequencyUnit = _TaskFrequencyUnit.minute;
+              _frequency = value;
+              _errorText = null;
+            });
+          },
+        ),
+        const SizedBox(height: 10),
+        _FrequencyOption(
+          key: const ValueKey('task_schedule_frequency_hour'),
+          selected: _frequencyUnit == _TaskFrequencyUnit.hour,
+          unitLabel: _localized(context, 'hours', '小时'),
+          value: _frequencyUnit == _TaskFrequencyUnit.hour ? _frequency : 1,
+          min: 1,
+          max: 23,
+          onSelected: (value) {
+            setState(() {
+              _frequencyUnit = _TaskFrequencyUnit.hour;
+              _frequency = value;
+              _errorText = null;
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  String _currentCron() {
+    return switch (_mode) {
+      _TaskScheduleMode.daily => '$_minute $_hour * * *',
+      _TaskScheduleMode.weekly =>
+        '$_minute $_hour * * ${_weekdaysCronValue(_weekdays)}',
+      _TaskScheduleMode.monthly => '$_minute $_hour $_monthDay * *',
+      _TaskScheduleMode.frequent =>
+        _frequencyUnit == _TaskFrequencyUnit.minute
+            ? '*/$_frequency * * * *'
+            : '0 */$_frequency * * *',
+      _TaskScheduleMode.advanced => _advancedController.text.trim(),
+    };
+  }
+}
+
+class _FrequencyOption extends StatelessWidget {
+  final bool selected;
+  final String unitLabel;
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onSelected;
+
+  const _FrequencyOption({
+    super.key,
+    required this.selected,
+    required this.unitLabel,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => onSelected(value),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected
+              ? colorScheme.primaryContainer.withValues(alpha: 0.45)
+              : colorScheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? colorScheme.primary : colorScheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          children: [
+            Text(
+              _localized(context, 'Every', '每'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 98,
+              child: DropdownButtonFormField<int>(
+                initialValue: value.clamp(min, max).toInt(),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  for (var item = min; item <= max; item++)
+                    DropdownMenuItem(value: item, child: Text(item.toString())),
+                ],
+                onChanged: (next) => onSelected(next ?? value),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              unitLabel,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskScheduleDraft {
+  final _TaskScheduleMode mode;
+  final _TaskFrequencyUnit frequencyUnit;
+  final int frequency;
+  final int hour;
+  final int minute;
+  final int monthDay;
+  final Set<int> weekdays;
+  final String advancedCron;
+
+  const _TaskScheduleDraft({
+    required this.mode,
+    required this.frequencyUnit,
+    required this.frequency,
+    required this.hour,
+    required this.minute,
+    required this.monthDay,
+    required this.weekdays,
+    required this.advancedCron,
+  });
+
+  factory _TaskScheduleDraft.fromCron(String value) {
+    final cron = value.trim();
+    final parts = cron.split(RegExp(r'\s+'));
+    if (parts.length == 5) {
+      final minute = parts[0];
+      final hour = parts[1];
+      final day = parts[2];
+      final month = parts[3];
+      final weekday = parts[4];
+
+      final minuteInterval = RegExp(r'^\*/(\d+)$').firstMatch(minute);
+      if (minuteInterval != null &&
+          hour == '*' &&
+          day == '*' &&
+          month == '*' &&
+          weekday == '*') {
+        return _TaskScheduleDraft.defaults(
+          mode: _TaskScheduleMode.frequent,
+          frequencyUnit: _TaskFrequencyUnit.minute,
+          frequency: int.tryParse(minuteInterval.group(1)!) ?? 5,
+          advancedCron: cron,
+        );
+      }
+
+      final hourInterval = RegExp(r'^\*/(\d+)$').firstMatch(hour);
+      if ((minute == '0') &&
+          hourInterval != null &&
+          day == '*' &&
+          month == '*' &&
+          weekday == '*') {
+        return _TaskScheduleDraft.defaults(
+          mode: _TaskScheduleMode.frequent,
+          frequencyUnit: _TaskFrequencyUnit.hour,
+          frequency: int.tryParse(hourInterval.group(1)!) ?? 1,
+          advancedCron: cron,
+        );
+      }
+
+      final parsedMinute = int.tryParse(minute);
+      final parsedHour = int.tryParse(hour);
+      if (parsedMinute != null && parsedHour != null) {
+        if (day == '*' && month == '*' && weekday == '*') {
+          return _TaskScheduleDraft.defaults(
+            mode: _TaskScheduleMode.daily,
+            hour: parsedHour,
+            minute: parsedMinute,
+            advancedCron: cron,
+          );
+        }
+        if (day == '*' && month == '*' && weekday != '*') {
+          return _TaskScheduleDraft.defaults(
+            mode: _TaskScheduleMode.weekly,
+            hour: parsedHour,
+            minute: parsedMinute,
+            weekdays: _parseWeekdays(weekday),
+            advancedCron: cron,
+          );
+        }
+        final parsedDay = int.tryParse(day);
+        if (parsedDay != null && month == '*' && weekday == '*') {
+          return _TaskScheduleDraft.defaults(
+            mode: _TaskScheduleMode.monthly,
+            hour: parsedHour,
+            minute: parsedMinute,
+            monthDay: parsedDay,
+            advancedCron: cron,
+          );
+        }
+      }
+    }
+
+    return _TaskScheduleDraft.defaults(
+      mode: _TaskScheduleMode.daily,
+      advancedCron: cron,
+    );
+  }
+
+  factory _TaskScheduleDraft.defaults({
+    required _TaskScheduleMode mode,
+    _TaskFrequencyUnit frequencyUnit = _TaskFrequencyUnit.minute,
+    int frequency = 5,
+    int hour = 9,
+    int minute = 0,
+    int monthDay = 1,
+    Set<int>? weekdays,
+    String advancedCron = '',
+  }) {
+    return _TaskScheduleDraft(
+      mode: mode,
+      frequencyUnit: frequencyUnit,
+      frequency: frequency,
+      hour: hour.clamp(0, 23).toInt(),
+      minute: minute.clamp(0, 59).toInt(),
+      monthDay: monthDay.clamp(1, 31).toInt(),
+      weekdays: weekdays == null || weekdays.isEmpty ? {1} : weekdays,
+      advancedCron: advancedCron,
+    );
+  }
+}
+
+class _ConversationDeliveryPicker extends StatelessWidget {
+  final String accountId;
+  final String? deliver;
+  final List<Conversation> conversations;
+  final ValueChanged<String> onChanged;
+
+  const _ConversationDeliveryPicker({
+    required this.accountId,
+    required this.deliver,
+    required this.conversations,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accountConversations = taskDeliveryConversationsForAccount(
+      accountId: accountId,
+      conversations: conversations,
+    );
+    final delivery = validateTaskDeliveryTarget(
+      deliver: deliver,
+      accountId: accountId,
+      conversations: conversations,
+    );
+    final selected = delivery.conversation;
+    final label = selected == null
+        ? _localized(context, 'Choose delivery conversation', '选择交付会话')
+        : _conversationTitle(selected);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return FormField<String>(
+      initialValue: deliver,
+      validator: (_) =>
+          validateTaskDeliveryTarget(
+            deliver: deliver,
+            accountId: accountId,
+            conversations: conversations,
+          ).isValid
+          ? null
+          : _localized(context, 'Required', '必填'),
+      builder: (field) {
+        final hasError = field.hasError;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _localized(context, 'Delivery conversation', '交付会话'),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const ValueKey('task_delivery_picker'),
+              onPressed: accountConversations.isEmpty
+                  ? null
+                  : () async {
+                      final selected = await showModalBottomSheet<Conversation>(
+                        context: context,
+                        showDragHandle: true,
+                        builder: (sheetContext) => _ConversationDeliverySheet(
+                          conversations: accountConversations,
+                          selectedConversationId: delivery.conversationId,
+                        ),
+                      );
+                      if (selected == null) return;
+                      final value = taskConversationDeliveryValue(
+                        selected.conversationId,
+                      );
+                      onChanged(value);
+                      field.didChange(value);
+                    },
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.expand_more, size: 18),
+                ],
+              ),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 13,
+                ),
+                minimumSize: const Size.fromHeight(52),
+                side: BorderSide(
+                  color: hasError ? colorScheme.error : colorScheme.outline,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+            if (hasError)
+              Padding(
+                padding: const EdgeInsets.only(top: 7, left: 12),
+                child: Text(
+                  field.errorText!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ConversationDeliverySheet extends StatelessWidget {
+  final List<Conversation> conversations;
+  final String? selectedConversationId;
+
+  const _ConversationDeliverySheet({
+    required this.conversations,
+    required this.selectedConversationId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _localized(context, 'Choose delivery conversation', '选择交付会话'),
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+          for (final conversation in conversations)
+            ListTile(
+              key: ValueKey(
+                'task_delivery_conversation_${conversation.conversationId}',
+              ),
+              leading: const Icon(Icons.chat_bubble_outline),
+              title: Text(_conversationTitle(conversation)),
+              trailing: conversation.conversationId == selectedConversationId
+                  ? const Icon(Icons.check)
+                  : null,
+              onTap: () => Navigator.of(context).pop(conversation),
+            ),
+          if (conversations.isEmpty)
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: Text(
+                _localized(
+                  context,
+                  'No conversations under this Gateway',
+                  '当前 Gateway 下暂无会话',
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TaskEditPage extends StatefulWidget {
   final String accountId;
+  final String gatewayType;
   final ManagedTask? initial;
+  final List<Conversation> conversations;
   final bool isSaving;
   final ValueChanged<TaskDraft> onSave;
   final VoidCallback onCancel;
@@ -2360,7 +3320,9 @@ class _TaskEditPage extends StatefulWidget {
 
   const _TaskEditPage({
     required this.accountId,
+    required this.gatewayType,
     required this.initial,
+    required this.conversations,
     required this.isSaving,
     required this.onSave,
     required this.onCancel,
@@ -2377,7 +3339,7 @@ class _TaskEditPageState extends State<_TaskEditPage> {
   late final TextEditingController _scheduleController;
   late final TextEditingController _promptController;
   late final TextEditingController _skillsController;
-  late final TextEditingController _deliverController;
+  String? _selectedDeliver;
   late bool _enabled;
 
   @override
@@ -2390,8 +3352,32 @@ class _TaskEditPageState extends State<_TaskEditPage> {
     _skillsController = TextEditingController(
       text: initial?.skills.join(', ') ?? '',
     );
-    _deliverController = TextEditingController(text: initial?.deliver ?? '');
+    final delivery = validateTaskDeliveryTarget(
+      deliver: initial?.deliver,
+      accountId: widget.accountId,
+      conversations: widget.conversations,
+    );
+    _selectedDeliver = delivery.isValid ? initial?.deliver?.trim() : null;
     _enabled = initial?.enabled ?? true;
+  }
+
+  @override
+  void didUpdateWidget(covariant _TaskEditPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final initialDeliver = widget.initial?.deliver?.trim();
+    if (_selectedDeliver != null ||
+        initialDeliver == null ||
+        initialDeliver.isEmpty) {
+      return;
+    }
+    final delivery = validateTaskDeliveryTarget(
+      deliver: initialDeliver,
+      accountId: widget.accountId,
+      conversations: widget.conversations,
+    );
+    if (delivery.isValid) {
+      setState(() => _selectedDeliver = initialDeliver);
+    }
   }
 
   @override
@@ -2400,13 +3386,14 @@ class _TaskEditPageState extends State<_TaskEditPage> {
     _scheduleController.dispose();
     _promptController.dispose();
     _skillsController.dispose();
-    _deliverController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final supportsSkills = _taskSkillsSupported(widget.gatewayType);
+    final isEditing = widget.initial != null;
     final title = widget.initial == null
         ? _localized(context, 'New Task', '新建任务')
         : _localized(context, 'Edit Task', '编辑任务');
@@ -2433,11 +3420,19 @@ class _TaskEditPageState extends State<_TaskEditPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Text(
+                      _localized(context, 'Name', '名称'),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
                     TextFormField(
+                      key: const ValueKey('task_name_field'),
                       controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: _localized(context, 'Name', '名称'),
-                        border: const OutlineInputBorder(),
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     _FieldHelper(
@@ -2454,73 +3449,67 @@ class _TaskEditPageState extends State<_TaskEditPage> {
                             ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _scheduleController,
-                            decoration: InputDecoration(
-                              labelText: _localized(context, 'Schedule', '计划'),
-                              hintText: '0 9 * * *',
-                              border: const OutlineInputBorder(),
-                            ),
-                            validator: (value) =>
-                                value == null || value.trim().isEmpty
-                                ? _localized(context, 'Required', '必填')
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _deliverController,
-                            decoration: InputDecoration(
-                              labelText: _localized(
-                                context,
-                                'Delivery',
-                                '交付方式',
-                              ),
-                              hintText: _localized(context, 'Optional', '可选'),
-                              border: const OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final wide = constraints.maxWidth >= 720;
+                        final schedulePicker = _TaskSchedulePicker(
+                          schedule: _scheduleController.text,
+                          onChanged: (value) =>
+                              setState(() => _scheduleController.text = value),
+                        );
+                        final deliveryPicker = _ConversationDeliveryPicker(
+                          accountId: widget.accountId,
+                          deliver: _selectedDeliver,
+                          conversations: widget.conversations,
+                          onChanged: (value) =>
+                              setState(() => _selectedDeliver = value),
+                        );
+                        if (!wide) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              schedulePicker,
+                              const SizedBox(height: 12),
+                              deliveryPicker,
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: schedulePicker),
+                            const SizedBox(width: 12),
+                            Expanded(child: deliveryPicker),
+                          ],
+                        );
+                      },
                     ),
-                    _FieldHelper(
-                      text: widget.initial == null
-                          ? _localized(
-                              context,
-                              'Required cron expression. Delivery is optional.',
-                              '计划必填。Cron 表达式；交付方式可选。',
-                            )
-                          : _localized(
-                              context,
-                              'Cron expression interpreted by the current gateway host.',
-                              'Cron 表达式，按当前 Gateway 主机解释。',
-                            ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _skillsController,
-                      decoration: InputDecoration(
-                        labelText: _localized(context, 'Skills', '技能'),
-                        hintText: _localized(
+                    if (supportsSkills) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _localized(context, 'Skills', '技能'),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        key: const ValueKey('task_skills_field'),
+                        controller: _skillsController,
+                        decoration: InputDecoration(
+                          hintText: _localized(context, 'Skills', '技能'),
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      _FieldHelper(
+                        text: _localized(
                           context,
-                          'Comma separated skill ids',
-                          '用逗号分隔技能 ID',
+                          'Optional. Comma separated; empty means the agent decides.',
+                          '可选。逗号分隔；留空表示由 Agent 自行选择。',
                         ),
-                        border: const OutlineInputBorder(),
                       ),
-                    ),
-                    _FieldHelper(
-                      text: _localized(
-                        context,
-                        'Optional. Comma separated; empty means the agent decides.',
-                        '可选。逗号分隔；留空表示由 Agent 自行选择。',
-                      ),
-                    ),
+                    ],
                     if (widget.initial == null) ...[
                       const SizedBox(height: 12),
                       _CreateTarget(accountId: widget.accountId),
@@ -2535,34 +3524,29 @@ class _TaskEditPageState extends State<_TaskEditPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      widget.initial == null
-                          ? _localized(
-                              context,
-                              'Write the goal, inputs, output format, and constraints. You can review it after creation.',
-                              '写清楚任务目标、输入来源、输出格式和约束。创建后可在详情页立即查看。',
-                            )
-                          : _localized(
-                              context,
-                              'Saving submits to the current gateway. The prompt is the task body for the agent.',
-                              '保存时提交到当前 Gateway。提示词是 Agent 执行任务的主体内容。',
-                            ),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
+                    if (!isEditing) ...[
+                      Text(
+                        _localized(
+                          context,
+                          'Write the goal, inputs, output format, and constraints. You can review it after creation.',
+                          '写清楚任务目标、输入来源、输出格式和约束。创建后可在详情页立即查看。',
+                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                    ],
                     TextFormField(
+                      key: const ValueKey('task_prompt_field'),
                       controller: _promptController,
                       minLines: 10,
                       maxLines: 16,
                       decoration: InputDecoration(
-                        labelText: _localized(
-                          context,
-                          'Prompt Content',
-                          '提示词内容',
-                        ),
+                        labelText: isEditing
+                            ? null
+                            : _localized(context, 'Prompt Content', '提示词内容'),
                         alignLabelWithHint: true,
                         border: const OutlineInputBorder(),
                       ),
@@ -2621,11 +3605,13 @@ class _TaskEditPageState extends State<_TaskEditPage> {
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
-    final skills = _skillsController.text
-        .split(',')
-        .map((item) => item.trim())
-        .where((item) => item.isNotEmpty)
-        .toList();
+    final skills = _taskSkillsSupported(widget.gatewayType)
+        ? _skillsController.text
+              .split(',')
+              .map((item) => item.trim())
+              .where((item) => item.isNotEmpty)
+              .toList()
+        : const <String>[];
     widget.onSave(
       TaskDraft(
         accountId: widget.accountId,
@@ -2634,9 +3620,7 @@ class _TaskEditPageState extends State<_TaskEditPage> {
         prompt: _promptController.text,
         enabled: _enabled,
         skills: skills,
-        deliver: _deliverController.text.trim().isEmpty
-            ? null
-            : _deliverController.text.trim(),
+        deliver: _selectedDeliver,
       ),
     );
   }
@@ -2743,6 +3727,10 @@ bool _isTaskError(ManagedTask task) {
   return task.status == 'error' || task.lastRun?.status == 'failed';
 }
 
+bool _taskSkillsSupported(String gatewayType) {
+  return gatewayType.trim().toLowerCase() == 'hermes';
+}
+
 Color _runColor(ColorScheme colorScheme, String status) {
   return switch (status) {
     'failed' => colorScheme.error,
@@ -2772,6 +3760,123 @@ String _latestRunAt(
   return _localized(context, 'None', '暂无');
 }
 
+String _taskNextRunDisplayText(BuildContext context, ManagedTask task) {
+  final provided = task.nextRunAt?.trim();
+  if (provided != null && provided.isNotEmpty) {
+    return _formatTaskRunTime(provided);
+  }
+  if (!task.enabled || task.status == 'paused' || task.status == 'disabled') {
+    return _localized(context, 'Not scheduled', '未计划');
+  }
+  final nextRun = _nextRunFromCron(task.schedule, DateTime.now());
+  if (nextRun == null) return _localized(context, 'Not scheduled', '未计划');
+  return _formatDateTime(nextRun);
+}
+
+DateTime? _nextRunFromCron(String schedule, DateTime now) {
+  final parts = schedule.trim().split(RegExp(r'\s+'));
+  if (parts.length != 5) return null;
+
+  final minutes = _parseCronValues(parts[0], 0, 59);
+  final hours = _parseCronValues(parts[1], 0, 23);
+  final days = _parseCronValues(parts[2], 1, 31);
+  final months = _parseCronValues(parts[3], 1, 12);
+  final weekdays = _parseCronValues(parts[4], 0, 7, normalizeSunday: true);
+  if (minutes == null ||
+      hours == null ||
+      days == null ||
+      months == null ||
+      weekdays == null) {
+    return null;
+  }
+
+  final dayRestricted = parts[2] != '*';
+  final weekdayRestricted = parts[4] != '*';
+  var candidate = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    now.hour,
+    now.minute,
+  ).add(const Duration(minutes: 1));
+  final end = candidate.add(const Duration(days: 366));
+
+  while (!candidate.isAfter(end)) {
+    final weekday = candidate.weekday == DateTime.sunday
+        ? 0
+        : candidate.weekday;
+    final dayMatches = days.contains(candidate.day);
+    final weekdayMatches = weekdays.contains(weekday);
+    final dateMatches = dayRestricted && weekdayRestricted
+        ? dayMatches || weekdayMatches
+        : dayMatches && weekdayMatches;
+
+    if (minutes.contains(candidate.minute) &&
+        hours.contains(candidate.hour) &&
+        months.contains(candidate.month) &&
+        dateMatches) {
+      return candidate;
+    }
+    candidate = candidate.add(const Duration(minutes: 1));
+  }
+  return null;
+}
+
+Set<int>? _parseCronValues(
+  String field,
+  int min,
+  int max, {
+  bool normalizeSunday = false,
+}) {
+  final values = <int>{};
+  for (final token in field.split(',')) {
+    final parsed = _parseCronTokenValues(token, min, max);
+    if (parsed == null) return null;
+    values.addAll(
+      normalizeSunday ? parsed.map((value) => value == 7 ? 0 : value) : parsed,
+    );
+  }
+  return values;
+}
+
+Set<int>? _parseCronTokenValues(String token, int min, int max) {
+  final stepParts = token.split('/');
+  if (stepParts.length > 2) return null;
+  final step = stepParts.length == 2 ? int.tryParse(stepParts[1]) : 1;
+  if (step == null || step < 1) return null;
+
+  final base = stepParts[0];
+  final startEnd = _cronTokenRange(base, min, max);
+  if (startEnd == null) return null;
+  final (start, end) = startEnd;
+  final values = <int>{};
+  for (var value = start; value <= end; value += step) {
+    values.add(value);
+  }
+  return values;
+}
+
+(int, int)? _cronTokenRange(String token, int min, int max) {
+  if (token == '*') return (min, max);
+  if (token.contains('-')) {
+    final range = token.split('-');
+    if (range.length != 2) return null;
+    final start = int.tryParse(range[0]);
+    final end = int.tryParse(range[1]);
+    if (start == null ||
+        end == null ||
+        start < min ||
+        end > max ||
+        start > end) {
+      return null;
+    }
+    return (start, end);
+  }
+  final value = int.tryParse(token);
+  if (value == null || value < min || value > max) return null;
+  return (value, value);
+}
+
 String _formatTaskRunTime(String value) {
   final raw = value.trim();
   if (raw.isEmpty) return value;
@@ -2794,6 +3899,196 @@ String _formatDateTime(DateTime time) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${time.year.toString().padLeft(4, '0')}-${two(time.month)}-${two(time.day)} '
       '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
+}
+
+String _two(int value) => value.toString().padLeft(2, '0');
+
+List<int> _orderedWeekdays(Set<int> weekdays) {
+  return [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    0,
+  ].where((weekday) => weekdays.contains(weekday)).toList();
+}
+
+bool _isWorkdayWeekdays(Set<int> weekdays) {
+  return weekdays.length == 5 && const {1, 2, 3, 4, 5}.every(weekdays.contains);
+}
+
+String _weekdaysCronValue(Set<int> weekdays) {
+  return _isWorkdayWeekdays(weekdays)
+      ? '1-5'
+      : _orderedWeekdays(weekdays).join(',');
+}
+
+Set<int> _parseWeekdays(String value) {
+  final result = <int>{};
+  for (final part in value.split(',')) {
+    if (part.contains('-')) {
+      final range = part.split('-');
+      if (range.length != 2) continue;
+      final start = int.tryParse(range[0]);
+      final end = int.tryParse(range[1]);
+      if (start == null || end == null || start > end) continue;
+      for (var day = start; day <= end; day++) {
+        if (day >= 0 && day <= 7) result.add(day == 7 ? 0 : day);
+      }
+      continue;
+    }
+    final day = int.tryParse(part);
+    if (day != null && day >= 0 && day <= 7) result.add(day == 7 ? 0 : day);
+  }
+  return result.isEmpty ? {1} : result;
+}
+
+String _weekdayShort(BuildContext context, int weekday) {
+  final zh = switch (weekday) {
+    0 => '日',
+    1 => '一',
+    2 => '二',
+    3 => '三',
+    4 => '四',
+    5 => '五',
+    6 => '六',
+    _ => '一',
+  };
+  final en = switch (weekday) {
+    0 => 'Sun',
+    1 => 'Mon',
+    2 => 'Tue',
+    3 => 'Wed',
+    4 => 'Thu',
+    5 => 'Fri',
+    6 => 'Sat',
+    _ => 'Mon',
+  };
+  return _localized(context, en, zh);
+}
+
+String _weekdayFull(BuildContext context, int weekday) {
+  final zh = switch (weekday) {
+    0 => '周日',
+    1 => '周一',
+    2 => '周二',
+    3 => '周三',
+    4 => '周四',
+    5 => '周五',
+    6 => '周六',
+    _ => '周一',
+  };
+  final en = switch (weekday) {
+    0 => 'Sunday',
+    1 => 'Monday',
+    2 => 'Tuesday',
+    3 => 'Wednesday',
+    4 => 'Thursday',
+    5 => 'Friday',
+    6 => 'Saturday',
+    _ => 'Monday',
+  };
+  return _localized(context, en, zh);
+}
+
+String _taskScheduleDisplayText(BuildContext context, String schedule) {
+  final cron = schedule.trim();
+  final parts = cron.split(RegExp(r'\s+'));
+  if (parts.length != 5) return cron;
+  final minute = parts[0];
+  final hour = parts[1];
+  final day = parts[2];
+  final month = parts[3];
+  final weekday = parts[4];
+
+  final minuteInterval = RegExp(r'^\*/(\d+)$').firstMatch(minute);
+  if (minuteInterval != null &&
+      hour == '*' &&
+      day == '*' &&
+      month == '*' &&
+      weekday == '*') {
+    final value = minuteInterval.group(1)!;
+    return _localized(context, 'Every $value minutes', '每 $value 分钟');
+  }
+
+  final hourInterval = RegExp(r'^\*/(\d+)$').firstMatch(hour);
+  if (minute == '0' &&
+      hourInterval != null &&
+      day == '*' &&
+      month == '*' &&
+      weekday == '*') {
+    final value = hourInterval.group(1)!;
+    return _localized(context, 'Every $value hours', '每 $value 小时');
+  }
+
+  final parsedMinute = int.tryParse(minute);
+  final parsedHour = int.tryParse(hour);
+  if (parsedMinute == null || parsedHour == null) return cron;
+  final time = '${_two(parsedHour)}:${_two(parsedMinute)}';
+  if (day == '*' && month == '*' && weekday == '*') {
+    return _localized(context, 'Daily $time', '每天 $time');
+  }
+  if (day == '*' && month == '*' && weekday != '*') {
+    final weekdays = _parseWeekdays(weekday);
+    if (_isWorkdayWeekdays(weekdays)) {
+      return _localized(context, 'Weekdays $time', '工作日 $time');
+    }
+    final days = _orderedWeekdays(weekdays)
+        .map((item) => _weekdayFull(context, item))
+        .join(_localized(context, ', ', '、'));
+    return _localized(context, 'Weekly $days $time', '每$days $time');
+  }
+  final parsedDay = int.tryParse(day);
+  if (parsedDay != null && month == '*' && weekday == '*') {
+    return _localized(
+      context,
+      'Monthly day $parsedDay $time',
+      '每月 $parsedDay 日 $time',
+    );
+  }
+  return _localized(context, 'Advanced cron', '高级 Cron');
+}
+
+bool _isValidCronExpression(String value) {
+  final parts = value.trim().split(RegExp(r'\s+'));
+  if (parts.length != 5) return false;
+  return _isValidCronField(parts[0], 0, 59) &&
+      _isValidCronField(parts[1], 0, 23) &&
+      _isValidCronField(parts[2], 1, 31) &&
+      _isValidCronField(parts[3], 1, 12) &&
+      _isValidCronField(parts[4], 0, 7);
+}
+
+bool _isValidCronField(String field, int min, int max) {
+  if (field.isEmpty) return false;
+  return field.split(',').every((token) => _isValidCronToken(token, min, max));
+}
+
+bool _isValidCronToken(String token, int min, int max) {
+  final stepParts = token.split('/');
+  if (stepParts.length > 2) return false;
+  final base = stepParts[0];
+  if (stepParts.length == 2 && !_isNumberInRange(stepParts[1], 1, 999)) {
+    return false;
+  }
+  if (base == '*') return true;
+  if (base.contains('-')) {
+    final range = base.split('-');
+    if (range.length != 2) return false;
+    if (!_isNumberInRange(range[0], min, max) ||
+        !_isNumberInRange(range[1], min, max)) {
+      return false;
+    }
+    return int.parse(range[0]) <= int.parse(range[1]);
+  }
+  return stepParts.length == 1 && _isNumberInRange(base, min, max);
+}
+
+bool _isNumberInRange(String value, int min, int max) {
+  final number = int.tryParse(value);
+  return number != null && number >= min && number <= max;
 }
 
 String _runPreview(BuildContext context, TaskRun run) {
@@ -2829,6 +4124,71 @@ String _statusLabel(BuildContext context, ManagedTask task) {
       _ => _localized(context, 'Active', '已启用'),
     },
   };
+}
+
+String _taskDeliveryWarningText(
+  BuildContext context,
+  TaskDeliveryValidation delivery,
+) {
+  final raw = delivery.rawTarget;
+  return switch (delivery.reason) {
+    TaskDeliveryInvalidReason.empty => _localized(
+      context,
+      'Delivery conversation is required. Choose a conversation in the current Gateway.',
+      '必须选择交付会话。请从当前 Gateway 的会话中选择一个。',
+    ),
+    TaskDeliveryInvalidReason.userTarget => _localized(
+      context,
+      'user:* is not a valid task delivery target. Choose a conversation target.',
+      'user:* 不是有效的任务投递目标。请选择 conversation 会话目标。',
+    ),
+    TaskDeliveryInvalidReason.invalidConversationId => _localized(
+      context,
+      'Delivery must use conversation:<uuid>.',
+      '投递目标必须使用 conversation:<uuid>。',
+    ),
+    TaskDeliveryInvalidReason.missingConversation => _localized(
+      context,
+      'The conversation does not exist under the current Gateway.',
+      '该会话不属于当前 Gateway，或本地会话列表中不存在。',
+    ),
+    TaskDeliveryInvalidReason.unsupportedTarget => _localized(
+      context,
+      raw == null
+          ? 'Unsupported delivery target.'
+          : 'Unsupported delivery target: $raw',
+      raw == null ? '不支持的投递目标。' : '不支持的投递目标：$raw',
+    ),
+    TaskDeliveryInvalidReason.none => '',
+  };
+}
+
+String _conversationTitle(Conversation conversation) {
+  final name = conversation.name?.trim();
+  return name == null || name.isEmpty ? conversation.conversationId : name;
+}
+
+String _taskDeliveryDisplayText(
+  BuildContext context,
+  TaskDeliveryValidation delivery, {
+  bool includeId = false,
+}) {
+  final conversation = delivery.conversation;
+  if (conversation != null) {
+    final title = _conversationTitle(conversation);
+    final conversationId = delivery.conversationId;
+    if (includeId &&
+        conversationId != null &&
+        conversationId.isNotEmpty &&
+        title != conversationId) {
+      return '$title ($conversationId)';
+    }
+    return title;
+  }
+  if (delivery.isValid && delivery.conversationId != null) {
+    return delivery.conversationId!;
+  }
+  return delivery.rawTarget ?? _localized(context, 'Not configured', '未配置');
 }
 
 String _runStatusLabel(BuildContext context, String status) {

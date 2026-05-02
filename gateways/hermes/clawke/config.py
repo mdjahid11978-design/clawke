@@ -32,7 +32,10 @@ def load_config() -> GatewayConfig:
             hermes_cfg = accounts.get("hermes", {})
             if hermes_cfg:
                 config.ws_url = hermes_cfg.get("url", config.ws_url)
+                config.gateway_id = hermes_cfg.get("gateway_id", config.gateway_id)
                 config.account_id = hermes_cfg.get("account_id", config.account_id)
+                if not config.gateway_id:
+                    config.gateway_id = config.account_id
                 config.model = hermes_cfg.get("model", config.model)
                 config.provider = hermes_cfg.get("provider", config.provider)
                 config.base_url = hermes_cfg.get("base_url", config.base_url)
@@ -45,6 +48,10 @@ def load_config() -> GatewayConfig:
         config.ws_url = os.environ["CLAWKE_WS_URL"]
     if os.environ.get("CLAWKE_ACCOUNT_ID"):
         config.account_id = os.environ["CLAWKE_ACCOUNT_ID"]
+        if not config.gateway_id:
+            config.gateway_id = config.account_id
+    if os.environ.get("CLAWKE_GATEWAY_ID"):
+        config.gateway_id = os.environ["CLAWKE_GATEWAY_ID"]
     if os.environ.get("CLAWKE_MODEL"):
         config.model = os.environ["CLAWKE_MODEL"]
     if os.environ.get("CLAWKE_PROVIDER"):

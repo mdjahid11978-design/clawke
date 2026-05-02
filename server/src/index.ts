@@ -403,8 +403,8 @@ async function main() {
     // 上游消息处理 — 使用 MessageRouter
     const upstreamWss = startOpenClawListener(UPSTREAM_PORT, (payload: Record<string, unknown>) => {
       console.log('[Gateway] Upstream message:', JSON.stringify(payload).slice(0, 200));
-      const accountId = (payload.account_id as string) || 'default';
-      messageRouter.handleUpstreamMessage(payload as any, accountId);
+      const gatewayId = (payload.gateway_id as string) || (payload.account_id as string) || 'default';
+      messageRouter.handleUpstreamMessage(payload as any, gatewayId);
     }, (accountId: string, agentName: string) => {
       // Gateway 连接时自动创建默认会话（如果该 account 还没有会话）
       const existing = conversationStore.listByAccount(accountId);

@@ -55,8 +55,57 @@ test("OpenClawTaskAdapter lists agent cron jobs through OpenClaw Gateway RPC", a
   assert.equal(listed[0].schedule_text, "每天 07:00 Asia/Shanghai");
   assert.equal(listed[0].prompt, "Create daily report");
   assert.equal(listed[0].enabled, true);
+  assert.equal(listed[0].deliver, "conv_1");
   assert.equal(listed[0].next_run_at, "2026-04-25T23:00:00.000Z");
   assert.equal(listed[0].last_run?.status, "success");
+});
+
+test("OpenClawTaskAdapter writes task delivery as clawke channel target", async () => {
+  const { adapter } = createAdapter(async (method, params) => {
+    if (method === "cron.add") {
+      assert.deepEqual(params, {
+        name: "Return to conversation",
+        schedule: { kind: "cron", expr: "0 7 * * *" },
+        payload: { kind: "agentTurn", message: "Send summary" },
+        enabled: true,
+        wakeMode: "next-heartbeat",
+        sessionTarget: "isolated",
+        delivery: {
+          mode: "announce",
+          channel: "clawke",
+          to: "conversation:be0b0ced-0036-4192-a62a-b313ac772f9a",
+        },
+      });
+      return {
+        id: "job_delivery",
+        name: "Return to conversation",
+        enabled: true,
+        createdAtMs: 1776395104970,
+        updatedAtMs: 1776395104970,
+        schedule: { kind: "cron", expr: "0 7 * * *" },
+        payload: { kind: "agentTurn", message: "Send summary" },
+        delivery: {
+          mode: "announce",
+          channel: "clawke",
+          to: "conversation:be0b0ced-0036-4192-a62a-b313ac772f9a",
+        },
+      };
+    }
+    throw new Error(`Unexpected method: ${method}`);
+  });
+
+  const created = await adapter.createTask("OpenClaw", {
+    name: "Return to conversation",
+    schedule: "0 7 * * *",
+    prompt: "Send summary",
+    enabled: true,
+    deliver: "conversation:be0b0ced-0036-4192-a62a-b313ac772f9a",
+  });
+
+  assert.equal(
+    created.deliver,
+    "conversation:be0b0ced-0036-4192-a62a-b313ac772f9a",
+  );
 });
 
 test("OpenClawTaskAdapter omits last_run when OpenClaw state has no real run time", async () => {

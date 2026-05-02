@@ -46,6 +46,7 @@ class GatewayMessageType:
     Identify = "identify"
     ModelsResponse = "models_response"
     SkillsResponse = "skills_response"
+    GatewayAlert = "gateway_alert"
 
     AgentTyping = "agent_typing"
     AgentTextDelta = "agent_text_delta"
@@ -497,6 +498,7 @@ def _build_session_work_dir_prompt(work_dir: str) -> str:
 class GatewayConfig:
     """Configuration for the Hermes Clawke Gateway."""
     ws_url: str = "ws://127.0.0.1:8766"
+    gateway_id: str = ""
     account_id: str = "hermes"
     model: str = ""
     provider: str = ""
@@ -533,6 +535,15 @@ class ClawkeHermesGateway:
         self._pending_clarifies: dict[str, dict] = {}
         self._task_adapter: Any = None
         self._skill_adapter: Any = None
+        self._cron_syncer: Any = None
+        self._cron_sync_task: asyncio.Task | None = None
+
+    def _gateway_id(self) -> str:
+        return str(
+            getattr(self.config, "gateway_id", "")
+            or getattr(self.config, "account_id", "")
+            or "hermes"
+        )
 
     def _resolve_agent_runtime(self, model_hint: Any, provider_hint: Any) -> tuple[str, str, str, Any]:
         """统一解析模型运行时 — Resolve model runtime consistently."""
@@ -573,6 +584,8 @@ class ClawkeHermesGateway:
         self._running = True
         self._loop = asyncio.get_event_loop()
         logger.info("Clawke Hermes Gateway starting → %s", self.config.ws_url)
+        if self._cron_sync_task is None or self._cron_sync_task.done():
+            self._cron_sync_task = asyncio.create_task(self._get_cron_syncer().start())
 
         while self._running:
             try:
@@ -594,6 +607,16 @@ class ClawkeHermesGateway:
     async def stop(self) -> None:
         """Stop the gateway gracefully."""
         self._running = False
+
+        if self._cron_syncer is not None:
+            try:
+                await self._cron_syncer.stop()
+            except Exception as e:
+                logger.warning("Hermes cron sync stop failed: %s", e)
+        if self._cron_sync_task is not None and not self._cron_sync_task.done():
+            self._cron_sync_task.cancel()
+            await asyncio.gather(self._cron_sync_task, return_exceptions=True)
+        self._cron_sync_task = None
 
         # 1. Unblock approval/clarify threads to prevent deadlocks
         for pending in self._pending_approvals.values():
@@ -1447,8 +1470,106 @@ class ClawkeHermesGateway:
         """Lazily instantiate the Hermes task adapter."""
         if self._task_adapter is None:
             from task_adapter import HermesTaskAdapter
-            self._task_adapter = HermesTaskAdapter()
+            self._task_adapter = HermesTaskAdapter(
+                deliver_result=self._deliver_task_result,
+                mark_output_delivered=self._mark_task_output_delivered,
+            )
         return self._task_adapter
+
+    def _get_cron_syncer(self):
+        """Lazily instantiate the Hermes cron output syncer."""
+        if self._cron_syncer is None:
+            from cron_sync import HermesCronOutputSyncer
+            self._cron_syncer = HermesCronOutputSyncer(
+                gateway_id=self._gateway_id(),
+                jobs_provider=self._jobs_api,
+                deliver_result=self._deliver_task_result,
+                send_alert=self._send_gateway_alert,
+            )
+        return self._cron_syncer
+
+    @staticmethod
+    def _jobs_api():
+        import importlib
+
+        return importlib.import_module("cron.jobs")
+
+    def _mark_task_output_delivered(self, job: dict[str, Any], output_path: Path) -> None:
+        try:
+            self._get_cron_syncer().mark_manual_output_delivered(job, output_path)
+        except Exception as e:
+            logger.warning("Hermes cron sync manual marker failed: %s", e)
+
+    def _deliver_task_result(self, job: dict[str, Any], content: str) -> str | None:
+        conversation_id = self._task_delivery_conversation_id(job.get("deliver"))
+        if not conversation_id:
+            return f"unsupported delivery target: {job.get('deliver') or ''}"
+        if not self._loop or not getattr(self._loop, "is_running", lambda: False)():
+            from cron_sync import DELIVERY_UNAVAILABLE
+            return DELIVERY_UNAVAILABLE
+        if not self._ws:
+            from cron_sync import DELIVERY_UNAVAILABLE
+            return DELIVERY_UNAVAILABLE
+
+        task_id = str(job.get("id") or job.get("job_id") or "task")
+        payload = {
+            "type": GatewayMessageType.AgentText,
+            "message_id": f"task_{task_id}_{int(time.time() * 1000)}",
+            "text": content,
+            "to": f"conversation:{conversation_id}",
+            "conversation_id": conversation_id,
+            "account_id": self.config.account_id,
+        }
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._send(payload), self._loop)
+            future.result(timeout=10)
+        except Exception as exc:
+            return str(exc)
+        return None
+
+    def _send_gateway_alert(self, alert: dict[str, Any]) -> None:
+        if not self._loop or not getattr(self._loop, "is_running", lambda: False)():
+            return
+        if not self._ws:
+            return
+
+        payload = {
+            "type": GatewayMessageType.GatewayAlert,
+            "gateway_id": self._gateway_id(),
+            "message_id": alert.get("dedupe_key") or f"gateway_alert_{int(time.time() * 1000)}",
+            "severity": alert.get("severity", "error"),
+            "source": alert.get("source", "gateway"),
+            "title": alert.get("title", "Gateway alert"),
+            "message": alert.get("message", ""),
+            "target_conversation_id": alert.get("target_conversation_id"),
+            "dedupe_key": alert.get("dedupe_key"),
+            "metadata": alert.get("metadata") or {},
+        }
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._send(payload), self._loop)
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+            if running_loop is self._loop:
+                future.add_done_callback(
+                    lambda f: f.exception() and logger.debug("gateway alert send error: %s", f.exception())
+                )
+                return
+            future.result(timeout=10)
+        except Exception as exc:
+            logger.warning("Hermes gateway alert send failed: %s", exc)
+
+    @staticmethod
+    def _task_delivery_conversation_id(deliver: Any) -> str | None:
+        if isinstance(deliver, dict):
+            target = str(deliver.get("to") or deliver.get("channel") or "")
+        else:
+            target = str(deliver or "")
+        if not target.startswith("conversation:"):
+            return None
+        conversation_id = target.split(":", 1)[1].strip()
+        return conversation_id or None
 
     # ── Skill Command Handler ───────────────────────────────────────────
 
