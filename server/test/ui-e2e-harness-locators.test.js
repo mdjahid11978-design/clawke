@@ -34,6 +34,15 @@ test('UI E2E send_message uses visible chat input and send icon', () => {
   assert.match(sendMessage, /_tapIcon\(tester, 'send'\)/);
 });
 
+test('UI E2E tap_text can prefer the last visible match', () => {
+  const tapText = harness.match(/Future<void> _tapText[\s\S]*?\n}\n/)?.[0];
+
+  assert.ok(tapText, 'tap_text helper should exist');
+  assert.match(tapText, /bool preferLast = false/);
+  assert.match(tapText, /preferLast: preferLast/);
+  assert.match(harness, /preferLast: step\['preferLast'\] == true/);
+});
+
 test('UI E2E icon action supports visible back navigation', () => {
   const findIcon = harness.match(/Finder _findIcon[\s\S]*?\n}\n/)?.[0];
 
@@ -61,6 +70,17 @@ test('UI E2E filter action supports segmented buttons without UI keys', () => {
   assert.match(tapFilterChip, /widget is SegmentedButton/);
   assert.match(tapFilterChip, /find\.textContaining\(text\)/);
   assert.doesNotMatch(tapFilterChip, /find\.text\(text\)/);
+});
+
+test('UI E2E text entry can target stable widget keys', () => {
+  const enterTextField = harness.match(
+    /Future<void> _enterTextField[\s\S]*?\n}\n/,
+  )?.[0];
+
+  assert.ok(enterTextField, 'enter_text_field helper should exist');
+  assert.match(enterTextField, /find\.byKey\(ValueKey\(targetKey\)\)/);
+  assert.match(enterTextField, /index \?\? 0/);
+  assert.match(harness, /key: step\['key'\] as String\?/);
 });
 
 test('P0 UI E2E cases do not depend on injected ui_e2e keys', () => {

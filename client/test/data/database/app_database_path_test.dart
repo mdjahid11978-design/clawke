@@ -1,10 +1,30 @@
+import 'dart:io';
+
 import 'package:client/data/database/app_database.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('debug database file resolves under repo runtime directory', () async {
-    final file = await resolveDatabaseFile('test_uid');
+  test(
+    'configured debug database file resolves under runtime directory',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'clawke-db-path-test-',
+      );
+      addTearDown(() => tempDir.deleteSync(recursive: true));
 
-    expect(file.path, endsWith('/.runtime/db/clawke_test_uid.db'));
-  });
+      final repoDir = Directory('${tempDir.path}/clawke')..createSync();
+      final clientDir = Directory('${repoDir.path}/client')..createSync();
+      File(
+        '${clientDir.path}/pubspec.yaml',
+      ).writeAsStringSync('name: client\n');
+
+      final file = await resolveDatabaseFile(
+        'test_uid',
+        startDirectory: clientDir,
+        environment: const {'CLAWKE_RUNTIME_DIR': '.runtime'},
+      );
+
+      expect(file.path, '${repoDir.path}/.runtime/db/clawke_test_uid.db');
+    },
+  );
 }

@@ -1,19 +1,48 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+
+const _runtimeDirFromDefine = String.fromEnvironment('CLAWKE_RUNTIME_DIR');
 
 Directory? resolveDebugRuntimeDirectory({
   Directory? startDirectory,
   bool debugMode = kDebugMode,
+  Map<String, String>? environment,
 }) {
   if (!debugMode) return null;
 
+  final configuredPath = _configuredRuntimePath(environment);
+  if (configuredPath == null) {
+    return null;
+  }
+
+  if (p.isAbsolute(configuredPath)) {
+    return Directory(p.normalize(configuredPath));
+  }
+
+  final repoDir = _findRepoDirectory(startDirectory);
+  if (repoDir == null) {
+    return Directory(p.normalize(p.absolute(configuredPath)));
+  }
+
+  return Directory(p.normalize(p.join(repoDir.path, configuredPath)));
+}
+
+String? _configuredRuntimePath(Map<String, String>? environment) {
+  final raw = _runtimeDirFromDefine.isNotEmpty
+      ? _runtimeDirFromDefine
+      : (environment ?? Platform.environment)['CLAWKE_RUNTIME_DIR'];
+  final trimmed = raw?.trim();
+  return trimmed == null || trimmed.isEmpty ? null : trimmed;
+}
+
+Directory? _findRepoDirectory(Directory? startDirectory) {
   for (final start in _debugSearchStarts(startDirectory)) {
     final clientDir = _findClientDirectory(start);
     if (clientDir == null) continue;
-    return Directory('${clientDir.parent.path}/.runtime');
+    return clientDir.parent;
   }
-
   return null;
 }
 

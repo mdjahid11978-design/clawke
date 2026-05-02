@@ -6,7 +6,7 @@ import 'package:client/services/media_resolver.dart';
 import 'package:client/l10n/l10n.dart';
 
 /// 版本号常量（与 pubspec.yaml 同步，每次发布递增）
-const _appVersion = '1.1.19';
+const _appVersion = '1.1.20';
 
 /// 「我的」页面 — 移动端 Profile 入口
 class ProfileScreen extends ConsumerWidget {
@@ -57,11 +57,13 @@ class ProfileScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: colorScheme.surface,
-                      border:
-                          Border.all(color: colorScheme.surface, width: 3),
+                      border: Border.all(color: colorScheme.surface, width: 3),
                     ),
                     child: _buildAvatarContent(
-                        user?.photo, initial, colorScheme),
+                      user?.photo,
+                      initial,
+                      colorScheme,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -90,11 +92,9 @@ class ProfileScreen extends ConsumerWidget {
             context,
             icon: Icons.settings_outlined,
             title: context.l10n.settings,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const SettingsScreen(),
-              ),
-            ),
+            onTap: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
           ),
           _buildMenuItem(
             context,
@@ -112,7 +112,10 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   Widget _buildAvatarContent(
-      String? photo, String initial, ColorScheme colorScheme) {
+    String? photo,
+    String initial,
+    ColorScheme colorScheme,
+  ) {
     if (photo != null && photo.isNotEmpty) {
       final photoUrl = MediaResolver.resolve(photo);
       return ClipOval(

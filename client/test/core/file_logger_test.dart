@@ -6,7 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
 void main() {
-  test('debug log directory resolves to repo runtime logs', () {
+  test('debug log directory is disabled unless runtime dir is configured', () {
+    final logDir = resolveDebugLogDirectory(
+      startDirectory: Directory.systemTemp,
+      debugMode: true,
+      environment: const {},
+    );
+
+    expect(logDir, isNull);
+  });
+
+  test('configured debug log directory resolves to runtime logs', () {
     final tempDir = Directory.systemTemp.createTempSync(
       'clawke-file-logger-test-',
     );
@@ -22,6 +32,7 @@ void main() {
     final logDir = resolveDebugLogDirectory(
       startDirectory: bundleDir,
       debugMode: true,
+      environment: const {'CLAWKE_RUNTIME_DIR': '.runtime'},
     );
 
     expect(logDir?.path, '${repoDir.path}/.runtime/logs');

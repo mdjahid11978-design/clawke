@@ -74,10 +74,12 @@ class FileLogger {
 Directory? resolveDebugLogDirectory({
   Directory? startDirectory,
   bool debugMode = kDebugMode,
+  Map<String, String>? environment,
 }) {
   final runtimeDir = resolveDebugRuntimeDirectory(
     startDirectory: startDirectory,
     debugMode: debugMode,
+    environment: environment,
   );
   if (runtimeDir == null) return null;
   return Directory('${runtimeDir.path}/logs');

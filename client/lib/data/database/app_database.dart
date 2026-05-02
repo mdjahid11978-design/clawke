@@ -224,8 +224,15 @@ LazyDatabase _openConnection(String uid) {
 }
 
 @visibleForTesting
-Future<File> resolveDatabaseFile(String uid) async {
-  final debugRuntimeDir = resolveDebugRuntimeDirectory();
+Future<File> resolveDatabaseFile(
+  String uid, {
+  Directory? startDirectory,
+  Map<String, String>? environment,
+}) async {
+  final debugRuntimeDir = resolveDebugRuntimeDirectory(
+    startDirectory: startDirectory,
+    environment: environment,
+  );
   if (debugRuntimeDir != null) {
     return File(p.join(debugRuntimeDir.path, 'db', 'clawke_$uid.db'));
   }

@@ -335,6 +335,9 @@ function describeStep(step) {
     case 'tap_dialog_button':
       return `点击弹窗按钮：${step.text}。`;
     case 'enter_text_field':
+      if (step.key) {
+        return `在输入框 ${step.key} 输入：${step.text}。`;
+      }
       return `在第 ${Number(step.index) + 1} 个输入框输入：${step.text}。`;
     case 'tap_card_button':
       return `在包含「${step.cardText}」的卡片中点击「${step.buttonText}」。`;
@@ -751,6 +754,7 @@ async function main() {
       `--dart-define=CLAWKE_E2E_HTTP_URL=http://127.0.0.1:${httpPort}`,
       `--dart-define=CLAWKE_E2E_WS_URL=ws://127.0.0.1:${httpPort}/ws`,
       `--dart-define=CLAWKE_E2E_RUN_DIR=${runDir}`,
+      `--dart-define=CLAWKE_RUNTIME_DIR=${path.join(runDir, 'client-runtime')}`,
     ];
     const flutter = spawnSync('flutter', flutterArgs, {
       cwd: path.join(root, 'client'),

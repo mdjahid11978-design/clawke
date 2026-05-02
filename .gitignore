@@ -60,7 +60,6 @@ relay-server/frp-auth/
 .internal-docs/
 bak/
 .worktrees/
-extends/
 dump.rdb
 scripts/
 !scripts/install.sh

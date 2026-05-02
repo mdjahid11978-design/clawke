@@ -142,6 +142,7 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
         tester,
         step['text'] as String,
         exact: step['exact'] == true,
+        preferLast: step['preferLast'] == true,
       );
       return;
     case 'tap_filter_chip':
@@ -153,7 +154,8 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
     case 'enter_text_field':
       await _enterTextField(
         tester,
-        index: step['index'] as int,
+        key: step['key'] as String?,
+        index: step['index'] as int?,
         text: step['text'] as String,
         formField: step['formField'] != false,
       );
@@ -433,8 +435,11 @@ Future<void> _tapText(
   WidgetTester tester,
   String text, {
   required bool exact,
+  bool preferLast = false,
 }) async {
-  await _tapFinder(tester, exact ? find.text(text) : find.textContaining(text));
+  await _tapFirstAvailable(tester, [
+    exact ? find.text(text) : find.textContaining(text),
+  ], preferLast: preferLast);
 }
 
 Future<void> _tapFilterChip(WidgetTester tester, String text) async {
@@ -465,15 +470,18 @@ Future<void> _tapButtonText(
 
 Future<void> _enterTextField(
   WidgetTester tester, {
-  required int index,
+  String? key,
+  int? index,
   required String text,
   required bool formField,
 }) async {
-  final finder = formField
-      ? find.byType(TextFormField)
-      : find.byType(TextField);
-  await _waitForFinder(tester, finder);
-  final target = finder.at(index);
+  final targetKey = key?.trim();
+  final target = targetKey != null && targetKey.isNotEmpty
+      ? find.byKey(ValueKey(targetKey))
+      : (formField ? find.byType(TextFormField) : find.byType(TextField)).at(
+          index ?? 0,
+        );
+  await _waitForFinder(tester, target);
   await tester.ensureVisible(target);
   await tester.pump(const Duration(milliseconds: 100));
   await tester.enterText(target, text);
