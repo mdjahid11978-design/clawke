@@ -4,6 +4,23 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.20 (2026-05-02)
+
+**[New Feature]** Hermes cron result sync and task delivery tracking.
+- Added Hermes cron output sync so scheduled job results can be delivered back into the target Clawke conversation.
+- Added persistent delivery state, retry handling, and validation around task delivery targets.
+- Added client-side task delivery validation and expanded task management tests.
+
+**[Enhancement]** Task management and gateway diagnostics.
+- Improved the task management page with richer delivery status handling and validation feedback.
+- Added gateway alert support for surfacing delivery problems to connected clients.
+- Added runtime-directory diagnostics to make local client logging and database path issues easier to inspect.
+
+**[Enhancement]** Hermes media routing and workspace isolation.
+- Updated Hermes image routing so image inputs can use native multimodal support or vision enrichment depending on provider/model capability.
+- Added per-session working directory handling for Hermes without mutating global process state.
+- Added regression tests for Hermes channel routing, workdir isolation, cron sync, and task adapter behavior.
+
 ## v1.1.17 (2026-04-29)
 
 **[New Feature]** Clawke Doctor command.

@@ -132,6 +132,12 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.20 (2026-05-02)
+
+**[New Feature]** Added Hermes cron result sync with persistent task delivery tracking and retry handling.
+**[Enhancement]** Improved task management delivery status, validation feedback, and gateway alerts.
+**[Enhancement]** Updated Hermes media routing and per-session working directory isolation.
+
 ### v1.1.17 (2026-04-29)
 
 **[New Feature]** Added `clawke doctor` runtime and gateway diagnostics.
