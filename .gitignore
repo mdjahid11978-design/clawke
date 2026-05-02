@@ -68,6 +68,7 @@ client/test_download.dart
 
 # Private (local only)
 internal-docs/
+docs/private/
 tests/
 
 # Xcode user data
