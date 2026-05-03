@@ -1,10 +1,10 @@
 import 'dart:io';
 
+import 'package:client/core/app_storage_directory.dart';
 import 'package:client/core/debug_runtime_directory.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
 part 'app_database.g.dart';
@@ -237,6 +237,6 @@ Future<File> resolveDatabaseFile(
     return File(p.join(debugRuntimeDir.path, 'db', 'clawke_$uid.db'));
   }
 
-  final dbFolder = await getApplicationDocumentsDirectory();
+  final dbFolder = await getWritableAppDataDirectory();
   return File(p.join(dbFolder.path, 'clawke', 'clawke_$uid.db'));
 }
