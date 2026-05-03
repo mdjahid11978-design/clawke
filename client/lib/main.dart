@@ -11,15 +11,18 @@ import 'package:client/providers/theme_provider.dart';
 import 'package:client/providers/locale_provider.dart';
 import 'package:client/providers/font_scale_provider.dart';
 import 'package:client/providers/auth_provider.dart';
+import 'package:client/providers/server_host_provider.dart';
 import 'package:client/services/auth_service.dart';
 import 'package:client/core/notification_service.dart';
 import 'package:client/providers/debug_log_provider.dart';
 
 import 'package:client/core/http_util.dart';
 import 'package:client/core/file_logger.dart';
+import 'package:client/core/shared_preferences_runtime.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  configureSharedPreferencesRuntimeIsolation();
 
   // 覆盖 debugPrint：同时输出到控制台、Debug Log Panel、文件日志
   final originalDebugPrint = debugPrint;
@@ -226,6 +229,7 @@ class AuthGate extends ConsumerWidget {
   /// Check config and validate login state with server.
   Future<bool> _initAndCheck(WidgetRef ref) async {
     final prefs = await SharedPreferences.getInstance();
+    await applyForcedServerConfig(prefs);
 
     // 如果用户主动登出过，直接显示欢迎页
     final loggedOut = prefs.getBool('clawke_logged_out') ?? false;

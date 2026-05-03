@@ -167,6 +167,7 @@ Flutter Client ←ws:8765→ Clawke Server ←ws:8766→ OpenClaw Gateway（192.
 
 - Server：`cd server && npm run dev`（本机 127.0.0.1:8780）
 - OpenClaw Gateway：本机 OpenClaw 实例加载 `gateways/openclaw/clawke/` 插件
+- macOS Client 调试必须在 worktree 的 `client/` 目录启动，并带上 `--dart-define=CLAWKE_RUNTIME_DIR=.runtime/mac-client`；否则会落到 `~/Documents`，触发 macOS 沙箱权限错误和 SQLite `unable to open database file`。
 - 只有发布 / 部署生产环境时才 scp 到 192.168.0.7
 
 ### Clawke 插件部署规则（⚠️ 仅生产环境）

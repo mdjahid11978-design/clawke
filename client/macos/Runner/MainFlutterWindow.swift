@@ -1,7 +1,10 @@
 import Cocoa
 import FlutterMacOS
+import UserNotifications
 
 class MainFlutterWindow: NSWindow {
+  private var appBadgeChannel: FlutterMethodChannel?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     self.contentViewController = flutterViewController
@@ -28,6 +31,10 @@ class MainFlutterWindow: NSWindow {
     NSLog("[Clawke] Window init: saved=(%g, %g) → applied=(%g x %g)", savedWidth, savedHeight, width, height)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    setupAppBadgeChannel(binaryMessenger: flutterViewController.engine.binaryMessenger)
+    (NSApp.delegate as? AppDelegate)?.setupPushChannel(
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
 
     super.awakeFromNib()
 
@@ -44,5 +51,70 @@ class MainFlutterWindow: NSWindow {
     defaults.set(Double(self.frame.height), forKey: "ClawkeWindowHeight")
     NSLog("[Clawke] Window saved on close: %g x %g", self.frame.width, self.frame.height)
     super.close()
+  }
+
+  private func setupAppBadgeChannel(binaryMessenger: FlutterBinaryMessenger) {
+    appBadgeChannel = FlutterMethodChannel(
+      name: "clawke/app_badge",
+      binaryMessenger: binaryMessenger
+    )
+    appBadgeChannel?.setMethodCallHandler { call, result in
+      guard call.method == "setBadgeCount" || call.method == "openNotificationSettings" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      if call.method == "openNotificationSettings" {
+        self.openNotificationSettings()
+        result(nil)
+        return
+      }
+
+      let args = call.arguments as? [String: Any]
+      let rawCount: Int
+      if let number = args?["count"] as? NSNumber {
+        rawCount = number.intValue
+      } else {
+        rawCount = args?["count"] as? Int ?? 0
+      }
+      let count = max(rawCount, 0)
+
+      DispatchQueue.main.async {
+        self.updateAppBadgeCount(count)
+        result(nil)
+      }
+    }
+  }
+
+  private func updateAppBadgeCount(_ count: Int) {
+    let badgeLabel = count > 0 ? "\(count)" : nil
+    NSApplication.shared.dockTile.badgeLabel = badgeLabel
+    NSApplication.shared.dockTile.display()
+
+    if #available(macOS 13.0, *) {
+      UNUserNotificationCenter.current().setBadgeCount(count) { error in
+        if let error = error {
+          NSLog("[Clawke] App badge count failed: %@", error.localizedDescription)
+        } else {
+          NSLog("[Clawke] App badge count updated: %d", count)
+        }
+      }
+    }
+    NSLog("[Clawke] Dock badge updated: %@", badgeLabel ?? "none")
+  }
+
+  private func openNotificationSettings() {
+    let settingsUrls = [
+      "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+      "x-apple.systempreferences:com.apple.preference.notifications"
+    ]
+    for value in settingsUrls {
+      if let url = URL(string: value), NSWorkspace.shared.open(url) {
+        NSLog("[Clawke] Opened notification settings")
+        return
+      }
+    }
+    if let url = URL(string: "x-apple.systempreferences:") {
+      NSWorkspace.shared.open(url)
+    }
   }
 }

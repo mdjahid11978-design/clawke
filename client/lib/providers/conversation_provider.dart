@@ -12,6 +12,27 @@ final conversationListProvider = StreamProvider<List<Conversation>>((ref) {
 /// 当前选中的会话 ID
 final selectedConversationIdProvider = StateProvider<String?>((ref) => null);
 
+final activeChatConversationIdProvider = StateProvider<String?>((ref) => null);
+
+final totalUnseenCountProvider = Provider<int>((ref) {
+  final conversations = ref.watch(conversationListProvider).valueOrNull;
+  if (conversations == null) return 0;
+  return conversations.fold<int>(
+    0,
+    (total, conversation) => total + conversation.unseenCount,
+  );
+});
+
+final systemBadgeCountProvider = Provider<int>((ref) {
+  final conversations = ref.watch(conversationListProvider).valueOrNull;
+  if (conversations == null) return 0;
+  return conversations.fold<int>(
+    0,
+    (total, conversation) =>
+        conversation.isMuted == 0 ? total + conversation.unseenCount : total,
+  );
+});
+
 /// 当前选中的会话对象（从 conversationList + selectedId 派生）
 final selectedConversationProvider = Provider<Conversation?>((ref) {
   final convId = ref.watch(selectedConversationIdProvider);
@@ -43,7 +64,9 @@ ConversationGatewayIssue? conversationGatewayIssue(
   final gatewayId = conversation.accountId.trim();
   if (gatewayId.isEmpty) return null;
 
-  final gateway = gateways.where((item) => item.gatewayId == gatewayId).firstOrNull;
+  final gateway = gateways
+      .where((item) => item.gatewayId == gatewayId)
+      .firstOrNull;
   if (gateway == null || gateway.status == GatewayConnectionStatus.online) {
     return null;
   }

@@ -33,6 +33,7 @@ const bugDir = path.join(root, 'test', 'ui-e2e', 'bug-reports');
 const httpPort = Number(setup.httpPort || 18780);
 const upstreamPort = Number(setup.upstreamPort || 18766);
 const mediaPort = Number(setup.mediaPort || 18781);
+const controlPort = Number(setup.controlPort || 18782);
 
 fs.mkdirSync(runDir, { recursive: true });
 fs.mkdirSync(path.join(runDir, 'server-home'), { recursive: true });
@@ -155,6 +156,7 @@ async function ensurePortsAvailable() {
   await ensurePortAvailable(httpPort, 'http');
   await ensurePortAvailable(upstreamPort, 'upstream');
   await ensurePortAvailable(mediaPort, 'media');
+  await ensurePortAvailable(controlPort, 'mock-gateway-control');
 }
 
 function waitForChildExit(child, timeoutMs) {
@@ -322,6 +324,8 @@ function describeStep(step) {
       return `新建会话：${step.name}${step.model ? `，选择模型 ${step.model}` : ''}${Array.isArray(step.skills) && step.skills.length > 0 ? `，选择 Skill ${step.skills.join(', ')}` : ''}。`;
     case 'send_message':
       return `在当前会话发送消息：${step.text}。`;
+    case 'mock_gateway_push':
+      return `Mock Gateway 主动推送 ${Array.isArray(step.replies) ? step.replies.length : 1} 条消息。`;
     case 'delete_conversation':
       return `删除会话：${step.name}。`;
     case 'wait_for_text':
@@ -349,6 +353,14 @@ function describeStep(step) {
       return `等待图标出现：${step.icon}。`;
     case 'wait_for_absent_icon':
       return `确认图标在 ${step.durationMs || 300}ms 内不出现：${step.icon}。`;
+    case 'wait_for_conversation_unread':
+      return `等待会话「${step.name}」显示未读角标：${step.count}。`;
+    case 'wait_for_conversation_unread_absent':
+      return `确认会话「${step.name}」在 ${step.durationMs || 300}ms 内不显示未读角标：${step.count}。`;
+    case 'wait_for_nav_unread':
+      return `等待导航「${step.label}」显示总未读角标：${step.count}。`;
+    case 'wait_for_nav_unread_absent':
+      return `确认导航「${step.label}」在 ${step.durationMs || 300}ms 内不显示总未读角标：${step.count}。`;
     case 'tap_icon':
       return `点击图标：${step.icon}。`;
     case 'pump':
@@ -423,7 +435,7 @@ function classifyFailure(error) {
     };
   }
 
-  if (!/\brecv\b/.test(mockGatewayLog)) {
+  if (!/\b(?:recv|send|control push)\b/.test(mockGatewayLog)) {
     return {
       type: 'test_infrastructure',
       confidence: 'needs_investigation',
@@ -739,6 +751,7 @@ async function main() {
       path.join(root, 'test', 'ui-e2e', 'tools', 'mock-gateway.mjs'),
       '--case', casePath,
       '--upstream-url', `ws://127.0.0.1:${upstreamPort}`,
+      '--control-port', `${controlPort}`,
       '--log', logs.mockGateway,
     ], { cwd: root }, logs.mockGateway);
     children.push(mockGateway);
@@ -753,6 +766,7 @@ async function main() {
       `--dart-define=CLAWKE_E2E_CASE_JSON_BASE64=${caseJsonBase64}`,
       `--dart-define=CLAWKE_E2E_HTTP_URL=http://127.0.0.1:${httpPort}`,
       `--dart-define=CLAWKE_E2E_WS_URL=ws://127.0.0.1:${httpPort}/ws`,
+      `--dart-define=CLAWKE_E2E_MOCK_CONTROL_URL=http://127.0.0.1:${controlPort}`,
       `--dart-define=CLAWKE_E2E_RUN_DIR=${runDir}`,
       `--dart-define=CLAWKE_RUNTIME_DIR=${path.join(runDir, 'client-runtime')}`,
     ];

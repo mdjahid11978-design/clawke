@@ -24,6 +24,15 @@ type TranslateFn = (msg: OpenClawMessage, accountId: string) => TranslatedResult
 /** 广播函数签名 */
 type BroadcastFn = (msg: Record<string, unknown>) => void;
 
+export interface StoredAgentMessageNotification {
+  conversationId: string;
+  messageId: string;
+  gatewayId: string;
+  seq: number;
+}
+
+type StoredAgentMessageNotifier = (message: StoredAgentMessageNotification) => void | Promise<void>;
+
 export class MessageRouter {
   /** 每个 conversation 最近的 text_done serverMsgId（agent_usage 关联用） */
   private lastTextDoneIds = new Map<string, string>();
@@ -37,6 +46,7 @@ export class MessageRouter {
     private stats: StatsCollectorLike,
     private broadcast: BroadcastFn,
     private conversationStore?: ConversationStore,
+    private notifyStoredAgentMessage?: StoredAgentMessageNotifier,
   ) {}
 
   /** 标记会话为已中止（以 conversationId 为 key） */
@@ -128,6 +138,16 @@ export class MessageRouter {
         accountId, conversationId, fullText, type, upstreamMsgId
       );
       console.log(`[MessageRouter] 💾 Stored: serverMsgId=${serverMsgId} seq=${seq} conv=${conversationId} type=${type} len=${fullText.length}`);
+      if (this.notifyStoredAgentMessage) {
+        Promise.resolve(this.notifyStoredAgentMessage({
+          conversationId,
+          messageId: serverMsgId,
+          gatewayId,
+          seq,
+        })).catch((error) => {
+          console.warn(`[Push] notify stored message failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
       // 用实际 serverMsgId 和 seq 替换 cupMessages 中的占位
       for (const m of cupMessages) {
         if (m.payload_type === 'text_done' || m.payload_type === 'ui_component') {

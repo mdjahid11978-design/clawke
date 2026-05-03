@@ -85,8 +85,10 @@ class MessageRepository {
       preview: _generatePreview(type, content),
     );
 
-    // 未读 +1（不是自己发的才加）
-    await _conversationDao.incrementUnseenCount(convId);
+    // 非本人消息增加未读 — Increment unread only for non-local messages.
+    if (senderId != 'local_user') {
+      await _conversationDao.incrementUnseenCount(convId);
+    }
   }
 
   /// 发消息 — 等服务端 ACK 后才标记 sent

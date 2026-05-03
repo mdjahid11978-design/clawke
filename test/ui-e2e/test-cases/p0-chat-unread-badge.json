@@ -1,0 +1,80 @@
+{
+  "id": "p0-chat-unread-badge",
+  "title": "会话未读角标在未选中、选中、后台页面和点击清零场景中正确变化",
+  "module": "会话",
+  "objective": "验证 Mock Gateway 主动推送新消息时，未打开的会话会显示未读数量；点击进入会话后清零；当前可见会话收到回复不增加未读；切到其他页面后收到消息会累计到聊天导航角标，回到聊天页后清零。",
+  "coverage": [
+    "Gateway 主动推送新消息",
+    "未选中会话显示会话列表未读角标",
+    "点击会话后未读角标清零",
+    "当前可见会话收到新消息不显示未读角标",
+    "切到非聊天页面后新消息累计到聊天导航总未读角标",
+    "返回聊天页后总未读角标清零"
+  ],
+  "tags": ["p0", "chat", "unread", "badge", "ui"],
+  "setup": {
+    "serverMode": "openclaw",
+    "accountId": "e2e_mock",
+    "agentName": "E2E Mock Gateway",
+    "httpPort": 18780,
+    "upstreamPort": 18766,
+    "mediaPort": 18781,
+    "controlPort": 18782
+  },
+  "steps": [
+    { "action": "launch_app" },
+    { "action": "wait_for_text", "text": "e2e_mock" },
+    {
+      "action": "mock_gateway_push",
+      "replies": [
+        {
+          "type": "agent_text",
+          "message_id": "agent_unread_unselected_1",
+          "text": "E2E 未选中新消息 1"
+        }
+      ]
+    },
+    { "action": "wait_for_text", "text": "E2E 未选中新消息 1", "timeoutMs": 6000 },
+    { "action": "wait_for_conversation_unread", "name": "e2e_mock", "count": 1 },
+    { "action": "tap_text", "text": "e2e_mock", "exact": true },
+    { "action": "wait_for_conversation_unread_absent", "name": "e2e_mock", "count": 1, "durationMs": 1000 },
+    {
+      "action": "mock_gateway_push",
+      "replies": [
+        {
+          "type": "agent_text",
+          "message_id": "agent_unread_selected_1",
+          "text": "E2E 选中中新消息"
+        }
+      ]
+    },
+    { "action": "wait_for_text", "text": "E2E 选中中新消息", "timeoutMs": 7000 },
+    { "action": "wait_for_conversation_unread_absent", "name": "e2e_mock", "count": 1, "durationMs": 1000 },
+    { "action": "tap_text", "text": "仪表盘", "exact": true },
+    {
+      "action": "mock_gateway_push",
+      "replies": [
+        {
+          "type": "agent_text",
+          "message_id": "agent_unread_background_1",
+          "text": "E2E 后台新消息 1"
+        },
+        {
+          "type": "agent_text",
+          "message_id": "agent_unread_background_2",
+          "text": "E2E 后台新消息 2"
+        }
+      ]
+    },
+    { "action": "wait_for_nav_unread", "label": "会话", "count": 2, "timeoutMs": 8000 },
+    { "action": "tap_text", "text": "会话", "exact": true },
+    { "action": "wait_for_nav_unread_absent", "label": "会话", "count": 2, "durationMs": 1200 },
+    { "action": "wait_for_text", "text": "E2E 后台新消息 2" }
+  ],
+  "mockGateway": {},
+  "assert": [
+    { "uiTextVisible": "E2E 未选中新消息 1" },
+    { "uiTextVisible": "E2E 选中中新消息" },
+    { "uiTextVisible": "E2E 后台新消息 2" }
+  ]
+}

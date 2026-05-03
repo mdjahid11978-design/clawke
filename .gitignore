@@ -27,6 +27,7 @@ server/clawke.db
 server/db.sqlite
 server/data/
 .runtime/
+.clawke-runtime/
 
 # iOS
 client/ios/Pods/
@@ -95,6 +96,9 @@ client/android/local.properties
 .openclaw/
 .clawke/
 client/demo/
+
+# Apple private keys
+*.p8
 
 # Python
 __pycache__/

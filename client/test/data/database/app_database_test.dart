@@ -53,6 +53,24 @@ void main() {
       conv = await convDao.getConversation('conv_1');
       expect(conv?.unseenCount, 0);
     });
+
+    test('increment unseen count notifies watchAll stream', () async {
+      await convDao.upsertConversation(
+        ConversationsCompanion(conversationId: const Value('conv_1'),
+          accountId: const Value('conv_1'),
+          type: const Value('dm'),
+          createdAt: Value(DateTime.now().millisecondsSinceEpoch),
+        ),
+      );
+
+      final unseenCounts = convDao.watchAll().map((items) => items.single.unseenCount);
+      final expectation = expectLater(unseenCounts, emitsInOrder([0, 1]));
+
+      await Future<void>.delayed(Duration.zero);
+      await convDao.incrementUnseenCount('conv_1');
+
+      await expectation;
+    });
   });
 
   group('MessageDao', () {

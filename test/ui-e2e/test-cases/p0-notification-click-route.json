@@ -1,0 +1,53 @@
+{
+  "id": "p0-notification-click-route",
+  "title": "通知点击后定位到目标会话",
+  "module": "会话",
+  "objective": "验证原生远程通知 payload 进入 Dart 后，会同步消息并自动切回会话页，选中 payload 指向的会话。",
+  "coverage": [
+    "模拟 APNs remotePushReceived 原生回调",
+    "通知 payload 携带 conversation_id / message_id / gateway_id / seq",
+    "非会话页收到通知点击事件后切回会话页",
+    "目标会话被选中，聊天占位文案消失"
+  ],
+  "tags": ["p0", "chat", "notification", "routing", "ui"],
+  "setup": {
+    "serverMode": "openclaw",
+    "accountId": "e2e_mock",
+    "agentName": "E2E Mock Gateway",
+    "httpPort": 18780,
+    "upstreamPort": 18766,
+    "mediaPort": 18781,
+    "controlPort": 18782
+  },
+  "steps": [
+    { "action": "launch_app" },
+    { "action": "wait_for_text", "text": "e2e_mock" },
+    { "action": "tap_text", "text": "仪表盘", "exact": true },
+    {
+      "action": "mock_gateway_push",
+      "conversation_id": "e2e_mock",
+      "replies": [
+        {
+          "type": "agent_text",
+          "message_id": "agent_notification_route_1",
+          "text": "E2E 通知点击路由消息"
+        }
+      ]
+    },
+    { "action": "wait_for_nav_unread", "label": "会话", "count": 1, "timeoutMs": 8000 },
+    {
+      "action": "simulate_remote_push",
+      "conversation_name": "e2e_mock",
+      "message_id": "agent_notification_route_1",
+      "gateway_id": "e2e_mock",
+      "seq": 1
+    },
+    { "action": "wait_for_absent_text", "text": "选择一个会话开始聊天", "durationMs": 1200 },
+    { "action": "wait_for_text", "text": "E2E 通知点击路由消息", "timeoutMs": 8000 }
+  ],
+  "mockGateway": {},
+  "assert": [
+    { "uiTextVisible": "E2E 通知点击路由消息" },
+    { "uiTextAbsent": "选择一个会话开始聊天" }
+  ]
+}

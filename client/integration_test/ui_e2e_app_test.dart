@@ -4,14 +4,18 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:integration_test/integration_test.dart';
 
 import 'package:client/l10n/app_localizations.dart';
+import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/locale_provider.dart';
 import 'package:client/providers/server_host_provider.dart';
 import 'package:client/screens/main_layout.dart';
+
+const _mockControlUrl = String.fromEnvironment('CLAWKE_E2E_MOCK_CONTROL_URL');
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -24,61 +28,68 @@ void main() {
   const runDir = String.fromEnvironment('CLAWKE_E2E_RUN_DIR');
 
   group('UI E2E', () {
-    testWidgets('runs case manifest from real Clawke UI', (tester) async {
-      final testCase = _loadCase(
-        caseFile: caseFile,
-        caseJsonBase64: caseJsonBase64,
-      );
-      final serverConfig = _loadServerConfig(httpUrl: httpUrl, wsUrl: wsUrl);
-      tester.view.physicalSize = const Size(1400, 900);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+    testWidgets(
+      'runs case manifest from real Clawke UI',
+      (tester) async {
+        final testCase = _loadCase(
+          caseFile: caseFile,
+          caseJsonBase64: caseJsonBase64,
+        );
+        final serverConfig = _loadServerConfig(httpUrl: httpUrl, wsUrl: wsUrl);
+        tester.view.physicalSize = const Size(1400, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
 
-      await tester.pumpWidget(
-        RepaintBoundary(
-          key: appBoundaryKey,
-          child: ProviderScope(
-            overrides: [
-              serverConfigProvider.overrideWith(
-                (ref) => ServerConfigNotifier(
-                  initialConfig: serverConfig,
-                  loadFromPrefs: false,
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: appBoundaryKey,
+            child: ProviderScope(
+              overrides: [
+                serverConfigProvider.overrideWith(
+                  (ref) => ServerConfigNotifier(
+                    initialConfig: serverConfig,
+                    loadFromPrefs: false,
+                  ),
                 ),
-              ),
-              localeProvider.overrideWith(
-                (ref) => LocaleNotifier(
-                  initialLocale: const Locale('zh'),
-                  loadFromPrefs: false,
+                localeProvider.overrideWith(
+                  (ref) => LocaleNotifier(
+                    initialLocale: const Locale('zh'),
+                    loadFromPrefs: false,
+                  ),
                 ),
+              ],
+              child: const MaterialApp(
+                debugShowCheckedModeBanner: false,
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                home: MainLayout(),
               ),
-            ],
-            child: const MaterialApp(
-              debugShowCheckedModeBanner: false,
-              localizationsDelegates: AppLocalizations.localizationsDelegates,
-              supportedLocales: AppLocalizations.supportedLocales,
-              home: MainLayout(),
             ),
           ),
-        ),
-      );
-      await tester.pump(const Duration(seconds: 2));
+        );
+        await tester.pump(const Duration(seconds: 2));
 
-      try {
-        for (final step in (testCase['steps'] as List)) {
-          await _runStep(tester, Map<String, dynamic>.from(step as Map));
+        try {
+          for (final step in (testCase['steps'] as List)) {
+            await _runStep(tester, Map<String, dynamic>.from(step as Map));
+          }
+          for (final assertion in (testCase['assert'] as List)) {
+            await _runAssert(
+              tester,
+              Map<String, dynamic>.from(assertion as Map),
+            );
+          }
+          await _captureScreenshot(tester, appBoundaryKey, runDir, 'final');
+        } catch (_) {
+          await _captureScreenshot(tester, appBoundaryKey, runDir, 'failure');
+          rethrow;
         }
-        for (final assertion in (testCase['assert'] as List)) {
-          await _runAssert(tester, Map<String, dynamic>.from(assertion as Map));
-        }
-        await _captureScreenshot(tester, appBoundaryKey, runDir, 'final');
-      } catch (_) {
-        await _captureScreenshot(tester, appBoundaryKey, runDir, 'failure');
-        rethrow;
-      }
-    });
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
   });
 }
 
@@ -201,6 +212,38 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
         duration: _stepDuration(step),
       );
       return;
+    case 'wait_for_conversation_unread':
+      await _waitForConversationUnread(
+        tester,
+        name: step['name'] as String,
+        count: step['count'] as int,
+        timeout: _stepTimeout(step),
+      );
+      return;
+    case 'wait_for_conversation_unread_absent':
+      await _waitForConversationUnreadAbsent(
+        tester,
+        name: step['name'] as String,
+        count: step['count'] as int,
+        duration: _stepDuration(step),
+      );
+      return;
+    case 'wait_for_nav_unread':
+      await _waitForNavUnread(
+        tester,
+        label: step['label'] as String,
+        count: step['count'] as int,
+        timeout: _stepTimeout(step),
+      );
+      return;
+    case 'wait_for_nav_unread_absent':
+      await _waitForNavUnreadAbsent(
+        tester,
+        label: step['label'] as String,
+        count: step['count'] as int,
+        duration: _stepDuration(step),
+      );
+      return;
     case 'tap_icon':
       await _tapIcon(tester, step['icon'] as String);
       return;
@@ -209,6 +252,13 @@ Future<void> _runStep(WidgetTester tester, Map<String, dynamic> step) async {
       return;
     case 'send_message':
       await _sendMessage(tester, step['text'] as String);
+      return;
+    case 'mock_gateway_push':
+      await _mockGatewayPush(step);
+      await tester.pump(const Duration(milliseconds: 300));
+      return;
+    case 'simulate_remote_push':
+      await _simulateRemotePush(tester, step);
       return;
     case 'delete_conversation':
       await _deleteConversation(tester, step['name'] as String);
@@ -235,6 +285,55 @@ Future<void> _runAssert(
     return;
   }
   throw UnsupportedError('Unknown UI E2E assertion: $assertion');
+}
+
+Future<void> _simulateRemotePush(
+  WidgetTester tester,
+  Map<String, dynamic> step,
+) async {
+  final conversationId = _resolveNotificationConversationId(tester, step);
+  final payload = {
+    'conversation_id': conversationId,
+    'message_id': step['message_id'] as String,
+    'gateway_id': step['gateway_id'] as String,
+    'seq': step['seq'] as int? ?? 0,
+  };
+  final message = const StandardMethodCodec().encodeMethodCall(
+    MethodCall('remotePushReceived', payload),
+  );
+  await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .handlePlatformMessage('clawke/push', message, (_) {});
+  await tester.pump(const Duration(seconds: 2));
+}
+
+String _resolveNotificationConversationId(
+  WidgetTester tester,
+  Map<String, dynamic> step,
+) {
+  final explicitId = step['conversation_id'] as String?;
+  if (explicitId != null && explicitId.trim().isNotEmpty) {
+    return explicitId;
+  }
+
+  final name = step['conversation_name'] as String?;
+  if (name == null || name.trim().isEmpty) {
+    throw TestFailure(
+      'simulate_remote_push requires conversation_id or conversation_name',
+    );
+  }
+
+  final context = tester.element(find.byType(MainLayout));
+  final container = ProviderScope.containerOf(context);
+  final conversations =
+      container.read(conversationListProvider).valueOrNull ?? const [];
+  for (final conversation in conversations) {
+    final displayName = conversation.name ?? conversation.accountId;
+    if (displayName == name || conversation.conversationId == name) {
+      return conversation.conversationId;
+    }
+  }
+
+  throw TestFailure('Conversation not found for notification payload: $name');
 }
 
 Future<void> _createConversation(
@@ -337,6 +436,36 @@ Future<void> _sendMessage(WidgetTester tester, String text) async {
   await _tapIcon(tester, 'send');
 }
 
+Future<void> _mockGatewayPush(Map<String, dynamic> step) async {
+  if (_mockControlUrl.isEmpty) {
+    throw StateError('CLAWKE_E2E_MOCK_CONTROL_URL is required');
+  }
+  final replies = step['replies'];
+  if (replies is! List) {
+    throw TestFailure('mock_gateway_push requires replies list');
+  }
+
+  final uri = Uri.parse('$_mockControlUrl/push');
+  final client = HttpClient();
+  try {
+    final req = await client.postUrl(uri);
+    req.headers.contentType = ContentType.json;
+    req.write(
+      jsonEncode({
+        'conversation_id': step['conversation_id'],
+        'replies': replies,
+      }),
+    );
+    final res = await req.close();
+    final body = await utf8.decodeStream(res);
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw TestFailure('mock_gateway_push failed ${res.statusCode}: $body');
+    }
+  } finally {
+    client.close(force: true);
+  }
+}
+
 Future<void> _deleteConversation(WidgetTester tester, String name) async {
   await _waitForText(tester, name);
 
@@ -415,6 +544,58 @@ Future<void> _waitForAbsentIcon(
   Duration duration = const Duration(milliseconds: 300),
 }) async {
   await _expectFinderAbsentFor(tester, _findIcon(icon), duration: duration);
+}
+
+Future<void> _waitForConversationUnread(
+  WidgetTester tester, {
+  required String name,
+  required int count,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  await _waitForFinder(
+    tester,
+    find.byKey(ValueKey('ui_e2e_conversation_unread_${name}_$count')),
+    timeout: timeout,
+  );
+}
+
+Future<void> _waitForConversationUnreadAbsent(
+  WidgetTester tester, {
+  required String name,
+  required int count,
+  required Duration duration,
+}) async {
+  await _expectFinderAbsentFor(
+    tester,
+    find.byKey(ValueKey('ui_e2e_conversation_unread_${name}_$count')),
+    duration: duration,
+  );
+}
+
+Future<void> _waitForNavUnread(
+  WidgetTester tester, {
+  required String label,
+  required int count,
+  Duration timeout = const Duration(seconds: 20),
+}) async {
+  await _waitForFinder(
+    tester,
+    find.byKey(ValueKey('ui_e2e_nav_unread_${label}_$count')),
+    timeout: timeout,
+  );
+}
+
+Future<void> _waitForNavUnreadAbsent(
+  WidgetTester tester, {
+  required String label,
+  required int count,
+  required Duration duration,
+}) async {
+  await _expectFinderAbsentFor(
+    tester,
+    find.byKey(ValueKey('ui_e2e_nav_unread_${label}_$count')),
+    duration: duration,
+  );
 }
 
 Future<void> _tapIcon(WidgetTester tester, String icon) async {
