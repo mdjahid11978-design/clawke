@@ -132,6 +132,11 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.21 (2026-05-03)
+
+**[Enhancement]** Stabilized runtime path handling and task UI E2E setup for release validation.
+**[Architecture]** Renamed upstream listener boundaries to gateway listener and moved private planning docs out of public documentation.
+
 ### v1.1.20 (2026-05-02)
 
 **[New Feature]** Added Hermes cron result sync with persistent task delivery tracking and retry handling.
