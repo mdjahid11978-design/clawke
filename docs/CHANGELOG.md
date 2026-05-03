@@ -4,6 +4,16 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.21 (2026-05-03)
+
+**[Enhancement]** Release and runtime path stability.
+- Stabilized runtime path handling used by local app runs and task UI E2E coverage.
+- Hardened task E2E setup so release validation can run with fewer environment-specific path failures.
+
+**[Architecture]** Gateway listener naming and public docs cleanup.
+- Renamed the upstream listener concept to gateway listener across the runtime boundary.
+- Moved private planning documents out of public docs and kept public documentation focused on product and integration material.
+
 ## v1.1.20 (2026-05-02)
 
 **[New Feature]** Hermes cron result sync and task delivery tracking.

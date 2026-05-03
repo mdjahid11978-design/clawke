@@ -1,7 +1,9 @@
 // 文件日志工具 — 将关键 WS 消息路由信息写入文件，用于排查跨会话路由 Bug
 //
-// 所有平台统一使用 getApplicationSupportDirectory：
-//   macOS:   ~/Library/Containers/ai.clawke.app/Data/Library/Application Support/ai.clawke.app/logs/
+// 默认跟随 app data 目录；macOS 非沙盒 Documents 会回退到 Application Support。
+// Uses app data by default; non-sandboxed macOS Documents falls back to Application Support.
+//   macOS sandbox: ~/Library/Containers/ai.clawke.app/Data/Documents/logs/
+//   macOS debug:   ~/Library/Application Support/ai.clawke.app/logs/
 //   Windows: C:\Users\<user>\AppData\Roaming\ai.clawke.app\logs\
 //   Linux:   ~/.local/share/ai.clawke.app/logs/
 //   iOS/Android: <app sandbox>/logs/
@@ -9,9 +11,9 @@
 // 文件名：client-YYYY-MM-DD.log
 // 仅记录关键路由事件，不会过度写入
 import 'dart:io';
+import 'package:client/core/app_storage_directory.dart';
 import 'package:client/core/debug_runtime_directory.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
 class FileLogger {
   FileLogger._();
@@ -36,7 +38,7 @@ class FileLogger {
 
   Future<void> _initOnce() async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
+      final appDir = await getWritableAppDataDirectory();
       final sandboxLogDir = Directory('${appDir.path}/logs');
       final logDir = resolveDebugLogDirectory() ?? sandboxLogDir;
       if (!logDir.existsSync()) logDir.createSync(recursive: true);
@@ -55,11 +57,15 @@ class FileLogger {
   void log(String message) {
     init().then((_) {
       final ts = DateTime.now().toIso8601String();
-      _logFile?.writeAsStringSync(
-        '[$ts] $message\n',
-        mode: FileMode.append,
-        flush: false,
-      );
+      try {
+        _logFile?.writeAsStringSync(
+          '[$ts] $message\n',
+          mode: FileMode.append,
+          flush: false,
+        );
+      } catch (e) {
+        debugPrint('[FileLogger] ❌ Write failed: $e');
+      }
     });
   }
 
