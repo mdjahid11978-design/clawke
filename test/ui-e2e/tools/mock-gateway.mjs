@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 
 const requireFromServer = createRequire(new URL('../../../server/package.json', import.meta.url));
@@ -12,6 +13,7 @@ const upstreamUrl = required(args, 'upstream-url');
 const logPath = required(args, 'log');
 const testCase = JSON.parse(fs.readFileSync(casePath, 'utf8'));
 const setup = testCase.setup || {};
+const controlPort = Number(args['control-port'] || setup.controlPort || 18782);
 const accountId = setup.accountId || 'e2e_mock';
 const agentName = setup.agentName || 'E2E Mock Gateway';
 const gatewayType = setup.gatewayType || 'mock';
@@ -26,6 +28,8 @@ const skills = new Map(
 const tasks = new Map();
 const taskRuns = new Map();
 const taskOutputs = new Map();
+let activeWs = null;
+let controlServer = null;
 
 for (const rawTask of testCase.mockGateway?.tasks || []) {
   const task = normalizeTask(rawTask);
@@ -72,6 +76,52 @@ function withConversation(reply, incoming) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+function writeJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { 'content-type': 'application/json' });
+  res.end(`${JSON.stringify(payload)}\n`);
+}
+
+function startControlServer() {
+  controlServer = http.createServer(async (req, res) => {
+    if (req.method !== 'POST' || req.url !== '/push') {
+      writeJson(res, 404, { ok: false, error: 'not_found' });
+      return;
+    }
+    if (!activeWs || activeWs.readyState !== WebSocket.OPEN) {
+      writeJson(res, 503, { ok: false, error: 'gateway_not_connected' });
+      return;
+    }
+
+    try {
+      const body = await readBody(req);
+      const payload = body ? JSON.parse(body) : {};
+      const replies = Array.isArray(payload.replies) ? payload.replies : [payload];
+      log(`control push ${JSON.stringify(replies)}`);
+      await sendReplyList(activeWs, { conversation_id: payload.conversation_id || accountId }, replies);
+      writeJson(res, 200, { ok: true, count: replies.length });
+    } catch (error) {
+      log(`control push failed ${error.message || String(error)}`);
+      writeJson(res, 500, { ok: false, error: error.message || String(error) });
+    }
+  });
+
+  controlServer.listen(controlPort, '127.0.0.1', () => {
+    log(`control listening http://127.0.0.1:${controlPort}`);
+  });
 }
 
 async function sendReplyList(ws, incoming, replies) {
@@ -561,9 +611,16 @@ function connect() {
   const ws = new WebSocket(upstreamUrl);
 
   ws.on('open', () => {
+    activeWs = ws;
     const identify = { type: 'identify', accountId, agentName, gatewayType, capabilities };
     log(`identify ${JSON.stringify(identify)}`);
     ws.send(JSON.stringify(identify));
+    const onConnectReplies = testCase.mockGateway?.onConnectReplies;
+    if (Array.isArray(onConnectReplies) && onConnectReplies.length > 0) {
+      sendReplyList(ws, { conversation_id: accountId }, onConnectReplies).catch((error) => {
+        log(`onConnectReplies failed ${error.message || String(error)}`);
+      });
+    }
   });
 
   ws.on('message', async (raw) => {
@@ -584,6 +641,7 @@ function connect() {
   });
 
   ws.on('close', () => {
+    if (activeWs === ws) activeWs = null;
     log('closed');
     process.exit(0);
   });
@@ -596,7 +654,9 @@ function connect() {
 
 process.on('SIGTERM', () => {
   log('SIGTERM');
+  controlServer?.close();
   process.exit(0);
 });
 
+startControlServer();
 connect();

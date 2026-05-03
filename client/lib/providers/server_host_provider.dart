@@ -6,6 +6,8 @@ const _kHttpUrlKey = 'clawke_http_url';
 const _kWsUrlKey = 'clawke_ws_url';
 const _kTokenKey = 'clawke_token';
 const _kLoggedOutKey = 'clawke_logged_out';
+const kForcedHttpUrl = String.fromEnvironment('CLAWKE_FORCE_HTTP_URL');
+const kForcedWsUrl = String.fromEnvironment('CLAWKE_FORCE_WS_URL');
 
 /// 旧 key（迁移用）
 const _kLegacyHostKey = 'clawke_server_host';
@@ -36,6 +38,15 @@ String normalizeServerHttpUrl(String url) {
     port: uri.hasPort ? uri.port : null,
     path: path,
   ).toString();
+}
+
+Future<void> applyForcedServerConfig(SharedPreferences prefs) async {
+  if (kForcedHttpUrl.isEmpty || kForcedWsUrl.isEmpty) return;
+  // 调试覆盖服务器地址，便于真机连接本机 Server — Debug-only server override for device testing.
+  await prefs.setString(_kHttpUrlKey, kForcedHttpUrl);
+  await prefs.setString(_kWsUrlKey, kForcedWsUrl);
+  await prefs.remove(_kTokenKey);
+  await prefs.remove(_kLoggedOutKey);
 }
 
 String deriveWsUrlFromServerAddress(String url) {
@@ -127,6 +138,12 @@ class ServerConfigNotifier extends StateNotifier<ServerConfig> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    if (kForcedHttpUrl.isNotEmpty && kForcedWsUrl.isNotEmpty) {
+      await applyForcedServerConfig(prefs);
+      state = const ServerConfig(httpUrl: kForcedHttpUrl, wsUrl: kForcedWsUrl);
+      _loadCompleter.complete(state);
+      return;
+    }
 
     // 兼容迁移：旧版只存了 host，自动生成两个 URL 并清除旧 key
     final legacyHost = prefs.getString(_kLegacyHostKey);

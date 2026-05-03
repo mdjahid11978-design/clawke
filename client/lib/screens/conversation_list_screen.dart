@@ -7,6 +7,7 @@ import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/l10n/l10n.dart';
 import 'package:client/screens/conversation_settings_sheet.dart';
+import 'package:client/widgets/unread_count_badge.dart';
 
 class ConversationListScreen extends ConsumerWidget {
   final void Function(String accountId)? onConversationTap;
@@ -24,7 +25,6 @@ class ConversationListScreen extends ConsumerWidget {
     final gateways = ref.watch(gatewayListProvider).valueOrNull ?? const [];
     final selectedId = ref.watch(selectedConversationIdProvider);
     final colorScheme = Theme.of(context).colorScheme;
-
 
     final headerBg = Theme.of(context).brightness == Brightness.dark
         ? colorScheme.surfaceContainerLowest
@@ -49,8 +49,7 @@ class ConversationListScreen extends ConsumerWidget {
               actions: [
                 NewConversationButton(
                   onCreated: (convId) {
-                    ref.read(selectedConversationIdProvider.notifier).state = convId;
-                    onConversationTap?.call(convId);
+                    _deferSelectConversation(context, ref, convId);
                   },
                 ),
               ],
@@ -81,19 +80,14 @@ class ConversationListScreen extends ConsumerWidget {
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 20),
                   color: colorScheme.error,
-                  child: Icon(
-                    Icons.delete_outline,
-                    color: colorScheme.onError,
-                  ),
+                  child: Icon(Icons.delete_outline, color: colorScheme.onError),
                 ),
                 child: _ConversationTile(
                   conversation: conv,
                   gatewayIssue: gatewayIssue,
                   isSelected: conv.conversationId == selectedId,
                   onTap: () {
-                    ref.read(selectedConversationIdProvider.notifier).state =
-                        conv.conversationId;
-                    onConversationTap?.call(conv.conversationId);
+                    _deferSelectConversation(context, ref, conv.conversationId);
                   },
                 ),
               );
@@ -105,6 +99,18 @@ class ConversationListScreen extends ConsumerWidget {
             Center(child: Text(context.l10n.loadFailed(e.toString()))),
       ),
     );
+  }
+
+  void _deferSelectConversation(
+    BuildContext context,
+    WidgetRef ref,
+    String conversationId,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      ref.read(selectedConversationIdProvider.notifier).state = conversationId;
+      onConversationTap?.call(conversationId);
+    });
   }
 
   /// 滑动删除确认弹窗（返回 true 表示确认删除）
@@ -140,12 +146,8 @@ class ConversationListScreen extends ConsumerWidget {
       if (ref.read(selectedConversationIdProvider) == convId) {
         ref.read(selectedConversationIdProvider.notifier).state = null;
       }
-      await ref
-          .read(conversationRepositoryProvider)
-          .deleteConversation(convId);
-      await ref
-          .read(messageRepositoryProvider)
-          .clearConversation(convId);
+      await ref.read(conversationRepositoryProvider).deleteConversation(convId);
+      await ref.read(messageRepositoryProvider).clearConversation(convId);
       return true;
     }
     return false;
@@ -186,11 +188,39 @@ class _ConversationTile extends ConsumerWidget {
           minVerticalPadding: 2,
           selected: isSelected,
           selectedTileColor: Colors.transparent,
-          leading: CircleAvatar(
-            backgroundColor: colorScheme.primaryContainer,
-            child: Text(
-              (conversation.name ?? '?').characters.first,
-              style: TextStyle(color: colorScheme.onPrimaryContainer),
+          leading: SizedBox(
+            width: 46,
+            height: 46,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(
+                  child: CircleAvatar(
+                    backgroundColor: colorScheme.primaryContainer,
+                    child: Text(
+                      (conversation.name ?? '?').characters.first,
+                      style: TextStyle(color: colorScheme.onPrimaryContainer),
+                    ),
+                  ),
+                ),
+                if (conversation.unseenCount > 0)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: UnreadCountBadge(
+                      key: ValueKey(
+                        'ui_e2e_conversation_unread_${conversation.name ?? conversation.accountId}_${conversation.unseenCount}',
+                      ),
+                      count: conversation.unseenCount,
+                      semanticsLabel:
+                          '会话 ${conversation.name ?? conversation.accountId} 未读消息 ${conversation.unseenCount}',
+                      backgroundColor: conversation.isMuted != 0
+                          ? colorScheme.onSurfaceVariant
+                          : colorScheme.error,
+                      foregroundColor: colorScheme.onError,
+                    ),
+                  ),
+              ],
             ),
           ),
           title: Row(
@@ -235,7 +265,9 @@ class _ConversationTile extends ConsumerWidget {
                   conversation.lastMessagePreview ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               if (gatewayIssue != null)
@@ -248,26 +280,6 @@ class _ConversationTile extends ConsumerWidget {
                       size: 18,
                       color: colorScheme.error,
                     ),
-                  ),
-                ),
-              if (conversation.unseenCount > 0)
-                Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: conversation.isMuted != 0
-                        ? colorScheme.onSurfaceVariant
-                        : colorScheme.error,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    conversation.unseenCount > 99
-                        ? '99+'
-                        : '${conversation.unseenCount}',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colorScheme.onError),
                   ),
                 ),
             ],
@@ -328,7 +340,6 @@ class _ConversationTile extends ConsumerWidget {
             ],
           ),
         ),
-
       ],
     ).then((value) {
       if (value == null) return;
@@ -524,9 +535,7 @@ class NewConversationButton extends ConsumerWidget {
               children: [
                 Text(
                   context.l10n.selectAIBackend,
-                  style: tt.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),
                 ...accounts.map((a) {
@@ -560,10 +569,7 @@ class NewConversationButton extends ConsumerWidget {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  a.accountId,
-                                  style: tt.titleSmall,
-                                ),
+                                child: Text(a.accountId, style: tt.titleSmall),
                               ),
                               Icon(
                                 Icons.chevron_right,

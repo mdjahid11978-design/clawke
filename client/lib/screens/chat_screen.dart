@@ -18,6 +18,7 @@ import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/reply_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
+import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/core/ws_service.dart';
 import 'package:client/screens/conversation_settings_sheet.dart';
 import 'package:client/data/repositories/message_repository.dart';
@@ -59,10 +60,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final List<String> _messageHistory = [];
   int _historyIndex = 0;
   String? _draftText;
+  String? _activeConversationId;
+  StateController<String?>? _activeConversationController;
 
   @override
   void initState() {
     super.initState();
+    _activeConversationController = ref.read(
+      activeChatConversationIdProvider.notifier,
+    );
     _focusNode = FocusNode(onKeyEvent: _handleKeyEvent);
     // 监听滚动，到顶部时加载更多
     _scrollController.addListener(_onScroll);
@@ -71,6 +77,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final convId = ref.read(selectedConversationIdProvider);
       if (convId != null) {
+        _activeConversationId = convId;
+        ref.read(activeChatConversationIdProvider.notifier).state = convId;
         ref.read(conversationRepositoryProvider).markAsRead(convId);
       }
     });
@@ -78,11 +86,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     setClarifyResponseCallback((response) {
       debugPrint('[ChatScreen] clarify callback fired: "$response"');
       final convId = ref.read(selectedConversationIdProvider);
-      if (convId == null) { debugPrint('[ChatScreen] convId is null!'); return; }
+      if (convId == null) {
+        debugPrint('[ChatScreen] convId is null!');
+        return;
+      }
       final conv = ref.read(selectedConversationProvider);
-      if (conv == null) { debugPrint('[ChatScreen] conv is null!'); return; }
+      if (conv == null) {
+        debugPrint('[ChatScreen] conv is null!');
+        return;
+      }
       final repo = ref.read(messageRepositoryProvider);
-      debugPrint('[ChatScreen] sending message: accountId=${conv.accountId}, convId=$convId');
+      debugPrint(
+        '[ChatScreen] sending message: accountId=${conv.accountId}, convId=$convId',
+      );
       repo.sendMessage(
         accountId: conv.accountId,
         conversationId: convId,
@@ -93,7 +109,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
     // 设置卡片内容更新回调（响应后替换 DB 中的代码块为结果文本）
     setCardContentUpdateCallback((codeBlock, replacement) {
-      debugPrint('[ChatScreen] card content update: len=${codeBlock.length} → "$replacement"');
+      debugPrint(
+        '[ChatScreen] card content update: len=${codeBlock.length} → "$replacement"',
+      );
       try {
         final msgDao = ref.read(messageDaoProvider);
         msgDao.replaceContentPattern(codeBlock, replacement);
@@ -111,6 +129,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
+    final activeConvId = _activeConversationId;
+    final activeConversationController = _activeConversationController;
+    if (activeConvId != null &&
+        activeConversationController?.state == activeConvId) {
+      Future<void>.delayed(Duration.zero, () {
+        if (!activeConversationController!.mounted) return;
+        if (activeConversationController.state == activeConvId) {
+          activeConversationController.state = null;
+        }
+      });
+    }
     super.dispose();
   }
 
@@ -235,7 +264,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-
   Future<void> _handleSend() async {
     final convId = ref.read(selectedConversationIdProvider);
     if (convId == null) return;
@@ -246,7 +274,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
     final text = _controller.text.trim();
-    final attachments = List<StagedAttachment>.of(ref.read(stagedAttachmentsProvider));
+    final attachments = List<StagedAttachment>.of(
+      ref.read(stagedAttachmentsProvider),
+    );
 
     // 没有文字也没有附件 → 不发送
     if (text.isEmpty && attachments.isEmpty) return;
@@ -302,10 +332,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onProgress: (msgId, p) =>
               ref.read(uploadProgressProvider.notifier).update(msgId, p),
         );
-        ref.read(uploadProgressProvider.notifier).remove(sendResult.clientMsgId);
+        ref
+            .read(uploadProgressProvider.notifier)
+            .remove(sendResult.clientMsgId);
         ref
             .read(wsMessageHandlerProvider)
-            .trackRequest(sendResult.requestId, sendResult.clientMsgId, conversationId: convId);
+            .trackRequest(
+              sendResult.requestId,
+              sendResult.clientMsgId,
+              conversationId: convId,
+            );
         return;
       } else {
         final sendResult = await repo.sendFileMessage(
@@ -318,10 +354,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onProgress: (msgId, p) =>
               ref.read(uploadProgressProvider.notifier).update(msgId, p),
         );
-        ref.read(uploadProgressProvider.notifier).remove(sendResult.clientMsgId);
+        ref
+            .read(uploadProgressProvider.notifier)
+            .remove(sendResult.clientMsgId);
         ref
             .read(wsMessageHandlerProvider)
-            .trackRequest(sendResult.requestId, sendResult.clientMsgId, conversationId: convId);
+            .trackRequest(
+              sendResult.requestId,
+              sendResult.clientMsgId,
+              conversationId: convId,
+            );
         return;
       }
     } else {
@@ -355,7 +397,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // 注册待确认请求
     ref
         .read(wsMessageHandlerProvider)
-        .trackRequest(result.requestId, result.clientMsgId, conversationId: convId);
+        .trackRequest(
+          result.requestId,
+          result.clientMsgId,
+          conversationId: convId,
+        );
   }
 
   /// 构建本地版混合消息 JSON（仅缓存文件到本地，无 HTTP 上传）
@@ -439,7 +485,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return jsonEncode({'text': text, 'attachments': atts});
   }
 
-  Future<void> _saveBytesAndSendImage(String accountId, String convId, Uint8List bytes) async {
+  Future<void> _saveBytesAndSendImage(
+    String accountId,
+    String convId,
+    Uint8List bytes,
+  ) async {
     // 使用 MediaCacheService 缓存粘贴的图片
     final cachedPath = MediaCacheService.instance.cacheBytes(
       bytes,
@@ -456,7 +506,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
     ref
         .read(wsMessageHandlerProvider)
-        .trackRequest(sendResult.requestId, sendResult.clientMsgId, conversationId: convId);
+        .trackRequest(
+          sendResult.requestId,
+          sendResult.clientMsgId,
+          conversationId: convId,
+        );
   }
 
   Future<void> _pickAndStageImage() async {
@@ -505,6 +559,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<NavPage>(activeNavPageProvider, (_, next) {
+      if (next != NavPage.chat) return;
+      final convId = ref.read(selectedConversationIdProvider);
+      if (convId == null || convId != _activeConversationId) return;
+      ref.read(conversationRepositoryProvider).markAsRead(convId);
+    });
+
     final wsState = ref.watch(wsStateProvider);
     final convId = ref.watch(selectedConversationIdProvider);
     final rawStreamingMsg = ref.watch(streamingMessageProvider);
@@ -512,12 +573,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     // 只显示属于当前会话的流式消息
-    final streamingMsg = (rawStreamingMsg is TextMessage &&
+    final streamingMsg =
+        (rawStreamingMsg is TextMessage &&
             rawStreamingMsg.conversationId != null &&
             rawStreamingMsg.conversationId != convId)
         ? null
         : rawStreamingMsg;
-    final streamingThinking = (rawStreamingThinking is ThinkingMessage &&
+    final streamingThinking =
+        (rawStreamingThinking is ThinkingMessage &&
             rawStreamingThinking.conversationId != null &&
             rawStreamingThinking.conversationId != convId)
         ? null
@@ -577,10 +640,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return const Text('Clawke');
     }
     final conv = ref.watch(selectedConversationProvider);
-    return Text(
-      conv?.name ?? convId,
-      overflow: TextOverflow.ellipsis,
-    );
+    return Text(conv?.name ?? convId, overflow: TextOverflow.ellipsis);
   }
 
   Widget _buildChatBody(
@@ -591,13 +651,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ) {
     final messagesAsync = ref.watch(chatMessagesProvider(convId));
     final activeToolRaw = ref.watch(activeToolProvider);
-    final activeTool = (activeToolRaw != null && activeToolRaw.convId == convId) ? activeToolRaw.name : null;
+    final activeTool = (activeToolRaw != null && activeToolRaw.convId == convId)
+        ? activeToolRaw.name
+        : null;
     final waiting = ref.watch(waitingForReplyProvider);
-    final isWaitingOnly = waiting == convId && streamingMsg == null && streamingThinking == null && activeTool == null;
+    final isWaitingOnly =
+        waiting == convId &&
+        streamingMsg == null &&
+        streamingThinking == null &&
+        activeTool == null;
     // hasStreaming: 是否需要显示流式气泡
     // 如果只有 streamingThinking（没有 streamingMsg），需要检查 DB 中是否已有该消息
     // 已持久化的消息由 _buildDbMessageItem 渲染 thinking 块，不需要重复显示
-    bool hasStreaming = streamingMsg != null || activeTool != null || isWaitingOnly;
+    bool hasStreaming =
+        streamingMsg != null || activeTool != null || isWaitingOnly;
     if (!hasStreaming && streamingThinking != null) {
       // thinking-only 模式：检查 DB 中是否已有该消息
       final dbMessages = messagesAsync.valueOrNull;
@@ -612,8 +679,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // 审批/澄清卡片（ephemeral interactive）
     final approvalReq = ref.watch(activeApprovalProvider);
     final clarifyReq = ref.watch(activeClarifyProvider);
-    final hasApprovalCard = approvalReq != null && approvalReq.conversationId == convId;
-    final hasClarifyCard = clarifyReq != null && clarifyReq.conversationId == convId;
+    final hasApprovalCard =
+        approvalReq != null && approvalReq.conversationId == convId;
+    final hasClarifyCard =
+        clarifyReq != null && clarifyReq.conversationId == convId;
     final hasInteractiveCard = hasApprovalCard || hasClarifyCard;
 
     final body = Column(
@@ -621,7 +690,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Expanded(
           child: messagesAsync.when(
             data: (dbMessages) {
-              final extraSlots = (hasStreaming ? 1 : 0) + (hasInteractiveCard ? 1 : 0);
+              final extraSlots =
+                  (hasStreaming ? 1 : 0) + (hasInteractiveCard ? 1 : 0);
               final itemCount = dbMessages.length + extraSlots;
               return ListView.builder(
                 key: ValueKey('chat_$convId'),
@@ -642,10 +712,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
                   // Slot 1: streaming item
                   if (hasStreaming && cursorIndex == 0) {
-                    return _buildStreamingItem(
-                      streamingMsg,
-                      streamingThinking,
-                    );
+                    return _buildStreamingItem(streamingMsg, streamingThinking);
                   }
                   if (hasStreaming) cursorIndex--;
                   // Remaining: DB messages
@@ -666,7 +733,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     reverse: true,
                     padding: const EdgeInsets.all(12),
                     itemCount:
-                        messagesAsync.value!.length + (hasStreaming ? 1 : 0) + (hasInteractiveCard ? 1 : 0),
+                        messagesAsync.value!.length +
+                        (hasStreaming ? 1 : 0) +
+                        (hasInteractiveCard ? 1 : 0),
                     itemBuilder: (context, index) {
                       final dbMessages = messagesAsync.value!;
                       int cursorIndex = index;
@@ -748,18 +817,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
   }
 
-
   Widget _buildDbMessageWithSeparator(Message msg, Message? olderMsg) {
-    // ListView is reverse, so separator for THIS message appears
-    // above it visually (which means it's placed AFTER in the Column).
     Widget? separator;
     if (olderMsg != null) {
       separator = _buildSeparatorIfNeeded(msg.createdAt, olderMsg.createdAt);
     }
     final item = _buildDbMessageItem(msg);
     if (separator == null) return item;
-    // In reverse ListView: item at bottom, separator above → Column reversed
-    return Column(mainAxisSize: MainAxisSize.min, children: [item, separator]);
+    // 分隔符属于当前新消息，视觉上放在新消息上方 — Separator belongs to the newer message and is rendered above it.
+    return Column(mainAxisSize: MainAxisSize.min, children: [separator, item]);
   }
 
   Widget? _buildSeparatorIfNeeded(int newerMs, int olderMs) {
@@ -785,7 +851,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     if (day == today) return context.l10n.today;
-    if (day == today.subtract(const Duration(days: 1))) return context.l10n.yesterday;
+    if (day == today.subtract(const Duration(days: 1)))
+      return context.l10n.yesterday;
     if (day.year == now.year) return context.l10n.monthDay(day.month, day.day);
     return '${day.year}/${day.month}/${day.day}';
   }
@@ -815,7 +882,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(time, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: metaColor)),
+            Text(
+              time,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: metaColor),
+            ),
             const SizedBox(width: 6),
             _buildStatusIcon(msg.status),
           ],
@@ -830,7 +902,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       parts.add(msg.modelName!);
     }
     if (msg.inputTokens != null && msg.inputTokens! > 0) {
-      parts.add('▸ ${_formatTokenCount(msg.inputTokens!)} in · ${_formatTokenCount(msg.outputTokens ?? 0)} out');
+      parts.add(
+        '▸ ${_formatTokenCount(msg.inputTokens!)} in · ${_formatTokenCount(msg.outputTokens ?? 0)} out',
+      );
     }
 
     return Padding(
@@ -857,7 +931,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Center(
           child: Text(
             context.l10n.messageDeleted,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -869,8 +945,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     // 移动端 AI 消息：thinking 保持原位（头像右边），正文加宽（92%）+ 箭头向上
     if (_isMobile && !isUser) {
-      final hasThinking = msg.thinkingContent != null &&
-          msg.thinkingContent!.isNotEmpty;
+      final hasThinking =
+          msg.thinkingContent != null && msg.thinkingContent!.isNotEmpty;
 
       return MessageContextMenu(
         message: msg,
@@ -893,8 +969,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       Flexible(
                         child: Container(
                           constraints: BoxConstraints(
-                            maxWidth:
-                                MediaQuery.of(context).size.width * 0.78,
+                            maxWidth: MediaQuery.of(context).size.width * 0.78,
                           ),
                           child: ThinkingBlockWidget(
                             content: msg.thinkingContent!,
@@ -931,17 +1006,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (msg.quoteId != null)
-                        _buildQuoteCard(msg.quoteId!),
+                      if (msg.quoteId != null) _buildQuoteCard(msg.quoteId!),
                       _buildMessageContent(msg, false),
                       if (msg.editedAt != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             context.l10n.edited,
-                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: colorScheme.onSurfaceVariant),
                           ),
                         ),
                     ],
@@ -981,8 +1054,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         msg.thinkingContent!.isNotEmpty)
                       Container(
                         constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.of(context).size.width * 0.55,
+                          maxWidth: MediaQuery.of(context).size.width * 0.55,
                         ),
                         child: ThinkingBlockWidget(
                           content: msg.thinkingContent!,
@@ -1030,13 +1102,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     padding: const EdgeInsets.only(top: 4),
                                     child: Text(
                                       context.l10n.edited,
-                                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                        color: isUser
-                                            ? colorScheme.onPrimary.withOpacity(
-                                                0.7,
-                                              )
-                                            : colorScheme.onSurfaceVariant,
-                                      ),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall
+                                          ?.copyWith(
+                                            color: isUser
+                                                ? colorScheme.onPrimary
+                                                      .withOpacity(0.7)
+                                                : colorScheme.onSurfaceVariant,
+                                          ),
                                     ),
                                   ),
                               ],
@@ -1054,7 +1128,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ],
                     ),
                     // 上传进度条（仅发送中的媒体消息）
-                    if (isUser && msg.status == 'sending' && (msg.type == 'image' || msg.type == 'file'))
+                    if (isUser &&
+                        msg.status == 'sending' &&
+                        (msg.type == 'image' || msg.type == 'file'))
                       Consumer(
                         builder: (context, ref, _) {
                           final progressMap = ref.watch(uploadProgressProvider);
@@ -1072,16 +1148,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                     child: LinearProgressIndicator(
                                       value: progress,
                                       minHeight: 3,
-                                      backgroundColor: colorScheme.onSurface.withOpacity(0.1),
-                                      valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                                      backgroundColor: colorScheme.onSurface
+                                          .withOpacity(0.1),
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        colorScheme.primary,
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     '${(progress * 100).toInt()}%',
-                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                      color: colorScheme.onSurface.withOpacity(0.4),
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                          color: colorScheme.onSurface
+                                              .withOpacity(0.4),
+                                        ),
                                   ),
                                 ],
                               ),
@@ -1125,7 +1208,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         quotedMsg?.content ?? context.l10n.messageInvisible,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant),
+        style: Theme.of(
+          context,
+        ).textTheme.labelMedium?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -1169,8 +1254,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     );
                   },
                   onLinkTap: (url, title) {
-                    if (url.startsWith('http://') || url.startsWith('https://')) {
-                      launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+                    if (url.startsWith('http://') ||
+                        url.startsWith('https://')) {
+                      launchUrl(
+                        Uri.parse(url),
+                        mode: LaunchMode.inAppBrowserView,
+                      );
                     }
                   },
                 ),
@@ -1182,7 +1271,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildImageMessage(Message msg) {
     // 尝试解析 JSON 格式（新架构：含 mediaUrl/thumbUrl/thumbHash）
     final json = _tryParseJson(msg.content);
-    if (json != null && (json.containsKey('mediaUrl') || json.containsKey('thumbHash'))) {
+    if (json != null &&
+        (json.containsKey('mediaUrl') || json.containsKey('thumbHash'))) {
       return ImageMessageWidget(
         filePath: json['localPath'] as String?,
         mediaUrl: json['mediaUrl'] as String?,
@@ -1190,7 +1280,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         thumbHash: json['thumbHash'] as String?,
         width: (json['width'] as num?)?.toInt(),
         height: (json['height'] as num?)?.toInt(),
-        onCached: (cachedPath) => _updateMessageLocalPath(msg.messageId, msg.content, cachedPath),
+        onCached: (cachedPath) =>
+            _updateMessageLocalPath(msg.messageId, msg.content, cachedPath),
       );
     }
     // 旧格式：content 可能是 HTTP URL
@@ -1237,7 +1328,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         filePath: json['localPath'] as String? ?? json['path'] as String?,
         mediaUrl: json['mediaUrl'] as String?,
         fileSize: json['size'] as int?,
-        onCached: (cachedPath) => _updateMessageLocalPath(msg.messageId, msg.content, cachedPath),
+        onCached: (cachedPath) =>
+            _updateMessageLocalPath(msg.messageId, msg.content, cachedPath),
       );
     } catch (_) {
       return FileMessageWidget(fileName: msg.content ?? 'unknown');
@@ -1245,13 +1337,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   /// 下载缓存成功后，将 localPath 写回 DB message content JSON
-  void _updateMessageLocalPath(String messageId, String? currentContent, String localPath) {
+  void _updateMessageLocalPath(
+    String messageId,
+    String? currentContent,
+    String localPath,
+  ) {
     try {
-      final json = currentContent != null ? _parseJson(currentContent) : <String, dynamic>{};
+      final json = currentContent != null
+          ? _parseJson(currentContent)
+          : <String, dynamic>{};
       json['localPath'] = localPath;
       final updatedContent = jsonEncode(json);
       ref.read(messageDaoProvider).updateContent(messageId, updatedContent);
-      debugPrint('[ChatScreen] 缓存路径写回 DB: msgId=$messageId, localPath=$localPath');
+      debugPrint(
+        '[ChatScreen] 缓存路径写回 DB: msgId=$messageId, localPath=$localPath',
+      );
     } catch (e) {
       debugPrint('[ChatScreen] 写回 localPath 失败: $e');
     }
@@ -1332,7 +1432,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: _BubbleArrow(isUser: false, color: bubbleColor),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: bubbleColor,
                     borderRadius: BorderRadius.circular(8),
@@ -1351,10 +1454,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       const SizedBox(width: 8),
                       Text(
                         context.l10n.aiThinking,
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-                          fontStyle: FontStyle.italic,
-                        ),
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.7,
+                              ),
+                              fontStyle: FontStyle.italic,
+                            ),
                       ),
                     ],
                   ),
@@ -1394,6 +1500,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
     );
   }
+
   /// 构建交互式卡片（审批/澄清，ephemeral）
   Widget _buildInteractiveCard(
     ApprovalRequest? approvalReq,
@@ -1436,7 +1543,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               Expanded(
                 child: ClarifyCard(
                   request: clarifyReq,
-                  onRespond: (response) => handler.sendClarifyResponse(response),
+                  onRespond: (response) =>
+                      handler.sendClarifyResponse(response),
                 ),
               ),
             ],
@@ -1459,11 +1567,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final activeTool = activeToolRaw?.name;
 
     // 等待中（无流式内容）→ 显示 typing 动画气泡
-    if (streamingMsg == null && streamingThinking == null && activeTool == null) {
+    if (streamingMsg == null &&
+        streamingThinking == null &&
+        activeTool == null) {
       return _buildTypingBubble(colorScheme);
     }
 
-    final isThinkingOnly = streamingThinking != null && streamingMsg == null && activeTool == null;
+    final isThinkingOnly =
+        streamingThinking != null && streamingMsg == null && activeTool == null;
     final bubbleColor = colorScheme.surfaceContainerLowest;
 
     // 移动端：thinking 保持原位（头像右边），正文加宽 + 箭头向上
@@ -1486,8 +1597,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     Flexible(
                       child: Container(
                         constraints: BoxConstraints(
-                          maxWidth:
-                              MediaQuery.of(context).size.width * 0.78,
+                          maxWidth: MediaQuery.of(context).size.width * 0.78,
                         ),
                         child: ThinkingBlockWidget(
                           content: streamingThinking.content,
@@ -1548,8 +1658,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         );
                       },
                       onLinkTap: (url, title) {
-                        if (url.startsWith('http://') || url.startsWith('https://')) {
-                          launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+                        if (url.startsWith('http://') ||
+                            url.startsWith('https://')) {
+                          launchUrl(
+                            Uri.parse(url),
+                            mode: LaunchMode.inAppBrowserView,
+                          );
                         }
                       },
                     ),
@@ -1589,8 +1703,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                   // 工具调用指示器
-                  if (activeTool != null)
-                    _buildToolCallIndicator(activeTool),
+                  if (activeTool != null) _buildToolCallIndicator(activeTool),
                   // 文本气泡（如果有）
                   if (streamingMsg != null) ...[
                     Row(
@@ -1638,8 +1751,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                   );
                                 },
                                 onLinkTap: (url, title) {
-                                  if (url.startsWith('http://') || url.startsWith('https://')) {
-                                    launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+                                  if (url.startsWith('http://') ||
+                                      url.startsWith('https://')) {
+                                    launchUrl(
+                                      Uri.parse(url),
+                                      mode: LaunchMode.inAppBrowserView,
+                                    );
                                   }
                                 },
                               ),
@@ -1802,8 +1919,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final dismissedIssueKey = ref.watch(dismissedGatewayIssueKeyProvider);
     final activeGatewayIssue =
         gatewayIssue != null && dismissedIssueKey != gatewayIssue.key
-            ? gatewayIssue
-            : null;
+        ? gatewayIssue
+        : null;
     final hintText = !serverConnected
         ? context.l10n.notConnected
         : context.l10n.typeMessage;
@@ -1953,29 +2070,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Builder(builder: (context) {
-                final convId = ref.watch(selectedConversationIdProvider);
-                final rawMsg = ref.watch(streamingMessageProvider);
-                final rawThink = ref.watch(streamingThinkingProvider);
-                final waiting = ref.watch(waitingForReplyProvider);
-                // 只看属于当前会话的流式状态
-                final isMyStreaming =
-                    (rawMsg != null && (rawMsg.conversationId == null || rawMsg.conversationId == convId)) ||
-                    (rawThink != null && (rawThink.conversationId == null || rawThink.conversationId == convId)) ||
-                    (waiting != null && waiting == convId) ||
-                    (ref.watch(activeToolProvider)?.convId == convId);
-                return IconButton.filled(
-                  onPressed: connected
-                      ? (isMyStreaming
-                          ? () => ref.read(wsMessageHandlerProvider).sendAbort()
-                          : _handleSend)
-                      : null,
-                  icon: Icon(isMyStreaming ? Icons.stop : Icons.send),
-                  style: isMyStreaming
-                      ? IconButton.styleFrom(backgroundColor: colorScheme.error)
-                      : null,
-                );
-              }),
+              Builder(
+                builder: (context) {
+                  final convId = ref.watch(selectedConversationIdProvider);
+                  final rawMsg = ref.watch(streamingMessageProvider);
+                  final rawThink = ref.watch(streamingThinkingProvider);
+                  final waiting = ref.watch(waitingForReplyProvider);
+                  // 只看属于当前会话的流式状态
+                  final isMyStreaming =
+                      (rawMsg != null &&
+                          (rawMsg.conversationId == null ||
+                              rawMsg.conversationId == convId)) ||
+                      (rawThink != null &&
+                          (rawThink.conversationId == null ||
+                              rawThink.conversationId == convId)) ||
+                      (waiting != null && waiting == convId) ||
+                      (ref.watch(activeToolProvider)?.convId == convId);
+                  return IconButton.filled(
+                    onPressed: connected
+                        ? (isMyStreaming
+                              ? () => ref
+                                    .read(wsMessageHandlerProvider)
+                                    .sendAbort()
+                              : _handleSend)
+                        : null,
+                    icon: Icon(isMyStreaming ? Icons.stop : Icons.send),
+                    style: isMyStreaming
+                        ? IconButton.styleFrom(
+                            backgroundColor: colorScheme.error,
+                          )
+                        : null,
+                  );
+                },
+              ),
             ],
           ),
         ),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,15 +20,23 @@ import 'package:client/widgets/nav_rail.dart';
 import 'package:client/widgets/debug_log_panel.dart';
 import 'package:client/widgets/widget_factory.dart';
 import 'package:client/widgets/app_notice_bar.dart';
+import 'package:client/widgets/unread_count_badge.dart';
+import 'package:client/widgets/notification_permission_dialog.dart';
 import 'package:client/services/auth_service.dart';
 import 'package:client/l10n/l10n.dart';
+import 'package:client/core/notification_click_router.dart';
+import 'package:client/core/notification_event.dart';
 import 'package:client/core/notification_service.dart';
+import 'package:client/core/push_registration_service.dart';
 
 /// Sidebar 宽度持久化 key
 const _kSidebarWidthKey = 'clawke_sidebar_width';
 const _kDefaultSidebarWidth = 280.0;
 const _kMinSidebarWidth = 180.0;
 const _kMaxSidebarWidth = 500.0;
+const _kNotificationIntroSeenKey = 'clawke_notification_intro_seen';
+const _kNotificationUserRequestedKey = 'clawke_notification_user_requested';
+const _isUiE2eRun = String.fromEnvironment('CLAWKE_E2E_RUN_DIR') != '';
 
 /// 响应式断点：小于此宽度使用移动端布局
 const _kMobileBreakpoint = 600.0;
@@ -61,23 +70,177 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   /// 连接是否曾成功过（只有曾成功再断开才重置 dismissed）
   bool _hasEverConnected = false;
 
+  bool _notificationPermissionPromptOpen = false;
+
   @override
   void initState() {
     super.initState();
     debugPrint('[MainLayout] 🏗️ initState called');
     _loadSidebarWidth();
+    unawaited(
+      PushRegistrationService.configureRemotePushHandling((payload) {
+        final handler = ref.read(wsMessageHandlerProvider);
+        handler.requestSyncFromRemotePush();
+        final tapPayload = payload.toNotificationTapPayload();
+        if (tapPayload != null) {
+          _scheduleNotificationPayload(tapPayload);
+        }
+      }),
+    );
+    NotificationService.setTapHandler((payload) {
+      final router = ref.read(notificationClickRouterProvider);
+      if (!mounted) {
+        router.savePending(payload);
+        return;
+      }
+      _scheduleNotificationPayload(payload);
+    });
     // App 启动：先等 host 加载完成，再建立 WebSocket 连接
     _initConnectionAsync();
     // 延迟请求通知权限：等首帧渲染完后再弹权限对话框，
     // 避免 macOS 启动时黑屏（权限弹窗阻塞 Flutter 引擎初始化）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      NotificationService.requestPermissions();
+      _flushPendingNotificationPayload();
+      _maybeShowNotificationPermissionPrompt();
+      NotificationService.setApplicationBadgeCount(
+        ref.read(systemBadgeCountProvider),
+      );
     });
     // 启动后 8 秒宽限期：给网络足够时间建立连接，
     // 避免审核员看到一闪而过的连接错误
     Future.delayed(const Duration(seconds: 8), () {
       if (mounted) setState(() => _inGracePeriod = false);
     });
+  }
+
+  @override
+  void dispose() {
+    NotificationService.setTapHandler(null);
+    super.dispose();
+  }
+
+  bool _openNotificationPayload(NotificationPayload payload) {
+    if (!mounted || payload.conversationId.trim().isEmpty) return false;
+
+    final convId = payload.conversationId;
+    final conversations = ref.read(conversationListProvider).valueOrNull;
+    if (conversations == null ||
+        !conversations.any((item) => item.conversationId == convId)) {
+      debugPrint('[NotificationClick] waiting for conversation: $convId');
+      return false;
+    }
+
+    final alreadyVisible =
+        ref.read(selectedConversationIdProvider) == convId &&
+        ref.read(activeChatConversationIdProvider) == convId &&
+        ref.read(activeNavPageProvider) == NavPage.chat;
+
+    debugPrint('[NotificationClick] opening conversation: $convId');
+    ref.read(activeNavPageProvider.notifier).state = NavPage.chat;
+    ref.read(selectedConversationIdProvider.notifier).state = convId;
+
+    if (!_isMobile(context)) return true;
+    if (alreadyVisible) return true;
+
+    setState(() => _mobileTabIndex = 0);
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ChatScreen(key: ValueKey(convId))),
+    );
+    return true;
+  }
+
+  void _scheduleNotificationPayload(NotificationPayload payload) {
+    final router = ref.read(notificationClickRouterProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        router.savePending(payload);
+        return;
+      }
+      router.handleTap(payload, _openNotificationPayload);
+    });
+  }
+
+  void _flushPendingNotificationPayload() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref
+          .read(notificationClickRouterProvider)
+          .flushPending(_openNotificationPayload);
+    });
+  }
+
+  void _openMobileConversation(BuildContext context, String convId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !context.mounted) return;
+      ref.read(selectedConversationIdProvider.notifier).state = convId;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ChatScreen(key: ValueKey(convId))),
+      );
+    });
+  }
+
+  Future<void> _maybeShowNotificationPermissionPrompt() async {
+    if (_notificationPermissionPromptOpen || !mounted) return;
+    if (_isUiE2eRun) return;
+
+    _notificationPermissionPromptOpen = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final permissions =
+          await NotificationService.checkNotificationPermissions();
+      if (!mounted || permissions == null) return;
+      if (permissions.canShowSystemNotifications) {
+        _registerPushDevice();
+        return;
+      }
+
+      final introSeen = prefs.getBool(_kNotificationIntroSeenKey) ?? false;
+      final userRequested =
+          prefs.getBool(_kNotificationUserRequestedKey) ?? false;
+
+      if (!introSeen) {
+        final shouldEnable =
+            await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const NotificationPermissionIntroDialog(),
+            ) ??
+            false;
+        await prefs.setBool(_kNotificationIntroSeenKey, true);
+        if (!shouldEnable || !mounted) return;
+
+        await prefs.setBool(_kNotificationUserRequestedKey, true);
+        final updated = await NotificationService.requestPermissions();
+        if (!mounted) return;
+        if (updated?.canShowSystemNotifications == true) {
+          _registerPushDevice();
+          return;
+        }
+
+        await _showNotificationSettingsGuideDialog();
+        return;
+      }
+
+      if (userRequested) {
+        await _showNotificationSettingsGuideDialog();
+      }
+    } finally {
+      _notificationPermissionPromptOpen = false;
+    }
+  }
+
+  void _registerPushDevice() {
+    unawaited(PushRegistrationService.registerCurrentDeviceWithServer());
+  }
+
+  Future<void> _showNotificationSettingsGuideDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => const NotificationPermissionSettingsGuideDialog(
+        onOpenSettings: NotificationService.openNotificationSettings,
+      ),
+    );
   }
 
   Future<void> _initConnectionAsync() async {
@@ -90,6 +253,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       WsService.setToken(config.token);
       MediaResolver.setBaseUrl(config.httpUrl);
       MediaResolver.setToken(config.token);
+      final permissions =
+          await NotificationService.checkNotificationPermissions();
+      if (permissions?.canShowSystemNotifications == true) {
+        _registerPushDevice();
+      }
       // 先初始化消息处理器（确保 stream 订阅在连接之前就绑定好）
       ref.read(wsMessageHandlerProvider);
 
@@ -163,6 +331,13 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       if (next && mounted) {
         _showAuthFailedDialog();
       }
+    });
+    ref.listen<int>(systemBadgeCountProvider, (prev, next) {
+      NotificationService.setApplicationBadgeCount(next);
+    });
+    ref.listen(conversationListProvider, (prev, next) {
+      if (!next.hasValue) return;
+      _flushPendingNotificationPayload();
     });
 
     // 监听连接状态变化（watch 仍触发 rebuild，但取同步值避免 AsyncValue 过渡态闪烁）
@@ -265,6 +440,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     final l10n = context.l10n;
     final sduiCache = ref.watch(sduiPageCacheProvider);
     final debugLogEnabled = ref.watch(debugLogEnabledProvider);
+    final unreadCount = ref.watch(totalUnseenCountProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -320,8 +496,30 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         iconSize: 22,
         items: [
           BottomNavigationBarItem(
-            icon: const Icon(Icons.chat_bubble_outline),
-            activeIcon: const Icon(Icons.chat_bubble),
+            icon: UnreadBadgeIcon(
+              icon: Icons.chat_bubble_outline,
+              count: unreadCount,
+              semanticsLabel: '${l10n.navChat}未读消息 $unreadCount',
+              badgeKey: ValueKey(
+                'ui_e2e_nav_unread_${l10n.navChat}_$unreadCount',
+              ),
+              iconColor: colorScheme.onSurfaceVariant,
+              badgeBackgroundColor: colorScheme.error,
+              badgeForegroundColor: colorScheme.onError,
+              iconSize: 22,
+            ),
+            activeIcon: UnreadBadgeIcon(
+              icon: Icons.chat_bubble,
+              count: unreadCount,
+              semanticsLabel: '${l10n.navChat}未读消息 $unreadCount',
+              badgeKey: ValueKey(
+                'ui_e2e_nav_unread_${l10n.navChat}_$unreadCount',
+              ),
+              iconColor: colorScheme.primary,
+              badgeBackgroundColor: colorScheme.error,
+              badgeForegroundColor: colorScheme.onError,
+              iconSize: 22,
+            ),
             label: l10n.navChat,
           ),
           BottomNavigationBarItem(
@@ -380,12 +578,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           NewConversationButton(
             iconSize: 26,
             onCreated: (convId) {
-              ref.read(selectedConversationIdProvider.notifier).state = convId;
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ChatScreen(key: ValueKey(convId)),
-                ),
-              );
+              _openMobileConversation(context, convId);
             },
           ),
         ],
@@ -393,13 +586,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       body: ConversationListScreen(
         showHeader: false,
         onConversationTap: (accountId) {
-          // 移动端：push 全屏聊天页
-          ref.read(selectedConversationIdProvider.notifier).state = accountId;
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ChatScreen(key: ValueKey(accountId)),
-            ),
-          );
+          _openMobileConversation(context, accountId);
         },
       ),
     );

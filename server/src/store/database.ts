@@ -124,6 +124,19 @@ export class Database {
           updated_at INTEGER NOT NULL,
           UNIQUE (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
         );
+
+        CREATE TABLE IF NOT EXISTS push_devices (
+          device_id TEXT NOT NULL,
+          push_provider TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          platform TEXT NOT NULL,
+          device_token TEXT NOT NULL,
+          app_version TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (device_id, push_provider)
+        );
       `);
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
       console.log(`[DB] Schema v${SCHEMA_VERSION} initialized`);
@@ -213,6 +226,19 @@ export class Database {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         UNIQUE (gateway_type, gateway_id, skill_id, locale, field_set, source_hash)
+      );
+
+      CREATE TABLE IF NOT EXISTS push_devices (
+        device_id TEXT NOT NULL,
+        push_provider TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        platform TEXT NOT NULL,
+        device_token TEXT NOT NULL,
+        app_version TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (device_id, push_provider)
       );
     `);
   }

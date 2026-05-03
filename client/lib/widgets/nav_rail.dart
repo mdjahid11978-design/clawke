@@ -4,9 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:client/screens/settings_screen.dart';
 import 'package:client/providers/auth_provider.dart';
 import 'package:client/providers/chat_provider.dart';
+import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/core/env_config.dart';
 import 'package:client/l10n/l10n.dart';
+import 'package:client/widgets/unread_count_badge.dart';
 
 /// NavRail 宽度持久化 key
 const _kNavRailWidthKey = 'clawke_nav_rail_width';
@@ -52,6 +54,7 @@ class _NavRailState extends ConsumerState<NavRail> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activePage = ref.watch(activeNavPageProvider);
     final user = ref.watch(authUserProvider);
+    final unreadCount = ref.watch(totalUnseenCountProvider);
 
     return Container(
       width: _width,
@@ -83,6 +86,7 @@ class _NavRailState extends ConsumerState<NavRail> {
                 isActive: activePage == NavPage.chat,
                 isExpanded: _isExpanded,
                 colorScheme: colorScheme,
+                badgeCount: unreadCount,
                 onTap: () {
                   ref.read(activeNavPageProvider.notifier).state = NavPage.chat;
                 },
@@ -242,6 +246,7 @@ class _NavItem extends StatelessWidget {
   final bool isActive;
   final bool isExpanded;
   final ColorScheme colorScheme;
+  final int badgeCount;
   final VoidCallback onTap;
 
   const _NavItem({
@@ -250,6 +255,7 @@ class _NavItem extends StatelessWidget {
     required this.isActive,
     required this.isExpanded,
     required this.colorScheme,
+    this.badgeCount = 0,
     required this.onTap,
   });
 
@@ -281,12 +287,18 @@ class _NavItem extends StatelessWidget {
                     ? MainAxisAlignment.start
                     : MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    icon,
-                    color: isActive
+                  UnreadBadgeIcon(
+                    icon: icon,
+                    count: badgeCount,
+                    semanticsLabel: '$label未读消息 $badgeCount',
+                    badgeKey: ValueKey(
+                      'ui_e2e_nav_unread_${label}_$badgeCount',
+                    ),
+                    iconColor: isActive
                         ? colorScheme.primary
                         : colorScheme.onSurfaceVariant,
-                    size: 24,
+                    badgeBackgroundColor: colorScheme.error,
+                    badgeForegroundColor: colorScheme.onError,
                   ),
                   if (isExpanded) ...[
                     const SizedBox(width: 10),

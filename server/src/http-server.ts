@@ -25,6 +25,7 @@ import {
   setTaskEnabled,
   updateTask,
 } from './routes/tasks-routes.js';
+import { disablePushDevice, registerPushDevice, sendTestPush } from './routes/push-routes.js';
 import { loadConfig } from './config.js';
 import type { Server } from 'http';
 
@@ -101,6 +102,7 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
         '/api/config/skills',
         '/api/config/models',
         '/api/conversations',
+        '/api/push/devices',
       ],
     });
   });
@@ -200,6 +202,11 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
   app.put('/api/tasks/:taskId', updateTask as any);
   app.delete('/api/tasks/:taskId', deleteTask as any);
 
+  // Push 设备和 APNs 测试 API — Push device and APNs test API
+  app.post('/api/push/devices', registerPushDevice as any);
+  app.delete('/api/push/devices/:deviceId', disablePushDevice as any);
+  app.post('/api/push/test', sendTestPush as any);
+
   // Error handler
   app.use((err: any, _req: any, res: any, _next: any) => {
     if (err instanceof multer.MulterError) {
@@ -212,10 +219,11 @@ export function startUnifiedServer(port: number = 8780): { server: Server; wss: 
     res.status(500).json({ error: 'Internal server error' });
   });
 
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`[Server] 📂 Unified Server on http://127.0.0.1:${port}`);
+  const listenHost = process.env.CLAWKE_LISTEN_HOST || '127.0.0.1';
+  server.listen(port, listenHost, () => {
+    console.log(`[Server] 📂 Unified Server on http://${listenHost}:${port}`);
     console.log(`[Server]    HTTP: /api/media/upload, /api/media/:filename, /api/tasks, /health`);
-    console.log(`[Server]    WS:   ws://127.0.0.1:${port}/ws`);
+    console.log(`[Server]    WS:   ws://${listenHost}:${port}/ws`);
   });
 
   return { server, wss };

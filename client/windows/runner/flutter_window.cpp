@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <shellapi.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -25,6 +26,30 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  app_badge_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "clawke/app_badge",
+          &flutter::StandardMethodCodec::GetInstance());
+  app_badge_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() == "setBadgeCount") {
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "openNotificationSettings") {
+          ::ShellExecuteW(nullptr, L"open", L"ms-settings:notifications",
+                          nullptr, nullptr, SW_SHOWNORMAL);
+          result->Success();
+          return;
+        }
+        if (call.method_name() == "checkNotificationsEnabled") {
+          result->Success(flutter::EncodableValue(true));
+          return;
+        }
+        result->NotImplemented();
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -43,6 +68,7 @@ void FlutterWindow::OnDestroy() {
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
+  app_badge_channel_ = nullptr;
 
   Win32Window::OnDestroy();
 }

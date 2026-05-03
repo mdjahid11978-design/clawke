@@ -44,6 +44,9 @@ import { initGatewayRoutes } from './routes/gateway-routes.js';
 import { GatewayStore } from './store/gateway-store.js';
 import { GatewayModelCacheStore } from './store/gateway-model-cache-store.js';
 import { SkillTranslationStore } from './store/skill-translation-store.js';
+import { PushDeviceStore } from './store/push-device-store.js';
+import { PushService, createApnsProviderFromEnv } from './services/push-service.js';
+import { initPushRoutes } from './routes/push-routes.js';
 import { SkillTranslationService, startSkillTranslationWorker } from './services/skill-translation-service.js';
 import { GatewayManageService } from './services/gateway-manage-service.js';
 import { createGatewaySystemSkillTranslator } from './services/gateway-system-translator.js';
@@ -164,6 +167,17 @@ async function main() {
   const gatewayStore = new GatewayStore(db);
   const gatewayModelCacheStore = new GatewayModelCacheStore(db);
   const skillTranslationStore = new SkillTranslationStore(db);
+  const pushDeviceStore = new PushDeviceStore(db);
+  const pushService = new PushService({
+    listDevices: (userId?: string) => pushDeviceStore.listEnabled(userId),
+    apnsProvider: createApnsProviderFromEnv(),
+  });
+  initPushRoutes({
+    deviceStore: pushDeviceStore,
+    conversationStore,
+    messageStore,
+    pushService,
+  });
   const gatewayManageService = new GatewayManageService();
   const skillTranslationService = new SkillTranslationService({
     store: skillTranslationStore,
@@ -217,7 +231,10 @@ async function main() {
       stats: statsCollector,
       mockHandler: {
         simulateResponse: async (ctx) => {
-          const convId = ctx.payload.context?.account_id || 'default';
+          const convId =
+            ctx.payload.context?.conversation_id ||
+            ctx.payload.context?.account_id ||
+            'default';
           await mockHandleMessage(ctx.ws as any, ctx.payload.data || {}, convId, cupHandler, config.server.fastMode || false);
         },
       },
@@ -358,6 +375,9 @@ async function main() {
       translateToCup, cupHandler, statsCollector,
       (msg) => broadcastToClients(msg),
       conversationStore,
+      async (message) => {
+        await pushService.notifyMessage(message);
+      },
     );
 
     // 覆盖 ping handler 和 dashboard handler 的依赖

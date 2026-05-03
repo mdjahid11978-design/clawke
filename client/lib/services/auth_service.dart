@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:client/core/env_config.dart';
 import 'package:client/core/http_util.dart';
+import 'package:client/core/push_registration_service.dart';
 import 'package:client/models/user_model.dart';
 import 'package:client/models/account_summary.dart';
 
@@ -31,7 +32,10 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getString(_kUidKey);
     final securit = prefs.getString(_kSecuritKey);
-    return uid != null && uid.isNotEmpty && securit != null && securit.isNotEmpty;
+    return uid != null &&
+        uid.isNotEmpty &&
+        securit != null &&
+        securit.isNotEmpty;
   }
 
   /// 获取本地持久化的用户信息。
@@ -75,10 +79,10 @@ class AuthService {
 
   static Future<void> _persistRelay(RelayCredentials relay) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kRelayJsonKey, jsonEncode({
-      'token': relay.token,
-      'relayUrl': relay.relayUrl,
-    }));
+    await prefs.setString(
+      _kRelayJsonKey,
+      jsonEncode({'token': relay.token, 'relayUrl': relay.relayUrl}),
+    );
   }
 
   // ── 邮箱登录 ──
@@ -155,9 +159,7 @@ class AuthService {
     debugPrint('[Auth] Google login on ${Platform.operatingSystem}');
 
     try {
-      final googleSignIn = GoogleSignIn(
-        scopes: ['email'],
-      );
+      final googleSignIn = GoogleSignIn(scopes: ['email']);
 
       debugPrint('[Auth] Google signIn starting...');
       // 清除上一次残留的登录状态（macOS 上旧 session 可能阻塞新弹窗）
@@ -169,7 +171,9 @@ class AuthService {
           return null;
         },
       );
-      debugPrint('[Auth] Google signIn result: ${googleUser?.email ?? 'null (cancelled)'}');
+      debugPrint(
+        '[Auth] Google signIn result: ${googleUser?.email ?? 'null (cancelled)'}',
+      );
 
       if (googleUser == null) {
         throw const ApiException('Google 登录已取消');
@@ -177,14 +181,15 @@ class AuthService {
 
       // 获取认证 token（idToken 用于服务端验证）
       final googleAuth = await googleUser.authentication;
-      debugPrint('[Auth] Got Google auth, idToken: ${googleAuth.idToken != null ? "OK" : "null"}');
+      debugPrint(
+        '[Auth] Got Google auth, idToken: ${googleAuth.idToken != null ? "OK" : "null"}',
+      );
 
       // 服务端 googleLogin 接口返回 302 + set-cookie（web OAuth 模式），
       // 不走 HttpUtil.doPost，而是直接发请求并从 Cookie 中提取凭证。
-      final dio = Dio(BaseOptions(
-        followRedirects: false,
-        validateStatus: (status) => true,
-      ));
+      final dio = Dio(
+        BaseOptions(followRedirects: false, validateStatus: (status) => true),
+      );
       final formData = FormData.fromMap({
         'idToken': googleAuth.idToken ?? '',
         'accessToken': googleAuth.accessToken ?? '',
@@ -216,7 +221,9 @@ class AuthService {
         }
       }
 
-      debugPrint('[Auth] Extracted from cookies: uid=$uid, securit=${securit != null ? "OK" : "null"}');
+      debugPrint(
+        '[Auth] Extracted from cookies: uid=$uid, securit=${securit != null ? "OK" : "null"}',
+      );
 
       if (uid == null || uid.isEmpty || securit == null || securit.isEmpty) {
         throw const ApiException('Google 登录失败：服务端未返回认证信息');
@@ -258,9 +265,8 @@ class AuthService {
       // Apple 只在首次授权时返回 name，后续为 null
       String name = '';
       if (credential.givenName != null || credential.familyName != null) {
-        name =
-            '${credential.givenName ?? ''} ${credential.familyName ?? ''}'
-                .trim();
+        name = '${credential.givenName ?? ''} ${credential.familyName ?? ''}'
+            .trim();
       }
 
       final result = await HttpUtil.doPost(
@@ -277,7 +283,9 @@ class AuthService {
       await _persistUser(user);
       return user;
     } on SignInWithAppleAuthorizationException catch (e) {
-      debugPrint('[Auth] Apple login authorization error: ${e.code} - ${e.message}');
+      debugPrint(
+        '[Auth] Apple login authorization error: ${e.code} - ${e.message}',
+      );
       switch (e.code) {
         case AuthorizationErrorCode.canceled:
           throw const ApiException('Apple 登录已取消');
@@ -290,7 +298,8 @@ class AuthService {
         default:
           // error 1000 = unknown, 通常是 App ID 未配置 Sign In with Apple 能力
           throw const ApiException(
-              'Apple 登录不可用，请确认 Apple Developer 已启用 Sign In with Apple');
+            'Apple 登录不可用，请确认 Apple Developer 已启用 Sign In with Apple',
+          );
       }
     } on ApiException {
       rethrow;
@@ -319,15 +328,15 @@ class AuthService {
   /// 忘记密码 - Step 2: 验证验证码。
   ///
   /// API: POST /common/user/verifyForgotPasswordCode.json
-  static Future<void> verifyForgotPasswordCode(String email, String code) async {
+  static Future<void> verifyForgotPasswordCode(
+    String email,
+    String code,
+  ) async {
     debugPrint('[Auth] Forgot password - verifying code for: $email');
 
     await HttpUtil.doPost(
       '/common/user/verifyForgotPasswordCode.json',
-      data: {
-        'email': email,
-        'verifyCode': code,
-      },
+      data: {'email': email, 'verifyCode': code},
     );
 
     debugPrint('[Auth] ✅ Forgot password code verified');
@@ -336,15 +345,15 @@ class AuthService {
   /// 忘记密码 - Step 3: 重置密码。
   ///
   /// API: POST /common/user/resetForgotPassword.json
-  static Future<void> resetForgotPassword(String email, String newPassword) async {
+  static Future<void> resetForgotPassword(
+    String email,
+    String newPassword,
+  ) async {
     debugPrint('[Auth] Forgot password - resetting for: $email');
 
     await HttpUtil.doPost(
       '/common/user/resetForgotPassword.json',
-      data: {
-        'email': email,
-        'newPassword': newPassword,
-      },
+      data: {'email': email, 'newPassword': newPassword},
     );
 
     debugPrint('[Auth] ✅ Password reset successful');
@@ -355,12 +364,19 @@ class AuthService {
   /// 修改密码。
   ///
   /// API: POST /user/modPassword.json
-  static Future<void> modifyPassword(String oldPassword, String newPassword, String newPassword2) async {
-    await HttpUtil.doPost('/user/modPassword.json', data: {
-      'passwordOrignal': oldPassword,
-      'passwordNew': newPassword,
-      'passwordNew2': newPassword2,
-    });
+  static Future<void> modifyPassword(
+    String oldPassword,
+    String newPassword,
+    String newPassword2,
+  ) async {
+    await HttpUtil.doPost(
+      '/user/modPassword.json',
+      data: {
+        'passwordOrignal': oldPassword,
+        'passwordNew': newPassword,
+        'passwordNew2': newPassword2,
+      },
+    );
   }
 
   /// 服务端校验登录态是否有效。
@@ -388,7 +404,9 @@ class AuthService {
     debugPrint('[Auth] Fetching relay credentials');
 
     final result = await HttpUtil.doPost('/clawke/relay/credentials.json');
-    final relay = RelayCredentials.fromJson(result['value'] as Map<String, dynamic>);
+    final relay = RelayCredentials.fromJson(
+      result['value'] as Map<String, dynamic>,
+    );
 
     await _persistRelay(relay);
     return relay;
@@ -399,6 +417,7 @@ class AuthService {
   /// 清除所有本地持久化的认证和 Relay 数据。
   static Future<void> logout() async {
     debugPrint('[Auth] Logout');
+    await PushRegistrationService.disableCurrentDeviceOnServer();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kUidKey);
     await prefs.remove(_kSecuritKey);

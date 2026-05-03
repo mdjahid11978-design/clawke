@@ -50,9 +50,10 @@ class ConversationDao {
 
   /// 未读计数 +1
   Future<void> incrementUnseenCount(String conversationId) {
-    return _db.customStatement(
+    return _db.customUpdate(
       'UPDATE conversations SET unseen_count = unseen_count + 1 WHERE conversation_id = ?',
-      [conversationId],
+      variables: [Variable.withString(conversationId)],
+      updates: {_db.conversations},
     );
   }
 

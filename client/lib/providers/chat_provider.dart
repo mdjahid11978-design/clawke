@@ -9,7 +9,8 @@ import 'package:client/models/gateway_info.dart';
 import 'package:client/models/message_model.dart';
 import 'package:client/core/cup_parser.dart';
 import 'package:client/providers/approval_provider.dart';
-import 'package:client/core/notification_service.dart';
+import 'package:client/core/notification_event.dart';
+import 'package:client/core/notification_pipeline.dart';
 import 'package:client/core/ws_service.dart';
 import 'package:client/data/repositories/message_repository.dart' show deviceId;
 import 'package:client/providers/ws_state_provider.dart';
@@ -192,6 +193,17 @@ class WsMessageHandler with WidgetsBindingObserver {
     // 同步会话列表（Server 权威 → 本地对齐）
     _ref.read(conversationRepositoryProvider).syncFromServer();
     _syncGatewaysFromServer();
+  }
+
+  void requestSyncFromRemotePush() {
+    debugPrint('[WsMessageHandler] Remote push received, syncing');
+    if (_ws.state == WsState.connected) {
+      _sendSync();
+      _ref.read(conversationRepositoryProvider).syncFromServer();
+      _syncGatewaysFromServer();
+      return;
+    }
+    _ws.reconnect();
   }
 
   /// DB metadata key for sync seq baseline.
@@ -695,8 +707,7 @@ class WsMessageHandler with WidgetsBindingObserver {
       createdAt: createdAt,
     );
 
-    // 当前选中会话则清零未读
-    if (conversationId == _ref.read(selectedConversationIdProvider)) {
+    if (_isConversationVisible(conversationId)) {
       _ref.read(conversationRepositoryProvider).markAsRead(conversationId);
     }
   }
@@ -779,8 +790,9 @@ class WsMessageHandler with WidgetsBindingObserver {
       }
     }
 
-    // 当前选中的会话在 sync 中被更新了，清零未读
-    if (selectedConvId != null && touchedConvIds.contains(selectedConvId)) {
+    if (selectedConvId != null &&
+        touchedConvIds.contains(selectedConvId) &&
+        _isConversationVisible(selectedConvId)) {
       _ref.read(conversationRepositoryProvider).markAsRead(selectedConvId);
     }
 
@@ -935,19 +947,9 @@ class WsMessageHandler with WidgetsBindingObserver {
                 ),
               );
           _syncGatewaysFromServer();
-          // 会话由 Server 自动创建，客户端只需同步
+          // 会话由 Server 自动创建，客户端只同步列表 — Server owns default conversation creation; client only syncs.
           final convRepo = _ref.read(conversationRepositoryProvider);
           await convRepo.syncFromServer();
-          // 如果当前没有选中会话，自动选中该 accountId 的第一个会话
-          if (_ref.read(selectedConversationIdProvider) == null) {
-            final convs = await convRepo.getConversationsByAccount(
-              msg.accountId!,
-            );
-            if (convs.isNotEmpty) {
-              _ref.read(selectedConversationIdProvider.notifier).state =
-                  convs.first.conversationId;
-            }
-          }
         }
       case 'ai_disconnected':
         _ref.read(aiBackendStateProvider.notifier).state =
@@ -981,6 +983,12 @@ class WsMessageHandler with WidgetsBindingObserver {
         debugPrint('[WsMessageHandler] gateway sync failed: $e');
       }),
     );
+  }
+
+  bool _isConversationVisible(String conversationId) {
+    return _ref.read(selectedConversationIdProvider) == conversationId &&
+        _ref.read(activeChatConversationIdProvider) == conversationId &&
+        _ref.read(activeNavPageProvider) == NavPage.chat;
   }
 
   void _appendTextDelta(
@@ -1226,9 +1234,19 @@ class WsMessageHandler with WidgetsBindingObserver {
               seq: seq,
               createdAt: json['created_at'] as int?,
             );
-        if (convId == _ref.read(selectedConversationIdProvider)) {
+        if (_isConversationVisible(convId)) {
           _ref.read(conversationRepositoryProvider).markAsRead(convId);
         }
+        await _handleStoredMessageNotification(
+          conversationId: convId,
+          accountId: accountId,
+          messageId: safeMessageId,
+          senderId: 'agent',
+          type: 'text',
+          preview: finalContent,
+          seq: seq,
+          createdAt: json['created_at'] as int?,
+        );
 
         await _clearReplyRuntimeState(
           convId,
@@ -1275,9 +1293,16 @@ class WsMessageHandler with WidgetsBindingObserver {
     final seq = json['seq'] as int? ?? 0;
     if (seq > 0) _advanceSyncSeq(seq);
     final repo = _ref.read(messageRepositoryProvider);
+    String? storedMessageId;
+    String storedSenderId = 'agent';
+    String storedType = 'text';
+    String storedPreview = _getNotificationBody(model);
 
     switch (model) {
       case TextMessage m:
+        storedMessageId = m.messageId;
+        storedType = 'text';
+        storedPreview = m.content;
         await repo.receiveMessage(
           messageId: m.messageId,
           accountId: accountId,
@@ -1303,6 +1328,8 @@ class WsMessageHandler with WidgetsBindingObserver {
           return;
         }
 
+        storedMessageId = m.messageId;
+        storedType = 'cup_component';
         await repo.receiveMessage(
           messageId: m.messageId,
           accountId: accountId,
@@ -1315,6 +1342,9 @@ class WsMessageHandler with WidgetsBindingObserver {
           createdAt: json['created_at'] as int?,
         );
       case ErrorMessage m:
+        storedMessageId = m.messageId;
+        storedSenderId = 'system';
+        storedType = 'system';
         await repo.receiveMessage(
           messageId: m.messageId,
           accountId: accountId,
@@ -1332,16 +1362,64 @@ class WsMessageHandler with WidgetsBindingObserver {
         break; // thinking 内容不持久化到 DB
     }
 
-    if (convId == _ref.read(selectedConversationIdProvider)) {
+    if (_isConversationVisible(convId)) {
       _ref.read(conversationRepositoryProvider).markAsRead(convId);
     }
-    if (convId != _ref.read(selectedConversationIdProvider)) {
-      NotificationService.showMessageNotification(
-        title: '新消息',
-        body: _getNotificationBody(model),
-        accountId: convId,
+    if (storedMessageId != null) {
+      await _handleStoredMessageNotification(
+        conversationId: convId,
+        accountId: accountId,
+        messageId: storedMessageId,
+        senderId: storedSenderId,
+        type: storedType,
+        preview: storedPreview,
+        seq: seq,
+        createdAt: json['created_at'] as int?,
       );
     }
+  }
+
+  Future<void> _handleStoredMessageNotification({
+    required String conversationId,
+    required String accountId,
+    required String messageId,
+    required String senderId,
+    required String type,
+    required String preview,
+    required int seq,
+    int? createdAt,
+    bool isSyncReplay = false,
+  }) async {
+    await _ref
+        .read(notificationPipelineProvider)
+        .handleMessage(
+          MessageNotificationEvent(
+            source: NotificationEventSource.localWs,
+            conversationId: conversationId,
+            messageId: messageId,
+            gatewayId: accountId,
+            seq: seq,
+            title: '新消息',
+            preview: _truncateNotificationPreview(preview),
+            priority: NotificationPriority.normal,
+            category: _notificationCategoryForType(type),
+            createdAt: createdAt ?? DateTime.now().millisecondsSinceEpoch,
+            senderId: senderId,
+          ),
+          isSyncReplay: isSyncReplay,
+        );
+  }
+
+  NotificationCategory _notificationCategoryForType(String type) {
+    return switch (type) {
+      'system' => NotificationCategory.system,
+      'cup_component' => NotificationCategory.action,
+      _ => NotificationCategory.message,
+    };
+  }
+
+  String _truncateNotificationPreview(String value) {
+    return value.length > 100 ? '${value.substring(0, 100)}...' : value;
   }
 
   String _getNotificationBody(MessageModel model) {

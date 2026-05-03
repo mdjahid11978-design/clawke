@@ -31,6 +31,7 @@ export class MessageStore {
   private insertStmt: BetterSqlite3.Statement;
   private updateSeqStmt: BetterSqlite3.Statement;
   private getAfterStmt: BetterSqlite3.Statement;
+  private getByIdStmt: BetterSqlite3.Statement;
   private deleteUpToStmt: BetterSqlite3.Statement;
   private insertWithMeta: BetterSqlite3.Transaction;
 
@@ -48,6 +49,7 @@ export class MessageStore {
     this.getAfterStmt = db.prepare(
       'SELECT * FROM messages WHERE seq > ? ORDER BY seq ASC LIMIT 100'
     );
+    this.getByIdStmt = db.prepare('SELECT * FROM messages WHERE id = ?');
     this.deleteUpToStmt = db.prepare('DELETE FROM messages WHERE seq <= ?');
 
     // 事务：写消息 + 更新 globalSeq metadata
@@ -141,6 +143,11 @@ export class MessageStore {
   /** 获取 seq 之后的消息 */
   getAfterSeq(lastSeq: number): StoredMessage[] {
     return (this.getAfterStmt.all(lastSeq) as Record<string, unknown>[]).map(r => this.toMsg(r));
+  }
+
+  getById(messageId: string): StoredMessage | null {
+    const row = this.getByIdStmt.get(messageId) as Record<string, unknown> | undefined;
+    return row ? this.toMsg(row) : null;
   }
 
   /** 获取当前 globalSeq */
