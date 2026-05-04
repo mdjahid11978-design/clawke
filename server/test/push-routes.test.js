@@ -89,6 +89,45 @@ test('sendTestPush dispatches through push service', async () => {
   assert.equal(res.body.sent, 1);
 });
 
+test('sendTestPush uses gateway id and stored message content for APNs alert', async () => {
+  const calls = [];
+  const routes = require('../dist/routes/push-routes');
+  routes.initPushRoutes({
+    deviceStore: {
+      upsert: () => {},
+    },
+    conversationStore: {
+      get: (id) => (id === 'conv_1' ? { id } : null),
+    },
+    messageStore: {
+      getById: (id) =>
+        id === 'msg_1'
+          ? { conversationId: 'conv_1', seq: 42, content: 'hello from stored message' }
+          : null,
+    },
+    pushService: {
+      notifyMessage: async (message) => {
+        calls.push(message);
+        return { attempted: 1, sent: 1, failed: 0 };
+      },
+    },
+  });
+
+  const res = fakeRes();
+  await routes.sendTestPush(fakeReq({
+    body: {
+      conversation_id: 'conv_1',
+      message_id: 'msg_1',
+      gateway_id: 'hermes',
+      seq: 42,
+    },
+  }), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls[0].title, 'hermes');
+  assert.equal(calls[0].body, 'hello from stored message');
+});
+
 test('sendTestPush rejects missing conversation and message mismatches when stores are available', async () => {
   const calls = [];
   const routes = require('../dist/routes/push-routes');

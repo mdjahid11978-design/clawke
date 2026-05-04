@@ -190,9 +190,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           await NotificationService.checkNotificationPermissions();
       if (!mounted || permissions == null) return;
       if (permissions.canShowSystemNotifications) {
+        debugPrint('[PushRegistration] notification permission enabled');
         _registerPushDevice();
         return;
       }
+      debugPrint('[PushRegistration] notification permission not enabled');
 
       final introSeen = prefs.getBool(_kNotificationIntroSeenKey) ?? false;
       final userRequested =
@@ -213,9 +215,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         final updated = await NotificationService.requestPermissions();
         if (!mounted) return;
         if (updated?.canShowSystemNotifications == true) {
+          debugPrint('[PushRegistration] notification permission granted');
           _registerPushDevice();
           return;
         }
+        debugPrint('[PushRegistration] notification permission denied');
 
         await _showNotificationSettingsGuideDialog();
         return;

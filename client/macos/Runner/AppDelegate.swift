@@ -48,6 +48,7 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
     let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+    NSLog("[Clawke] Remote push token registered")
     pendingPushTokenResult?(["token": token, "platform": "macos"])
     pendingPushTokenResult = nil
   }
@@ -70,6 +71,7 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     _ application: NSApplication,
     didReceiveRemoteNotification userInfo: [String: Any]
   ) {
+    NSLog("[Clawke] Remote push delivered to app")
     enqueueRemotePushPayload(userInfo, eventType: "delivery")
   }
 
@@ -78,6 +80,7 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
+    NSLog("[Clawke] Notification tapped")
     enqueueRemotePushPayload(
       response.notification.request.content.userInfo,
       eventType: "notification_tap"
@@ -90,6 +93,7 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
+    NSLog("[Clawke] Notification will present: id=\(notification.request.identifier)")
     enqueueRemotePushPayload(
       notification.request.content.userInfo,
       eventType: "delivery"
@@ -152,6 +156,12 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
   }
 
   private func normalizeRemotePushPayload(_ userInfo: [AnyHashable: Any], eventType: String) -> [String: Any] {
+    if eventType == "notification_tap",
+       let localPayload = userInfo["payload"] as? String,
+       let decodedPayload = normalizeLocalNotificationPayload(localPayload, eventType: eventType) {
+      return decodedPayload
+    }
+
     var payload: [String: Any] = [:]
     for (key, value) in userInfo {
       guard let key = key as? String else { continue }
@@ -169,5 +179,30 @@ class AppDelegate: FlutterAppDelegate, UNUserNotificationCenterDelegate {
       payload["event_type"] = eventType
     }
     return payload
+  }
+
+  private func normalizeLocalNotificationPayload(_ rawPayload: String, eventType: String) -> [String: Any]? {
+    guard let data = rawPayload.data(using: .utf8),
+          let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return nil
+    }
+
+    var payload: [String: Any] = [:]
+    for key in ["conversation_id", "message_id", "gateway_id"] {
+      if let value = decoded[key] {
+        payload[key] = "\(value)"
+      }
+    }
+
+    if let number = decoded["seq"] as? NSNumber {
+      payload["seq"] = number.intValue
+    } else if let value = decoded["seq"] {
+      payload["seq"] = Int("\(value)") ?? 0
+    }
+
+    if !payload.isEmpty {
+      payload["event_type"] = eventType
+    }
+    return payload.isEmpty ? nil : payload
   }
 }

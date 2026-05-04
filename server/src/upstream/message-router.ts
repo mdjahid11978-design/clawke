@@ -9,6 +9,7 @@ import type { TranslatedResult, CupEncodedMessage } from '../translator/cup-enco
 import type { CupV2Handler } from '../protocol/cup-v2-handler.js';
 import type { ConversationStore } from '../store/conversation-store.js';
 import { resolveGatewayAlertConversation } from '../services/gateway-alert-service.js';
+import { buildPushAlert } from '../services/push-service.js';
 
 /** 统计收集器接口（解耦具体实现） */
 export interface StatsCollectorLike {
@@ -29,6 +30,8 @@ export interface StoredAgentMessageNotification {
   messageId: string;
   gatewayId: string;
   seq: number;
+  title?: string;
+  body?: string;
 }
 
 type StoredAgentMessageNotifier = (message: StoredAgentMessageNotification) => void | Promise<void>;
@@ -139,11 +142,14 @@ export class MessageRouter {
       );
       console.log(`[MessageRouter] 💾 Stored: serverMsgId=${serverMsgId} seq=${seq} conv=${conversationId} type=${type} len=${fullText.length}`);
       if (this.notifyStoredAgentMessage) {
+        const alert = buildPushAlert(gatewayId, fullText);
         Promise.resolve(this.notifyStoredAgentMessage({
           conversationId,
           messageId: serverMsgId,
           gatewayId,
           seq,
+          title: alert.title,
+          body: alert.body,
         })).catch((error) => {
           console.warn(`[Push] notify stored message failed: ${error instanceof Error ? error.message : String(error)}`);
         });

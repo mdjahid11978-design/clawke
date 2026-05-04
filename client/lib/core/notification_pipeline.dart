@@ -4,6 +4,7 @@ import 'package:client/core/notification_service.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/nav_page_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final notificationPipelineProvider = Provider<NotificationPipeline>((ref) {
@@ -33,9 +34,18 @@ class NotificationPipeline {
     final decision = _policy.evaluate(event, context);
 
     if (!decision.shouldShowSystemNotification) {
+      debugPrint(
+        '[NotificationPipeline] system notification suppressed: '
+        'reason=${decision.reason}, conv=${event.conversationId}, '
+        'msg=${event.messageId}',
+      );
       return decision;
     }
 
+    debugPrint(
+      '[NotificationPipeline] system notification allowed: '
+      'conv=${event.conversationId}, msg=${event.messageId}',
+    );
     _shownMessageIds.add(event.messageId);
     await NotificationService.showMessageNotification(
       title: event.title,

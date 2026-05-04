@@ -41,12 +41,14 @@ test('MessageRouter notifies push pipeline only after storing agent messages', (
   router.handleUpstreamMessage({
     type: 'agent_text_done',
     message_id: 'stream_1',
-    text: 'hello',
+    fullText: 'hello',
   }, 'hermes');
 
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].conversationId, 'hermes');
   assert.equal(notifications[0].gatewayId, 'hermes');
+  assert.equal(notifications[0].title, 'hermes');
+  assert.equal(notifications[0].body, 'hello');
   assert.match(notifications[0].messageId, /^smsg_/);
   assert.equal(notifications[0].seq, 1);
   db.close();

@@ -135,6 +135,7 @@ class NotificationService {
           >();
       final iOSPermissions = await iOSNotifications?.checkPermissions();
       if (iOSPermissions == null) return null;
+      await _logAppleNotificationSettingsDetails('iOS');
       return _fromDarwinPermissions('iOS', iOSPermissions);
     }
 
@@ -199,6 +200,32 @@ class NotificationService {
       'badge=${permissions.isBadgeEnabled}, '
       'sound=${permissions.isSoundEnabled}',
     );
+  }
+
+  static Future<void> _logAppleNotificationSettingsDetails(
+    String platform,
+  ) async {
+    try {
+      final details = await _badgeChannel.invokeMapMethod<String, dynamic>(
+        'checkNotificationSettingsDetails',
+      );
+      if (details == null) return;
+      debugPrint(
+        '[NotificationService] 🔔 $platform notification settings details: '
+        'authorization=${details['authorization']}, '
+        'alert=${details['alert']}, '
+        'badge=${details['badge']}, '
+        'sound=${details['sound']}, '
+        'lockScreen=${details['lockScreen']}, '
+        'notificationCenter=${details['notificationCenter']}',
+      );
+    } on MissingPluginException {
+      return;
+    } on PlatformException catch (e) {
+      debugPrint(
+        '[NotificationService] ⚠️ check notification details failed: ${e.message}',
+      );
+    }
   }
 
   static Future<bool> _checkPlatformNotificationsEnabled() async {

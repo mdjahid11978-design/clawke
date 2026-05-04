@@ -118,11 +118,12 @@ export function buildApnsPayload(
   message: PushMessage,
   options: { playSound?: boolean } = {},
 ): ApnsPayload {
+  const alert = buildPushAlert(message.gatewayId, message.body, message.title);
   const payload: ApnsPayload = {
     aps: {
       alert: {
-        title: message.title || 'New message',
-        body: message.body || 'Open Clawke to sync.',
+        title: alert.title,
+        body: alert.body,
       },
     },
     conversation_id: message.conversationId,
@@ -137,6 +138,21 @@ export function buildApnsPayload(
     payload.aps.sound = 'default';
   }
   return payload;
+}
+
+export function buildPushAlert(gatewayId: string, body?: string, title?: string): { title: string; body: string } {
+  return {
+    title: sanitizePushText(title || gatewayId) || 'Clawke',
+    body: truncatePushPreview(sanitizePushText(body) || 'Open Clawke to sync.'),
+  };
+}
+
+function sanitizePushText(value?: string): string {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function truncatePushPreview(value: string): string {
+  return value.length > 100 ? `${value.slice(0, 100)}...` : value;
 }
 
 export interface ApnsHttp2Config {
@@ -205,10 +221,26 @@ export function createApnsProviderFromEnv(env: NodeJS.ProcessEnv = process.env):
   const bundleId = env.APNS_BUNDLE_ID || '';
   const privateKey = env.APNS_PRIVATE_KEY
     || (env.APNS_PRIVATE_KEY_PATH ? readOptionalFile(env.APNS_PRIVATE_KEY_PATH) : '');
-  if (!keyId || !teamId || !bundleId || !privateKey) return null;
+  const missing = [
+    keyId ? '' : 'APNS_KEY_ID',
+    teamId ? '' : 'APNS_TEAM_ID',
+    bundleId ? '' : 'APNS_BUNDLE_ID',
+    privateKey ? '' : 'APNS_PRIVATE_KEY/APNS_PRIVATE_KEY_PATH',
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    console.warn(`[Push] APNs provider disabled: missing ${missing.join(', ')}`);
+    return null;
+  }
   const sandbox = (env.APNS_ENV || '').toLowerCase() !== 'production'
     && env.APNS_USE_SANDBOX !== '0';
+  const keySource = env.APNS_PRIVATE_KEY ? 'inline' : 'file';
+  console.log(`[Push] APNs provider configured: key_id=${maskApnsValue(keyId)} team_id=${maskApnsValue(teamId)} bundle_id=${bundleId} env=${sandbox ? 'development' : 'production'} private_key=${keySource}`);
   return new ApnsHttp2Provider({ keyId, teamId, bundleId, privateKey, sandbox });
+}
+
+function maskApnsValue(value: string): string {
+  if (value.length <= 4) return '****';
+  return `${value.slice(0, 4)}...`;
 }
 
 function createApnsJwt(config: ApnsHttp2Config): string {

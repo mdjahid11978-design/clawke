@@ -13,6 +13,14 @@ void main() {
     expect(source, contains('eventType: "delivery"'));
   });
 
+  test('macOS AppDelegate routes local notification payload taps', () {
+    final source = File('macos/Runner/AppDelegate.swift').readAsStringSync();
+
+    expect(source, contains('userInfo["payload"]'));
+    expect(source, contains('JSONSerialization.jsonObject'));
+    expect(source, contains('eventType == "notification_tap"'));
+  });
+
   test('iOS AppDelegate captures remote notification launch options', () {
     final source = File('ios/Runner/AppDelegate.swift').readAsStringSync();
 

@@ -164,8 +164,12 @@ class PushRegistrationService {
   }
 
   Future<bool> registerWithServer({String appVersion = 'unknown'}) async {
+    debugPrint('[PushRegistration] APNs device register requested');
     final token = await _tokenProvider();
-    if (token == null || token.token.isEmpty) return false;
+    if (token == null || token.token.isEmpty) {
+      debugPrint('[PushRegistration] APNs token unavailable');
+      return false;
+    }
     final deviceId = await _deviceIdProvider();
     final payload = <String, dynamic>{
       'device_id': deviceId,
@@ -174,6 +178,10 @@ class PushRegistrationService {
       'device_token': token.token,
       'app_version': appVersion,
     };
+    debugPrint(
+      '[PushRegistration] APNs token received: '
+      'platform=${token.platform.wireName}, token_len=${token.token.length}',
+    );
     return _postDevice(payload);
   }
 
@@ -229,7 +237,10 @@ class PushRegistrationService {
       final response = await dio.post('/api/push/devices', data: payload);
       final ok =
           (response.statusCode ?? 0) >= 200 && (response.statusCode ?? 0) < 300;
-      debugPrint('[PushRegistration] APNs device register: $ok');
+      debugPrint(
+        '[PushRegistration] APNs device register: $ok '
+        'status=${response.statusCode}',
+      );
       return ok;
     } catch (e) {
       debugPrint('[PushRegistration] APNs device register failed: $e');

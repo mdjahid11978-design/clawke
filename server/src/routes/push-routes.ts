@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type { PushDevice, PushDeviceInput, PushPlatform, PushProvider } from '../store/push-device-store.js';
 import type { PushService } from '../services/push-service.js';
+import { buildPushAlert } from '../services/push-service.js';
 
 interface PushRouteDeps {
   deviceStore: {
@@ -11,7 +12,7 @@ interface PushRouteDeps {
     get: (conversationId: string) => unknown | null;
   };
   messageStore?: {
-    getById: (messageId: string) => { conversationId: string; seq: number } | null;
+    getById: (messageId: string) => { conversationId: string; seq: number; content?: string } | null;
   };
   pushService?: Pick<PushService, 'notifyMessage'>;
 }
@@ -42,6 +43,7 @@ export async function registerPushDevice(req: Request, res: Response): Promise<v
     deviceToken: firstString(body.device_token),
     appVersion: firstString(body.app_version) || undefined,
   });
+  console.log(`[Push] Device registered: platform=${device.platform} device=${device.deviceId} token_len=${device.deviceToken.length}`);
 
   res.status(201).json({ device: toResponseDevice(device) });
 }
@@ -89,11 +91,18 @@ export async function sendTestPush(req: Request, res: Response): Promise<void> {
     return;
   }
   const badge = optionalFiniteNumber(body.badge);
+  const alert = buildPushAlert(
+    gatewayId,
+    storedMessage?.content || firstString(body.body),
+    firstString(body.title),
+  );
   const result = await deps.pushService.notifyMessage({
     conversationId,
     messageId,
     gatewayId,
     seq,
+    title: alert.title,
+    body: alert.body,
     badge,
     userId: firstString(body.user_id) || undefined,
   });
