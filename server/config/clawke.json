@@ -13,6 +13,7 @@
   },
   "relay": {
     "enable": true,
+    "apiBaseUrl": "https://api.clawke.ai",
     "serverAddr": "relay.clawke.ai",
     "serverPort": 7000
   }

@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import type { PushDevice, PushDeviceInput, PushPlatform, PushProvider } from '../store/push-device-store.js';
-import type { PushService } from '../services/push-service.js';
+import type { CloudPushClient, CloudPushDeviceRegistration, PushService } from '../services/push-service.js';
 import { buildPushAlert } from '../services/push-service.js';
 
 interface PushRouteDeps {
@@ -15,6 +15,7 @@ interface PushRouteDeps {
     getById: (messageId: string) => { conversationId: string; seq: number; content?: string } | null;
   };
   pushService?: Pick<PushService, 'notifyMessage'>;
+  cloudClient?: Pick<CloudPushClient, 'registerDevice' | 'unregisterDevice'> | null;
 }
 
 let deps: PushRouteDeps | null = null;
@@ -35,6 +36,27 @@ export async function registerPushDevice(req: Request, res: Response): Promise<v
   }
 
   const body = req.body as Record<string, unknown>;
+  const registration = toCloudRegistration(body);
+  if (deps.cloudClient) {
+    const result = await deps.cloudClient.registerDevice(registration);
+    if (!result.ok) {
+      console.warn(
+        `[Push] registerDevice failed: status=${result.status ?? 'unknown'} `
+        + `error=${result.error || 'unknown'} platform=${registration.platform} `
+        + `provider=${registration.pushProvider} device=${registration.deviceId} `
+        + `token_len=${registration.deviceToken.length}`,
+      );
+      res.status(502).json({
+        error: 'push_api_failed',
+        message: result.error || 'registerDevice failed',
+      });
+      return;
+    }
+    console.log(`[Push] Device proxied: platform=${registration.platform} device=${registration.deviceId} token_len=${registration.deviceToken.length}`);
+    res.status(201).json({ device: toResponseRegistration(registration) });
+    return;
+  }
+
   const device = deps.deviceStore.upsert({
     deviceId: firstString(body.device_id),
     userId: firstString(body.user_id) || 'local',
@@ -49,12 +71,35 @@ export async function registerPushDevice(req: Request, res: Response): Promise<v
 }
 
 export async function disablePushDevice(req: Request, res: Response): Promise<void> {
-  if (!deps?.deviceStore.disable) {
+  if (!deps) {
     res.status(503).json({ error: 'push_not_initialized' });
     return;
   }
   const deviceId = firstString(req.params.deviceId);
   const provider = (firstString(req.query.push_provider) || firstString(req.body?.push_provider) || 'apns') as PushProvider;
+  if (deps.cloudClient) {
+    const result = await deps.cloudClient.unregisterDevice({
+      deviceId,
+      pushProvider: provider,
+    });
+    if (!result.ok) {
+      console.warn(
+        `[Push] unregisterDevice failed: status=${result.status ?? 'unknown'} `
+        + `error=${result.error || 'unknown'} provider=${provider} device=${deviceId}`,
+      );
+      res.status(502).json({
+        error: 'push_api_failed',
+        message: result.error || 'unregisterDevice failed',
+      });
+      return;
+    }
+    res.json({ ok: true });
+    return;
+  }
+  if (!deps.deviceStore.disable) {
+    res.status(503).json({ error: 'push_not_initialized' });
+    return;
+  }
   const ok = deps.deviceStore.disable(deviceId, provider);
   res.json({ ok });
 }
@@ -111,15 +156,35 @@ export async function sendTestPush(req: Request, res: Response): Promise<void> {
 
 function validateRegisterBody(body: unknown): string | null {
   const map = body as Record<string, unknown> | undefined;
+  const platform = firstString(map?.platform);
+  const provider = firstString(map?.push_provider);
   if (!firstString(map?.device_id)) return 'device_id is required.';
-  if (!isPushPlatform(firstString(map?.platform))) return 'platform must be ios or macos.';
-  if (firstString(map?.push_provider) !== 'apns') return 'push_provider must be apns.';
+  if (!isPushPlatform(platform)) return 'platform must be ios, macos or android.';
+  if (!isPushProvider(provider)) return 'push_provider must be apns or fcm.';
+  if ((platform === 'android' && provider !== 'fcm') || (platform !== 'android' && provider !== 'apns')) {
+    return 'platform and push_provider are inconsistent.';
+  }
   if (!firstString(map?.device_token)) return 'device_token is required.';
   return null;
 }
 
+function toCloudRegistration(body: Record<string, unknown>): CloudPushDeviceRegistration {
+  return {
+    deviceId: firstString(body.device_id),
+    platform: firstString(body.platform) as PushPlatform,
+    pushProvider: firstString(body.push_provider) as PushProvider,
+    deviceToken: firstString(body.device_token),
+    appBundleId: firstString(body.app_bundle_id) || 'ai.clawke.app',
+    appVersion: firstString(body.app_version) || undefined,
+  };
+}
+
 function isPushPlatform(value: string): value is PushPlatform {
-  return value === 'ios' || value === 'macos';
+  return value === 'ios' || value === 'macos' || value === 'android';
+}
+
+function isPushProvider(value: string): value is PushProvider {
+  return value === 'apns' || value === 'fcm';
 }
 
 function toResponseDevice(device: PushDevice): Record<string, unknown> {
@@ -132,6 +197,15 @@ function toResponseDevice(device: PushDevice): Record<string, unknown> {
     app_version: device.appVersion,
     created_at: device.createdAt,
     updated_at: device.updatedAt,
+  };
+}
+
+function toResponseRegistration(device: CloudPushDeviceRegistration): Record<string, unknown> {
+  return {
+    device_id: device.deviceId,
+    platform: device.platform,
+    push_provider: device.pushProvider,
+    app_version: device.appVersion,
   };
 }
 

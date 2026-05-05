@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:client/models/account_summary.dart';
+import 'package:client/core/push_registration_service.dart';
 import 'package:client/services/auth_service.dart';
 import 'package:client/services/media_resolver.dart';
 import 'package:client/core/ws_service.dart';
@@ -53,6 +54,7 @@ class _AccountSwitcherScreenState extends ConsumerState<AccountSwitcherScreen> {
     final t = context.l10n;
     setState(() => _switching = true);
     try {
+      await PushRegistrationService.disableCurrentDeviceOnServer();
       final user = await AuthService.switchToAccount(account);
       if (!mounted) return;
 

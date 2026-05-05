@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:client/data/database/app_database.dart';
 import 'package:client/data/repositories/gateway_repository.dart';
 import 'package:client/data/repositories/task_cache_repository.dart';
@@ -8,6 +10,7 @@ import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/screens/tasks_management_screen.dart';
 import 'package:client/services/tasks_api_service.dart';
+import 'package:client/widgets/app_floating_notice.dart';
 import 'package:client/widgets/app_notice_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +33,22 @@ const _openClawGateway = GatewayInfo(
   displayName: 'OpenClaw',
   gatewayType: 'openclaw',
   status: GatewayConnectionStatus.online,
+  capabilities: ['chat', 'tasks', 'skills', 'models'],
+);
+
+const _nanobotGateway = GatewayInfo(
+  gatewayId: 'nanobot',
+  displayName: 'nanobot',
+  gatewayType: 'nanobot',
+  status: GatewayConnectionStatus.online,
+  capabilities: ['chat', 'tasks', 'skills', 'models'],
+);
+
+const _disconnectedNanobotGateway = GatewayInfo(
+  gatewayId: 'nanobot',
+  displayName: 'nanobot',
+  gatewayType: 'nanobot',
+  status: GatewayConnectionStatus.disconnected,
   capabilities: ['chat', 'tasks', 'skills', 'models'],
 );
 
@@ -77,6 +96,7 @@ class _FakeGatewayRepository implements GatewayRepository {
 List<Override> _taskOverrides({
   required TasksApiService api,
   List<GatewayInfo> gateways = const [_hermesGateway],
+  Stream<List<GatewayInfo>>? gatewayStream,
   List<Conversation>? conversations,
 }) {
   final repository = _FakeGatewayRepository(gateways);
@@ -84,7 +104,9 @@ List<Override> _taskOverrides({
     tasksApiServiceProvider.overrideWithValue(api),
     taskCacheRepositoryProvider.overrideWithValue(_ApiTaskCacheRepository(api)),
     gatewayRepositoryProvider.overrideWithValue(repository),
-    gatewayListProvider.overrideWith((ref) => Stream.value(gateways)),
+    gatewayListProvider.overrideWith(
+      (ref) => gatewayStream ?? Stream.value(gateways),
+    ),
     conversationListProvider.overrideWith(
       (ref) => Stream.value(
         conversations ??
@@ -395,8 +417,12 @@ void main() {
     await tester.pump();
 
     expect(find.byType(SnackBar), findsNothing);
+    expect(find.byType(AppFloatingNotice), findsOneWidget);
     final notice = tester.widget<AppNoticeBar>(find.byType(AppNoticeBar));
     expect(notice.severity, AppNoticeSeverity.error);
+    final noticeRect = tester.getRect(find.byType(AppNoticeBar));
+    expect(noticeRect.top, greaterThan(600));
+    expect(noticeRect.bottom, lessThanOrEqualTo(800));
     expect(
       find.byKey(const ValueKey('tasks_gateway_issue_hermes')),
       findsOneWidget,
@@ -433,12 +459,59 @@ void main() {
     expect(find.text('OpenClaw Gateway 未连接'), findsOneWidget);
     expect(find.text('当前不会发起任务请求'), findsOneWidget);
     expect(find.text('暂无任务'), findsNothing);
+    expect(find.byType(AppNoticeBar), findsNothing);
     expect(
       find.text('OpenClaw 网关响应超时，请确认 OpenClaw Gateway 正在运行后重试。'),
       findsNothing,
     );
     expect(
       find.byKey(const ValueKey('tasks_gateway_issue_openclaw')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('disconnected gateway refresh keeps warning badge silent', (
+    tester,
+  ) async {
+    late final StreamController<List<GatewayInfo>> gatewayEvents;
+    gatewayEvents = StreamController<List<GatewayInfo>>(
+      onListen: () =>
+          gatewayEvents.add(const [_hermesGateway, _nanobotGateway]),
+    );
+    addTearDown(gatewayEvents.close);
+
+    await pumpApp(
+      tester,
+      const TasksManagementScreen(),
+      overrides: _taskOverrides(
+        api: _CountingTasksApiService(),
+        gateways: const [_hermesGateway, _nanobotGateway],
+        gatewayStream: gatewayEvents.stream,
+      ),
+      screenSize: const Size(1280, 800),
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Task hermes'), findsOneWidget);
+
+    await tester.tap(find.text('nanobot'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Task nanobot'), findsOneWidget);
+
+    gatewayEvents.add(const [_hermesGateway, _disconnectedNanobotGateway]);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Task hermes'), findsOneWidget);
+    expect(find.text('Task nanobot'), findsNothing);
+    expect(find.text('nanobot Gateway 未连接'), findsNothing);
+    expect(find.byType(AppNoticeBar), findsNothing);
+    expect(
+      find.byKey(const ValueKey('tasks_gateway_issue_nanobot')),
       findsOneWidget,
     );
   });

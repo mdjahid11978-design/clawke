@@ -74,13 +74,20 @@ void main() {
 
         try {
           for (final step in (testCase['steps'] as List)) {
-            await _runStep(tester, Map<String, dynamic>.from(step as Map));
+            final normalizedStep = Map<String, dynamic>.from(step as Map);
+            debugPrint('[UI E2E] step start: ${jsonEncode(normalizedStep)}');
+            await _runStep(tester, normalizedStep);
+            debugPrint('[UI E2E] step done: ${jsonEncode(normalizedStep)}');
           }
           for (final assertion in (testCase['assert'] as List)) {
-            await _runAssert(
-              tester,
-              Map<String, dynamic>.from(assertion as Map),
+            final normalizedAssert = Map<String, dynamic>.from(
+              assertion as Map,
             );
+            debugPrint(
+              '[UI E2E] assert start: ${jsonEncode(normalizedAssert)}',
+            );
+            await _runAssert(tester, normalizedAssert);
+            debugPrint('[UI E2E] assert done: ${jsonEncode(normalizedAssert)}');
           }
           await _captureScreenshot(tester, appBoundaryKey, runDir, 'final');
         } catch (_) {
@@ -608,6 +615,7 @@ Finder _findIcon(String icon) {
     'stop' => Icons.stop,
     'arrow_back' => Icons.arrow_back,
     'arrow_back_ios_new' => Icons.arrow_back_ios_new,
+    'task_alt' => Icons.task_alt,
     _ => throw UnsupportedError('Unknown UI E2E icon: $icon'),
   });
 }

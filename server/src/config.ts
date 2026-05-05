@@ -22,6 +22,7 @@ export interface OpenClawConfig {
 export interface RelayConfig {
   enable: boolean;
   token: string;
+  apiBaseUrl: string;
   relayUrl: string;
   serverAddr: string;
   serverPort: number;
@@ -52,6 +53,7 @@ const DEFAULTS: ClawkeConfig = {
   relay: {
     enable: false,
     token: '',
+    apiBaseUrl: 'https://api.clawke.ai',
     relayUrl: '',
     serverAddr: '',
     serverPort: 7000,
@@ -148,4 +150,3 @@ export function loadConfig(configPath?: string): ClawkeConfig {
 export function reloadConfig(configPath?: string): ClawkeConfig {
   return loadConfig(configPath);
 }
-

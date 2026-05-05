@@ -45,7 +45,7 @@ import { GatewayStore } from './store/gateway-store.js';
 import { GatewayModelCacheStore } from './store/gateway-model-cache-store.js';
 import { SkillTranslationStore } from './store/skill-translation-store.js';
 import { PushDeviceStore } from './store/push-device-store.js';
-import { PushService, createApnsProviderFromEnv } from './services/push-service.js';
+import { PushService, createCloudPushClient } from './services/push-service.js';
 import { initPushRoutes } from './routes/push-routes.js';
 import { SkillTranslationService, startSkillTranslationWorker } from './services/skill-translation-service.js';
 import { GatewayManageService } from './services/gateway-manage-service.js';
@@ -138,6 +138,7 @@ async function main() {
 
       const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       cfg.relay = {
+        ...(cfg.relay || {}),
         enable: true, serverAddr: credentials.serverAddr || 'relay.clawke.ai',
         serverPort: credentials.serverPort || 7000,
         token: credentials.token, relayUrl: credentials.relayUrl,
@@ -168,15 +169,19 @@ async function main() {
   const gatewayModelCacheStore = new GatewayModelCacheStore(db);
   const skillTranslationStore = new SkillTranslationStore(db);
   const pushDeviceStore = new PushDeviceStore(db);
+  const cloudPushClient = createCloudPushClient({
+    apiBaseUrl: config.relay.apiBaseUrl,
+    relayToken: config.relay.token,
+  });
   const pushService = new PushService({
-    listDevices: (userId?: string) => pushDeviceStore.listEnabled(userId),
-    apnsProvider: createApnsProviderFromEnv(),
+    cloudClient: cloudPushClient,
   });
   initPushRoutes({
     deviceStore: pushDeviceStore,
     conversationStore,
     messageStore,
     pushService,
+    cloudClient: cloudPushClient,
   });
   const gatewayManageService = new GatewayManageService();
   const skillTranslationService = new SkillTranslationService({

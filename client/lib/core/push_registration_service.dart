@@ -11,8 +11,11 @@ import 'package:client/core/notification_event.dart';
 import 'package:client/services/media_resolver.dart';
 
 const _kPushDeviceIdKey = 'clawke_push_device_id';
+const _kPushProviderKey = 'clawke_push_provider';
 
-enum PushPlatform { ios, macos }
+enum PushPlatform { ios, macos, android }
+
+enum PushProvider { apns, fcm }
 
 enum RemotePushEventType { delivery, notificationTap }
 
@@ -20,14 +23,27 @@ extension PushPlatformWire on PushPlatform {
   String get wireName => switch (this) {
     PushPlatform.ios => 'ios',
     PushPlatform.macos => 'macos',
+    PushPlatform.android => 'android',
+  };
+}
+
+extension PushProviderWire on PushProvider {
+  String get wireName => switch (this) {
+    PushProvider.apns => 'apns',
+    PushProvider.fcm => 'fcm',
   };
 }
 
 class PushDeviceToken {
   final String token;
   final PushPlatform platform;
+  final PushProvider pushProvider;
 
-  const PushDeviceToken({required this.token, required this.platform});
+  const PushDeviceToken({
+    required this.token,
+    required this.platform,
+    this.pushProvider = PushProvider.apns,
+  });
 }
 
 typedef PushTokenProvider = Future<PushDeviceToken?> Function();
@@ -95,6 +111,7 @@ class PushRegistrationService {
   static const _channel = MethodChannel('clawke/push');
   static RemotePushHandler? _remotePushHandler;
   static bool _remotePushConfigured = false;
+  static Future<bool>? _registerInFlight;
 
   final PushTokenProvider _tokenProvider;
   final PushDeviceIdProvider _deviceIdProvider;
@@ -110,8 +127,22 @@ class PushRegistrationService {
 
   static Future<bool> registerCurrentDeviceWithServer({
     String appVersion = 'unknown',
+    PushRegistrationService? service,
   }) {
-    return PushRegistrationService().registerWithServer(appVersion: appVersion);
+    final existing = _registerInFlight;
+    if (existing != null) {
+      debugPrint(
+        '[PushRegistration] remote push device register already in progress',
+      );
+      return existing;
+    }
+    final future = (service ?? PushRegistrationService())
+        .registerWithServer(appVersion: appVersion)
+        .whenComplete(() {
+          _registerInFlight = null;
+        });
+    _registerInFlight = future;
+    return future;
   }
 
   static Future<void> configureRemotePushHandling(
@@ -145,6 +176,7 @@ class PushRegistrationService {
     final prefs = await SharedPreferences.getInstance();
     final deviceId = prefs.getString(_kPushDeviceIdKey);
     if (deviceId == null || deviceId.isEmpty) return false;
+    final provider = prefs.getString(_kPushProviderKey) ?? 'apns';
     try {
       final dio = Dio(
         BaseOptions(
@@ -154,7 +186,10 @@ class PushRegistrationService {
           receiveTimeout: const Duration(seconds: 8),
         ),
       );
-      final response = await dio.delete('/api/push/devices/$deviceId');
+      final response = await dio.delete(
+        '/api/push/devices/$deviceId',
+        queryParameters: {'push_provider': provider},
+      );
       return (response.statusCode ?? 0) >= 200 &&
           (response.statusCode ?? 0) < 300;
     } catch (e) {
@@ -164,29 +199,36 @@ class PushRegistrationService {
   }
 
   Future<bool> registerWithServer({String appVersion = 'unknown'}) async {
-    debugPrint('[PushRegistration] APNs device register requested');
+    debugPrint('[PushRegistration] remote push device register requested');
     final token = await _tokenProvider();
     if (token == null || token.token.isEmpty) {
-      debugPrint('[PushRegistration] APNs token unavailable');
+      debugPrint('[PushRegistration] remote push token unavailable');
       return false;
     }
     final deviceId = await _deviceIdProvider();
-    final payload = <String, dynamic>{
-      'device_id': deviceId,
-      'platform': token.platform.wireName,
-      'push_provider': 'apns',
-      'device_token': token.token,
-      'app_version': appVersion,
-    };
-    debugPrint(
-      '[PushRegistration] APNs token received: '
-      'platform=${token.platform.wireName}, token_len=${token.token.length}',
+    final payload = buildRegisterDevicePayload(
+      deviceId: deviceId,
+      platform: token.platform,
+      pushProvider: token.pushProvider,
+      deviceToken: token.token,
+      appVersion: appVersion,
     );
-    return _postDevice(payload);
+    debugPrint(
+      '[PushRegistration] remote push token received: '
+      'platform=${token.platform.wireName}, provider=${token.pushProvider.wireName}, token_len=${token.token.length}',
+    );
+    final ok = await _postDevice(payload);
+    if (ok) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPushProviderKey, token.pushProvider.wireName);
+    }
+    return ok;
   }
 
   static Future<PushDeviceToken?> requestNativeToken() async {
-    if (!Platform.isIOS && !Platform.isMacOS) return null;
+    if (!Platform.isIOS && !Platform.isMacOS && !Platform.isAndroid) {
+      return null;
+    }
     try {
       final result = await _channel.invokeMapMethod<String, dynamic>(
         'registerForRemoteNotifications',
@@ -195,9 +237,18 @@ class PushRegistrationService {
       if (token.isEmpty) return null;
       final platform = switch (result?['platform'] as String?) {
         'macos' => PushPlatform.macos,
+        'android' => PushPlatform.android,
         _ => PushPlatform.ios,
       };
-      return PushDeviceToken(token: token, platform: platform);
+      final pushProvider = switch (result?['push_provider'] as String?) {
+        'fcm' => PushProvider.fcm,
+        _ => PushProvider.apns,
+      };
+      return PushDeviceToken(
+        token: token,
+        platform: platform,
+        pushProvider: pushProvider,
+      );
     } on MissingPluginException {
       return null;
     } on PlatformException catch (e) {
@@ -216,12 +267,51 @@ class PushRegistrationService {
   }
 
   static Future<String> _readStableDeviceId() async {
+    final nativeId = await _readNativeStableDeviceId();
+    if (nativeId != null) return nativeId;
+    return _readSharedPreferencesStableDeviceId();
+  }
+
+  static Future<String?> _readNativeStableDeviceId() async {
+    try {
+      final id = await _channel.invokeMethod<String>('readStableDeviceId');
+      final trimmed = id?.trim() ?? '';
+      return trimmed.isEmpty ? null : trimmed;
+    } on MissingPluginException {
+      return null;
+    } on PlatformException catch (e) {
+      debugPrint(
+        '[PushRegistration] native stable device id failed: ${e.message}',
+      );
+      return null;
+    }
+  }
+
+  static Future<String> _readSharedPreferencesStableDeviceId() async {
     final prefs = await SharedPreferences.getInstance();
     final existing = prefs.getString(_kPushDeviceIdKey);
     if (existing != null && existing.isNotEmpty) return existing;
     final id = const Uuid().v4();
     await prefs.setString(_kPushDeviceIdKey, id);
     return id;
+  }
+
+  @visibleForTesting
+  static Map<String, dynamic> buildRegisterDevicePayload({
+    required String deviceId,
+    required PushPlatform platform,
+    required PushProvider pushProvider,
+    required String deviceToken,
+    required String appVersion,
+  }) {
+    return <String, dynamic>{
+      'device_id': deviceId,
+      'platform': platform.wireName,
+      'push_provider': pushProvider.wireName,
+      'device_token': deviceToken,
+      'app_bundle_id': _appBundleId,
+      'app_version': appVersion,
+    };
   }
 
   static Future<bool> _postDeviceToServer(Map<String, dynamic> payload) async {
@@ -238,13 +328,15 @@ class PushRegistrationService {
       final ok =
           (response.statusCode ?? 0) >= 200 && (response.statusCode ?? 0) < 300;
       debugPrint(
-        '[PushRegistration] APNs device register: $ok '
+        '[PushRegistration] remote push device register: $ok '
         'status=${response.statusCode}',
       );
       return ok;
     } catch (e) {
-      debugPrint('[PushRegistration] APNs device register failed: $e');
+      debugPrint('[PushRegistration] remote push device register failed: $e');
       return false;
     }
   }
+
+  static const String _appBundleId = 'ai.clawke.app';
 }

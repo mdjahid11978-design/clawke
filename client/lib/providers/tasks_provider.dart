@@ -204,23 +204,22 @@ class TasksController extends StateNotifier<TasksState> {
   void selectUnavailableAccount(
     List<TaskAccount> accounts,
     String accountId,
-    String message,
-  ) {
+    String message, {
+    bool showErrorMessage = true,
+  }) {
     if (!accounts.any((account) => account.accountId == accountId)) return;
     _loadGeneration += 1;
-    state = state.copyWith(
+    state = TasksState(
       accounts: accounts,
       selectedAccountId: accountId,
       tasks: const [],
       runs: const [],
-      clearSelectedTask: true,
-      clearRunOutput: true,
       isLoading: false,
       isSaving: false,
       isLoadingRuns: false,
       busyTaskIds: const <String>{},
       togglingTaskIds: const <String>{},
-      errorMessage: message,
+      errorMessage: showErrorMessage ? message : null,
       errorAccountId: accountId,
     );
   }

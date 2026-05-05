@@ -3,6 +3,9 @@ import * as fs from 'node:fs';
 import * as http2 from 'node:http2';
 import type { PushDevice } from '../store/push-device-store.js';
 
+const DEFAULT_CLAWKE_PUSH_API_BASE_URL = 'https://api.clawke.ai';
+export const DEFAULT_CLOUD_PUSH_TIMEOUT_MS = 20_000;
+
 export interface PushMessage {
   conversationId: string;
   messageId: string;
@@ -23,10 +26,36 @@ export interface PushResult {
 
 export interface PushDeliveryDetail {
   deviceId: string;
-  platform: PushDevice['platform'];
+  platform?: PushDevice['platform'];
   ok: boolean;
   status?: number;
   error?: string;
+}
+
+export interface CloudPushOperationResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
+export interface CloudPushDeviceRegistration {
+  deviceId: string;
+  platform: PushDevice['platform'];
+  pushProvider: PushDevice['pushProvider'];
+  deviceToken: string;
+  appBundleId?: string;
+  appVersion?: string;
+}
+
+export interface CloudPushDeviceUnregistration {
+  deviceId: string;
+  pushProvider: PushDevice['pushProvider'];
+}
+
+export interface CloudPushClient {
+  pushMessage(message: PushMessage): Promise<PushResult>;
+  registerDevice(device: CloudPushDeviceRegistration): Promise<CloudPushOperationResult>;
+  unregisterDevice(device: CloudPushDeviceUnregistration): Promise<CloudPushOperationResult>;
 }
 
 export interface ApnsPayload {
@@ -50,7 +79,8 @@ export interface ApnsProvider {
 }
 
 interface PushServiceDeps {
-  listDevices: (userId?: string) => PushDevice[];
+  cloudClient?: Pick<CloudPushClient, 'pushMessage'> | null;
+  listDevices?: (userId?: string) => PushDevice[];
   apnsProvider?: ApnsProvider | null;
 }
 
@@ -58,6 +88,23 @@ export class PushService {
   constructor(private deps: PushServiceDeps) {}
 
   async notifyMessage(message: PushMessage): Promise<PushResult> {
+    if (this.deps.cloudClient) {
+      const result = await this.deps.cloudClient.pushMessage(message);
+      console.log(
+        `[Push] Cloud push result message=${message.messageId} gateway=${message.gatewayId} `
+        + `attempted=${result.attempted} sent=${result.sent} failed=${result.failed}`,
+      );
+      if (result.failed > 0) {
+        const firstError = result.details.find((detail) => detail.error)?.error || 'unknown';
+        console.warn(`[Push] Cloud push failed message=${message.messageId} first_error=${firstError}`);
+      }
+      return result;
+    }
+
+    if (!this.deps.listDevices) {
+      return { attempted: 0, sent: 0, failed: 0, details: [] };
+    }
+
     const devices = this.deps
       .listDevices(message.userId)
       .filter((device) => device.enabled && device.pushProvider === 'apns');
@@ -112,6 +159,176 @@ export class PushService {
     }
     return { attempted: devices.length, sent, failed, details };
   }
+}
+
+type FetchLike = (url: string, init: {
+  method: string;
+  headers: Record<string, string>;
+  body: string;
+  signal?: AbortSignal;
+}) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+}>;
+
+interface CloudPushApiResponse {
+  success?: boolean;
+  actionError?: string | null;
+  value?: {
+    targetCount?: number;
+    successCount?: number;
+    failureCount?: number;
+    lastError?: string;
+  };
+}
+
+export class HttpCloudPushClient implements CloudPushClient {
+  constructor(
+    public readonly baseUrl: string,
+    private relayToken: string,
+    private fetchImpl: FetchLike = fetch,
+    public readonly timeoutMs = DEFAULT_CLOUD_PUSH_TIMEOUT_MS,
+  ) {}
+
+  async pushMessage(message: PushMessage): Promise<PushResult> {
+    const result = await this.postJson('/api/clawke/push/pushMessage.json', {
+      conversationId: message.conversationId,
+      messageId: message.messageId,
+      gatewayId: message.gatewayId,
+      title: message.title,
+      body: message.body,
+      seq: message.seq,
+      badge: message.badge,
+      createdAt: Date.now(),
+    });
+    if (!result.ok) {
+      return cloudFailureResult(result.error || 'cloud_push_failed', result.status);
+    }
+    const value = result.json.value || {};
+    const attempted = finiteNumber(value.targetCount);
+    const sent = finiteNumber(value.successCount);
+    const failed = finiteNumber(value.failureCount);
+    return {
+      attempted,
+      sent,
+      failed,
+      details: failed > 0
+        ? [{ deviceId: 'cloud', ok: false, status: result.status, error: value.lastError || 'cloud_push_failed' }]
+        : [],
+    };
+  }
+
+  async registerDevice(device: CloudPushDeviceRegistration): Promise<CloudPushOperationResult> {
+    const result = await this.postJson('/api/clawke/push/registerDevice.json', {
+      deviceId: device.deviceId,
+      pushProvider: device.pushProvider,
+      platform: device.platform,
+      deviceToken: device.deviceToken,
+      appBundleId: device.appBundleId,
+      appVersion: device.appVersion,
+    });
+    return result.ok
+      ? { ok: true, status: result.status }
+      : { ok: false, status: result.status, error: result.error };
+  }
+
+  async unregisterDevice(device: CloudPushDeviceUnregistration): Promise<CloudPushOperationResult> {
+    const result = await this.postJson('/api/clawke/push/unregisterDevice.json', {
+      deviceId: device.deviceId,
+      pushProvider: device.pushProvider,
+    });
+    return result.ok
+      ? { ok: true, status: result.status }
+      : { ok: false, status: result.status, error: result.error };
+  }
+
+  private async postJson(path: string, body: Record<string, unknown>): Promise<{
+    ok: boolean;
+    status?: number;
+    json: CloudPushApiResponse;
+    error?: string;
+  }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetchImpl(
+        `${this.baseUrl}${path}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.relayToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        },
+      );
+      const raw = await response.text();
+      const json = parseCloudPushResponse(raw);
+      if (!response.ok || json.success !== true) {
+        const error = json.actionError || raw || `HTTP ${response.status}`;
+        return { ok: false, status: response.status, json, error };
+      }
+      return { ok: true, status: response.status, json };
+    } catch (error) {
+      return {
+        ok: false,
+        json: {},
+        error: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+export function createCloudPushClient({
+  apiBaseUrl = DEFAULT_CLAWKE_PUSH_API_BASE_URL,
+  relayToken = '',
+  fetchImpl,
+}: {
+  apiBaseUrl?: string;
+  relayToken?: string;
+  fetchImpl?: FetchLike;
+}): HttpCloudPushClient | null {
+  const token = relayToken.trim();
+  if (!token) {
+    console.warn('[Push] Cloud push disabled: missing relay token');
+    return null;
+  }
+  const baseUrl = normalizeBaseUrl(apiBaseUrl || DEFAULT_CLAWKE_PUSH_API_BASE_URL);
+  console.log(`[Push] Cloud push configured: base_url=${baseUrl}`);
+  return new HttpCloudPushClient(baseUrl, token, fetchImpl);
+}
+
+function parseCloudPushResponse(raw: string): CloudPushApiResponse {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as CloudPushApiResponse;
+  } catch {
+    return { success: false, actionError: raw };
+  }
+}
+
+function cloudFailureResult(error: string, status?: number): PushResult {
+  return {
+    attempted: 1,
+    sent: 0,
+    failed: 1,
+    details: [{ deviceId: 'cloud', ok: false, status, error }],
+  };
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0;
+}
+
+function normalizeBaseUrl(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
 }
 
 export function buildApnsPayload(

@@ -1,10 +1,13 @@
 import Flutter
 import Foundation
+import Security
 import UIKit
 import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private static let stablePushDeviceIdService = "ai.clawke.app.push-device-id"
+  private static let stablePushDeviceIdAccount = "clawke_push_device_id"
   private var appBadgeChannel: FlutterMethodChannel?
   private var pushChannel: FlutterMethodChannel?
   private var pendingPushTokenResult: FlutterResult?
@@ -69,6 +72,8 @@ import UserNotifications
         DispatchQueue.main.async {
           UIApplication.shared.registerForRemoteNotifications()
         }
+      case "readStableDeviceId":
+        result(self.readStablePushDeviceId())
       case "takeRemotePushPayloads":
         result(self.pendingRemotePushPayloads)
         self.pendingRemotePushPayloads.removeAll()
@@ -136,11 +141,7 @@ import UserNotifications
       notification.request.content.userInfo,
       eventType: "delivery"
     )
-    if #available(iOS 14.0, *) {
-      completionHandler([.banner, .list, .sound, .badge])
-    } else {
-      completionHandler([.alert, .sound, .badge])
-    }
+    completionHandler([.badge])
   }
 
   private func enqueueRemotePushPayload(_ userInfo: [AnyHashable: Any], eventType: String) {
@@ -183,6 +184,59 @@ import UserNotifications
       payload["event_type"] = eventType
     }
     return payload
+  }
+
+  private func readStablePushDeviceId() -> String {
+    if let existing = readKeychainString(
+      service: Self.stablePushDeviceIdService,
+      account: Self.stablePushDeviceIdAccount
+    ), !existing.isEmpty {
+      return existing
+    }
+
+    let generated = UUID().uuidString
+    saveKeychainString(
+      generated,
+      service: Self.stablePushDeviceIdService,
+      account: Self.stablePushDeviceIdAccount
+    )
+    return generated
+  }
+
+  private func readKeychainString(service: String, account: String) -> String? {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne
+    ]
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    guard status == errSecSuccess, let data = item as? Data else {
+      return nil
+    }
+    return String(data: data, encoding: .utf8)
+  }
+
+  private func saveKeychainString(_ value: String, service: String, account: String) {
+    guard let data = value.data(using: .utf8) else {
+      return
+    }
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account
+    ]
+    let attributes: [String: Any] = [
+      kSecValueData as String: data
+    ]
+    let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var item = query
+      item[kSecValueData as String] = data
+      SecItemAdd(item as CFDictionary, nil)
+    }
   }
 
   private func updateAppBadgeCount(_ count: Int) {

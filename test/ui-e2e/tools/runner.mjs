@@ -86,6 +86,9 @@ function writeTestConfig() {
       serverPort: 7000,
     },
   };
+  if (setup.gateways && typeof setup.gateways === 'object') {
+    config.gateways = setup.gateways;
+  }
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 

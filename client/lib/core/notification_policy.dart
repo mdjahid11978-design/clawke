@@ -49,6 +49,9 @@ class NotificationPolicy {
     MessageNotificationEvent event,
     NotificationPolicyContext context,
   ) {
+    if (event.source == NotificationEventSource.localWs) {
+      return const NotificationDecision.suppress('local_ws');
+    }
     if (context.isLocalSender || event.senderId == 'local_user') {
       return const NotificationDecision.suppress('local_sender');
     }

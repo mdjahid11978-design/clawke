@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:client/core/push_registration_service.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
 
   test('registerWithServer posts APNs token and stable device id', () async {
     final posts = <Map<String, dynamic>>[];
@@ -28,6 +35,7 @@ void main() {
       'platform': 'ios',
       'push_provider': 'apns',
       'device_token': 'apns-token',
+      'app_bundle_id': 'ai.clawke.app',
       'app_version': '1.0.0',
     });
   });
@@ -54,8 +62,69 @@ void main() {
       'platform': 'macos',
       'push_provider': 'apns',
       'device_token': 'macos-token',
+      'app_bundle_id': 'ai.clawke.app',
       'app_version': '1.0.0',
     });
+  });
+
+  test('registerWithServer posts Android FCM token', () async {
+    final posts = <Map<String, dynamic>>[];
+    final service = PushRegistrationService(
+      tokenProvider: () async => const PushDeviceToken(
+        token: 'fcm-token',
+        platform: PushPlatform.android,
+        pushProvider: PushProvider.fcm,
+      ),
+      deviceIdProvider: () async => 'device-android',
+      postDevice: (payload) async {
+        posts.add(payload);
+        return true;
+      },
+    );
+
+    final ok = await service.registerWithServer(appVersion: '1.0.0');
+
+    expect(ok, isTrue);
+    expect(posts.single, {
+      'device_id': 'device-android',
+      'platform': 'android',
+      'push_provider': 'fcm',
+      'device_token': 'fcm-token',
+      'app_bundle_id': 'ai.clawke.app',
+      'app_version': '1.0.0',
+    });
+  });
+
+  test('registerWithServer prefers native stable push device id', () async {
+    const channel = MethodChannel('clawke/push');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'readStableDeviceId') {
+            return 'native-device-1';
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    final posts = <Map<String, dynamic>>[];
+    final service = PushRegistrationService(
+      tokenProvider: () async => const PushDeviceToken(
+        token: 'apns-token',
+        platform: PushPlatform.ios,
+      ),
+      postDevice: (payload) async {
+        posts.add(payload);
+        return true;
+      },
+    );
+
+    final ok = await service.registerWithServer(appVersion: '1.0.0');
+
+    expect(ok, isTrue);
+    expect(posts.single['device_id'], 'native-device-1');
   });
 
   test('registerWithServer no-ops when native token is unavailable', () async {
@@ -74,6 +143,39 @@ void main() {
     expect(ok, isFalse);
     expect(posted, isFalse);
   });
+
+  test(
+    'registerCurrentDeviceWithServer deduplicates in-flight registration',
+    () async {
+      final completer = Completer<bool>();
+      var postCount = 0;
+      final service = PushRegistrationService(
+        tokenProvider: () async => const PushDeviceToken(
+          token: 'fcm-token',
+          platform: PushPlatform.android,
+          pushProvider: PushProvider.fcm,
+        ),
+        deviceIdProvider: () async => 'device-android',
+        postDevice: (_) {
+          postCount += 1;
+          return completer.future;
+        },
+      );
+
+      final first = PushRegistrationService.registerCurrentDeviceWithServer(
+        service: service,
+      );
+      final second = PushRegistrationService.registerCurrentDeviceWithServer(
+        service: service,
+      );
+
+      await Future<void>.delayed(Duration.zero);
+      expect(postCount, 1);
+      completer.complete(true);
+      expect(await first, isTrue);
+      expect(await second, isTrue);
+    },
+  );
 
   test('RemotePushPayload parses routing fields', () {
     final payload = RemotePushPayload.fromMap({

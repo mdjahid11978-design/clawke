@@ -8,6 +8,9 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 // 从 dist/ 导入编译后的 TS 模块
 const { Database } = require('../dist/store/database');
@@ -736,9 +739,38 @@ describe('TS: toUpstreamMessage', () => {
 
 describe('TS: Config', () => {
   it('loadConfig returns server config with defaults', () => {
-    const config = loadConfig();
-    assert.ok(config.server);
-    assert.ok(['mock', 'openclaw'].includes(config.server.mode));
-    assert.ok(config.server.httpPort > 0);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-config-defaults-'));
+    const configPath = path.join(dir, 'clawke.json');
+    fs.writeFileSync(configPath, JSON.stringify({}));
+
+    try {
+      const config = loadConfig(configPath);
+      assert.ok(config.server);
+      assert.ok(['mock', 'openclaw'].includes(config.server.mode));
+      assert.ok(config.server.httpPort > 0);
+      assert.equal(config.relay.apiBaseUrl, 'https://api.clawke.ai');
+      assert.equal(config.push, undefined);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
+
+  it('loadConfig reads relay apiBaseUrl', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-config-'));
+    const configPath = path.join(dir, 'clawke.json');
+    fs.writeFileSync(configPath, JSON.stringify({
+      relay: {
+        token: 'clk_relay_token',
+        apiBaseUrl: 'https://api.clawke.ai/',
+      },
+    }));
+
+    const config = loadConfig(configPath);
+
+    assert.equal(config.relay.token, 'clk_relay_token');
+    assert.equal(config.relay.apiBaseUrl, 'https://api.clawke.ai/');
+    assert.equal(config.push, undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
 });

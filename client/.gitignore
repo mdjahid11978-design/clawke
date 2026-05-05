@@ -49,6 +49,7 @@ app.*.map.json
 /android/upload-keystore.jks
 /android/keystore/
 /android/local.properties
+/android/app/google-services.json
 *.jks
 *.keystore
 /ios/ExportOptions.plist

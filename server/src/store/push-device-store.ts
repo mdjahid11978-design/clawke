@@ -1,8 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3';
 import type { Database } from './database.js';
 
-export type PushPlatform = 'ios' | 'macos';
-export type PushProvider = 'apns';
+export type PushPlatform = 'ios' | 'macos' | 'android';
+export type PushProvider = 'apns' | 'fcm';
 
 export interface PushDeviceInput {
   deviceId: string;

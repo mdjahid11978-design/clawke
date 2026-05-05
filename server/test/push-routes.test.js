@@ -55,6 +55,168 @@ test('registerPushDevice stores APNs token without echoing token', async () => {
   assert.equal(res.body.device.device_token, undefined);
 });
 
+test('registerPushDevice proxies APNs token to cloud API when configured', async () => {
+  const cloudCalls = [];
+  const routes = require('../dist/routes/push-routes');
+  routes.initPushRoutes({
+    deviceStore: {
+      upsert: () => {
+        throw new Error('local store should not be called');
+      },
+    },
+    cloudClient: {
+      registerDevice: async (device) => {
+        cloudCalls.push(device);
+        return { ok: true, status: 200 };
+      },
+    },
+  });
+
+  const res = fakeRes();
+  await routes.registerPushDevice(fakeReq({
+    body: {
+      device_id: 'ios-device-1',
+      platform: 'ios',
+      push_provider: 'apns',
+      device_token: 'secret-token',
+      app_bundle_id: 'ai.clawke.app',
+      app_version: '1.0.0',
+    },
+  }), res);
+
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(cloudCalls, [{
+    deviceId: 'ios-device-1',
+    platform: 'ios',
+    pushProvider: 'apns',
+    deviceToken: 'secret-token',
+    appBundleId: 'ai.clawke.app',
+    appVersion: '1.0.0',
+  }]);
+  assert.equal(res.body.device.device_id, 'ios-device-1');
+  assert.equal(res.body.device.device_token, undefined);
+});
+
+test('registerPushDevice proxies Android FCM token to cloud API when configured', async () => {
+  const cloudCalls = [];
+  const routes = require('../dist/routes/push-routes');
+  routes.initPushRoutes({
+    deviceStore: {
+      upsert: () => {
+        throw new Error('local store should not be called');
+      },
+    },
+    cloudClient: {
+      registerDevice: async (device) => {
+        cloudCalls.push(device);
+        return { ok: true, status: 200 };
+      },
+    },
+  });
+
+  const res = fakeRes();
+  await routes.registerPushDevice(fakeReq({
+    body: {
+      device_id: 'android-device-1',
+      platform: 'android',
+      push_provider: 'fcm',
+      device_token: 'secret-fcm-token',
+      app_bundle_id: 'ai.clawke.app',
+      app_version: '1.0.0',
+    },
+  }), res);
+
+  assert.equal(res.statusCode, 201);
+  assert.deepEqual(cloudCalls, [{
+    deviceId: 'android-device-1',
+    platform: 'android',
+    pushProvider: 'fcm',
+    deviceToken: 'secret-fcm-token',
+    appBundleId: 'ai.clawke.app',
+    appVersion: '1.0.0',
+  }]);
+  assert.equal(res.body.device.device_id, 'android-device-1');
+  assert.equal(res.body.device.device_token, undefined);
+});
+
+test('registerPushDevice logs cloud API failure details without token', async () => {
+  const logs = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => logs.push(String(message));
+
+  try {
+    const routes = require('../dist/routes/push-routes');
+    routes.initPushRoutes({
+      deviceStore: {
+        upsert: () => {
+          throw new Error('local store should not be called');
+        },
+      },
+      cloudClient: {
+        registerDevice: async () => ({
+          ok: false,
+          status: 401,
+          error: 'LOGIN_FAILED',
+        }),
+      },
+    });
+
+    const res = fakeRes();
+    await routes.registerPushDevice(fakeReq({
+      body: {
+        device_id: 'android-device-1',
+        platform: 'android',
+        push_provider: 'fcm',
+        device_token: 'secret-fcm-token',
+        app_bundle_id: 'ai.clawke.app',
+        app_version: '1.0.0',
+      },
+    }), res);
+
+    assert.equal(res.statusCode, 502);
+    assert.equal(res.body.error, 'push_api_failed');
+    assert.equal(res.body.message, 'LOGIN_FAILED');
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /registerDevice failed/);
+    assert.match(logs[0], /status=401/);
+    assert.match(logs[0], /error=LOGIN_FAILED/);
+    assert.match(logs[0], /platform=android/);
+    assert.match(logs[0], /provider=fcm/);
+    assert.match(logs[0], /device=android-device-1/);
+    assert.match(logs[0], /token_len=16/);
+    assert.doesNotMatch(logs[0], /secret-fcm-token/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test('disablePushDevice proxies unregister to cloud API when configured', async () => {
+  const cloudCalls = [];
+  const routes = require('../dist/routes/push-routes');
+  routes.initPushRoutes({
+    deviceStore: {},
+    cloudClient: {
+      unregisterDevice: async (device) => {
+        cloudCalls.push(device);
+        return { ok: true, status: 200 };
+      },
+    },
+  });
+
+  const res = fakeRes();
+  await routes.disablePushDevice(fakeReq({
+    params: { deviceId: 'ios-device-1' },
+    query: { push_provider: 'apns' },
+  }), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true });
+  assert.deepEqual(cloudCalls, [{
+    deviceId: 'ios-device-1',
+    pushProvider: 'apns',
+  }]);
+});
+
 test('sendTestPush dispatches through push service', async () => {
   const calls = [];
   const routes = require('../dist/routes/push-routes');

@@ -11,7 +11,7 @@ import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/tasks_provider.dart';
-import 'package:client/widgets/app_notice_bar.dart';
+import 'package:client/widgets/app_floating_notice.dart';
 import 'package:client/widgets/app_snack_bar.dart';
 import 'package:client/widgets/empty_state_panel.dart';
 import 'package:client/widgets/gateway_selector_pane.dart';
@@ -91,8 +91,14 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
             unavailableGateway: unavailableGateway,
             compact: !wide,
           );
+          final bodyWithNotice = _buildBodyWithErrorNotice(
+            body,
+            state,
+            gateways,
+            unavailableGateway: unavailableGateway,
+          );
 
-          if (!wide) return body;
+          if (!wide) return bodyWithNotice;
 
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -109,7 +115,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
                     .read(gatewayRepositoryProvider)
                     .renameGateway(gatewayId, displayName),
               ),
-              Expanded(child: body),
+              Expanded(child: bodyWithNotice),
             ],
           );
         },
@@ -186,16 +192,11 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
       'tasks',
       currentGatewayId: state.selectedAccountId,
     );
-    final selected = gatewayForSelection(
-      source,
-      'tasks',
-      currentGatewayId: state.selectedAccountId,
+    final accounts = _taskAccountsFromGateways(
+      ordered
+          .where((gateway) => !gatewayUnavailableFor(gateway, 'tasks'))
+          .toList(),
     );
-    final accounts = _taskAccountsFromGateways(ordered);
-    if (selected != null && gatewayUnavailableFor(selected, 'tasks')) {
-      _markTasksGatewayUnavailable(accounts, selected);
-      return;
-    }
     await ref.read(tasksControllerProvider.notifier).syncAccounts(accounts);
   }
 
@@ -375,6 +376,31 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
     );
   }
 
+  Widget _buildBodyWithErrorNotice(
+    Widget body,
+    TasksState state,
+    List<GatewayInfo> gateways, {
+    GatewayInfo? unavailableGateway,
+  }) {
+    final showErrorNotice = _shouldShowErrorNotice(
+      state,
+      gateways,
+      unavailableGateway,
+    );
+    if (!showErrorNotice) return body;
+
+    return Stack(
+      children: [
+        Positioned.fill(child: body),
+        AppFloatingNotice.error(
+          message: state.errorMessage!,
+          onDismiss: () =>
+              ref.read(tasksControllerProvider.notifier).clearError(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildTaskList(
     TasksState state,
     List<GatewayInfo> gateways, {
@@ -426,16 +452,6 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
           errorGatewayId: state.errorAccountId ?? unavailableGateway?.gatewayId,
           issueKeyPrefix: 'tasks_gateway_issue',
           onSelected: _selectAccount,
-        ),
-        const SizedBox(height: 18),
-      ],
-      if (state.errorMessage != null) ...[
-        Align(
-          child: AppNoticeBar.error(
-            message: state.errorMessage!,
-            onDismiss: () =>
-                ref.read(tasksControllerProvider.notifier).clearError(),
-          ),
         ),
         const SizedBox(height: 18),
       ],
@@ -531,16 +547,6 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
         ),
         const SizedBox(height: 18),
       ],
-      if (state.errorMessage != null) ...[
-        Align(
-          child: AppNoticeBar.error(
-            message: state.errorMessage!,
-            onDismiss: () =>
-                ref.read(tasksControllerProvider.notifier).clearError(),
-          ),
-        ),
-        const SizedBox(height: 18),
-      ],
       _Header(
         isLoading: state.isLoading,
         canCreate: state.selectedAccountId != null,
@@ -620,6 +626,20 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
     return gateway;
   }
 
+  bool _shouldShowErrorNotice(
+    TasksState state,
+    List<GatewayInfo> gateways,
+    GatewayInfo? unavailableGateway,
+  ) {
+    final errorAccountId = state.errorAccountId;
+    final errorGateway = gatewayById(gateways, errorAccountId);
+    return state.errorMessage != null &&
+        !(errorGateway != null &&
+            gatewayUnavailableFor(errorGateway, 'tasks')) &&
+        !(unavailableGateway != null &&
+            errorAccountId == unavailableGateway.gatewayId);
+  }
+
   List<TaskAccount> _taskAccountsFromGateways(List<GatewayInfo> gateways) {
     return gateways
         .where((gateway) => gateway.supports('tasks'))
@@ -642,6 +662,7 @@ class _TasksManagementScreenState extends ConsumerState<TasksManagementScreen> {
           accounts,
           gateway.gatewayId,
           gatewayUnavailableStateMessage(context, gateway),
+          showErrorMessage: false,
         );
   }
 

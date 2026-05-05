@@ -5,9 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const policy = NotificationPolicy();
 
-  MessageNotificationEvent event({String senderId = 'agent'}) {
+  MessageNotificationEvent event({
+    NotificationEventSource source = NotificationEventSource.remotePush,
+    String senderId = 'agent',
+  }) {
     return MessageNotificationEvent(
-      source: NotificationEventSource.localWs,
+      source: source,
       conversationId: 'conv_1',
       messageId: 'msg_1',
       gatewayId: 'gateway_1',
@@ -37,8 +40,33 @@ void main() {
     );
   }
 
-  test('shows notification for non-visible agent message', () {
-    final decision = policy.evaluate(event(), context());
+  test('suppresses local websocket message notification', () {
+    final decision = policy.evaluate(
+      event(source: NotificationEventSource.localWs),
+      context(),
+    );
+
+    expect(decision.shouldShowSystemNotification, false);
+    expect(decision.reason, 'local_ws');
+  });
+
+  test('shows remote push notification for non-visible agent message', () {
+    final decision = policy.evaluate(
+      const MessageNotificationEvent(
+        source: NotificationEventSource.remotePush,
+        conversationId: 'conv_1',
+        messageId: 'msg_1',
+        gatewayId: 'gateway_1',
+        seq: 7,
+        title: 'hermes',
+        preview: 'hello',
+        priority: NotificationPriority.normal,
+        category: NotificationCategory.message,
+        createdAt: 1,
+        senderId: 'agent',
+      ),
+      context(),
+    );
 
     expect(decision.shouldShowSystemNotification, true);
     expect(decision.shouldPlaySound, true);

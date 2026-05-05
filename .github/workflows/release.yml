@@ -65,7 +65,44 @@ jobs:
         working-directory: client
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Disable code signing for CI
+      - name: Verify macOS production APNs entitlement
+        run: |
+          APNS_ENV=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.aps-environment' client/macos/Runner/Release.entitlements)
+          echo "macOS Release APNs environment: ${APNS_ENV}"
+          test "$APNS_ENV" = "production"
+
+      - name: Import macOS signing assets
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_PROVISION_PROFILE_BASE64 }}
+          MACOS_CODE_SIGN_IDENTITY: ${{ secrets.MACOS_CODE_SIGN_IDENTITY }}
+        run: |
+          test -n "$MACOS_CERTIFICATE_BASE64"
+          test -n "$MACOS_CERTIFICATE_PASSWORD"
+          test -n "$MACOS_PROVISION_PROFILE_BASE64"
+          test -n "$MACOS_CODE_SIGN_IDENTITY"
+
+          CERT_PATH="$RUNNER_TEMP/macos-signing.p12"
+          PROFILE_PATH="$RUNNER_TEMP/macos.provisionprofile"
+          KEYCHAIN_PATH="$RUNNER_TEMP/clawke-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+
+          echo "$MACOS_CERTIFICATE_BASE64" | base64 -D > "$CERT_PATH"
+          echo "$MACOS_PROVISION_PROFILE_BASE64" | base64 -D > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/clawke-macos.provisionprofile"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Prepare unsigned macOS build for manual signing
         working-directory: client/macos
         run: |
           # Modify pbxproj directly (pbxproj settings override xcconfig)
@@ -84,6 +121,36 @@ jobs:
       - name: Build macOS
         working-directory: client
         run: flutter build macos --release
+
+      - name: Sign and verify macOS production app
+        env:
+          MACOS_CODE_SIGN_IDENTITY: ${{ secrets.MACOS_CODE_SIGN_IDENTITY }}
+        run: |
+          APP_PATH="client/build/macos/Build/Products/Release/clawke.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH=$(find client/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          fi
+
+          cp "$RUNNER_TEMP/macos.provisionprofile" "$APP_PATH/Contents/embedded.provisionprofile"
+          security cms -D -i "$RUNNER_TEMP/macos.provisionprofile" > "$RUNNER_TEMP/macos-profile.plist"
+          APP_ID_PREFIX=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationIdentifierPrefix:0' "$RUNNER_TEMP/macos-profile.plist")
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$RUNNER_TEMP/macos-profile.plist")
+          export APP_ID_PREFIX
+          export APP_ID_PREFIX_PLACEHOLDER='$(AppIdentifierPrefix)'
+          cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
+          perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
+
+          codesign --force --deep --options runtime --timestamp \
+            --sign "$MACOS_CODE_SIGN_IDENTITY" \
+            --entitlements "$RUNNER_TEMP/macos-release.entitlements" \
+            "$APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
+          cat "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
       - name: Create DMG
         run: |

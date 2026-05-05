@@ -19,7 +19,7 @@ import 'package:client/services/media_resolver.dart';
 import 'package:client/widgets/nav_rail.dart';
 import 'package:client/widgets/debug_log_panel.dart';
 import 'package:client/widgets/widget_factory.dart';
-import 'package:client/widgets/app_notice_bar.dart';
+import 'package:client/widgets/app_floating_notice.dart';
 import 'package:client/widgets/unread_count_badge.dart';
 import 'package:client/widgets/notification_permission_dialog.dart';
 import 'package:client/services/auth_service.dart';
@@ -409,30 +409,26 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     final bottomOffset = isMobileLayout ? 64.0 : 16.0;
     final horizontalInset = isMobileLayout ? 0.0 : 16.0;
 
-    return Positioned(
-      left: horizontalInset,
-      right: horizontalInset,
-      bottom: bottomOffset,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: isConnecting
-            ? AppNoticeBar.info(
-                message: alertText,
-                showProgress: true,
-                edgeToEdge: isMobileLayout,
-                onDismiss: () => setState(() => _alertDismissed = true),
-              )
-            : AppNoticeBar.error(
-                message: alertText,
-                detail: context.l10n.checkServerSetup,
-                onAction: () => ref.read(wsServiceProvider).reconnect(),
-                actionIcon: Icons.refresh,
-                actionTooltip: context.l10n.connecting,
-                edgeToEdge: isMobileLayout,
-                onDismiss: () => setState(() => _alertDismissed = true),
-              ),
-      ),
-    );
+    return isConnecting
+        ? AppFloatingNotice.info(
+            message: alertText,
+            showProgress: true,
+            edgeToEdge: isMobileLayout,
+            bottom: bottomOffset,
+            horizontalInset: horizontalInset,
+            onDismiss: () => setState(() => _alertDismissed = true),
+          )
+        : AppFloatingNotice.error(
+            message: alertText,
+            detail: context.l10n.checkServerSetup,
+            onAction: () => ref.read(wsServiceProvider).reconnect(),
+            actionIcon: Icons.refresh,
+            actionTooltip: context.l10n.connecting,
+            edgeToEdge: isMobileLayout,
+            bottom: bottomOffset,
+            horizontalInset: horizontalInset,
+            onDismiss: () => setState(() => _alertDismissed = true),
+          );
   }
 
   // ─────────────────────────────────────────────
