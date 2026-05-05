@@ -110,6 +110,7 @@ jobs:
           SIGN_IDENTITY_HASH="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/[A-F0-9]{40}/ {print $2; exit}')"
           test -n "$SIGN_IDENTITY_HASH"
           echo "MACOS_SIGN_IDENTITY_HASH=$SIGN_IDENTITY_HASH" >> "$GITHUB_ENV"
+          echo "MACOS_SIGNING_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Prepare unsigned macOS build for manual signing
         working-directory: client/macos
@@ -134,6 +135,7 @@ jobs:
       - name: Sign and verify macOS production app
         run: |
           test -n "$MACOS_SIGN_IDENTITY_HASH"
+          test -n "$MACOS_SIGNING_KEYCHAIN"
 
           assert_signature_has_certificate() {
             local target="$1"
@@ -160,9 +162,11 @@ jobs:
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
 
           codesign --force --deep --options runtime --timestamp \
+            --keychain "$MACOS_SIGNING_KEYCHAIN" \
             --sign "$MACOS_SIGN_IDENTITY_HASH" \
             --entitlements "$RUNNER_TEMP/macos-release.entitlements" \
             "$APP_PATH"
+          security delete-keychain "$MACOS_SIGNING_KEYCHAIN"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           assert_signature_has_certificate "$APP_PATH"
           find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
@@ -237,6 +241,55 @@ jobs:
         with:
           name: macos-dmg
           path: Clawke-macOS.dmg
+
+  # ── Verify published macOS asset ─────────────────────────────
+  verify-macos-release:
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - name: Download and verify published macOS DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assert_signature_has_certificate() {
+            local target="$1"
+            local prefix="$RUNNER_TEMP/codesign-cert-$(uuidgen)-"
+            codesign -d --extract-certificates="$prefix" "$target" >/dev/null 2>&1 || true
+            if [ ! -s "${prefix}0" ]; then
+              echo "::error::Code signature has no embedded signing certificate: $target"
+              exit 1
+            fi
+          }
+
+          TAG="${GITHUB_REF_NAME}"
+          VERIFY_DIR="$RUNNER_TEMP/release-verify"
+          mkdir -p "$VERIFY_DIR"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "Clawke-${TAG}-macOS.dmg" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+
+          DMG_PATH="$VERIFY_DIR/Clawke-${TAG}-macOS.dmg"
+          hdiutil verify "$DMG_PATH"
+
+          VERIFY_MOUNT="$RUNNER_TEMP/clawke-release-dmg-verify"
+          mkdir -p "$VERIFY_MOUNT"
+          hdiutil attach "$DMG_PATH" -readonly -nobrowse -mountpoint "$VERIFY_MOUNT" >/dev/null
+          trap 'hdiutil detach "$VERIFY_MOUNT" >/dev/null 2>&1 || true' EXIT
+
+          DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
+          test -n "$DMG_APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$DMG_APP_PATH"
+          assert_signature_has_certificate "$DMG_APP_PATH"
+          find "$DMG_APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
+            assert_signature_has_certificate "$framework"
+          done
+          codesign -d --entitlements - "$DMG_APP_PATH" > "$RUNNER_TEMP/macos-release-entitlements.txt" 2>/dev/null
+          cat "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
+          spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
 
   # ── Windows ──────────────────────────────────────────────────
   build-windows:
