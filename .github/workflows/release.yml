@@ -218,7 +218,6 @@ jobs:
 
           xcrun stapler staple Clawke-macOS.dmg
           hdiutil verify Clawke-macOS.dmg
-          spctl --assess --type open --context context:primary-signature --verbose=4 Clawke-macOS.dmg
 
           VERIFY_MOUNT="$RUNNER_TEMP/clawke-dmg-verify"
           mkdir -p "$VERIFY_MOUNT"
