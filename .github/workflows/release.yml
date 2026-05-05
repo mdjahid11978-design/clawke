@@ -184,13 +184,12 @@ jobs:
           fi
           bash scripts/create_macos_dmg.sh "$APP_PATH" Clawke-macOS.dmg Clawke
 
-      - name: Sign, notarize and staple DMG
+      - name: Notarize and staple DMG
         env:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
         run: |
-          test -n "$MACOS_SIGN_IDENTITY_HASH"
           test -n "$APPLE_NOTARY_KEY_ID"
           test -n "$APPLE_NOTARY_ISSUER_ID"
           test -n "$APPLE_NOTARY_KEY_BASE64"
@@ -205,8 +204,7 @@ jobs:
             fi
           }
 
-          codesign --force --sign "$MACOS_SIGN_IDENTITY_HASH" --timestamp Clawke-macOS.dmg
-          codesign --verify --verbose=2 Clawke-macOS.dmg
+          hdiutil verify Clawke-macOS.dmg
 
           NOTARY_KEY="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           echo "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$NOTARY_KEY"
@@ -219,6 +217,7 @@ jobs:
             --wait
 
           xcrun stapler staple Clawke-macOS.dmg
+          hdiutil verify Clawke-macOS.dmg
           spctl --assess --type open --context context:primary-signature --verbose=4 Clawke-macOS.dmg
 
           VERIFY_MOUNT="$RUNNER_TEMP/clawke-dmg-verify"
