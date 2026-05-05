@@ -11,6 +11,13 @@ STAGE_DIR="$SCRIPT_TMP_DIR/stage"
 RW_DMG="$SCRIPT_TMP_DIR/${VOLUME_NAME}-rw.dmg"
 BACKGROUND_SWIFT="$SCRIPT_TMP_DIR/create_background.swift"
 BACKGROUND_PATH="$STAGE_DIR/.background/background.png"
+BACKGROUND_WIDTH=720
+BACKGROUND_HEIGHT=460
+FINDER_CHROME_HEIGHT=66
+WINDOW_LEFT=160
+WINDOW_TOP=120
+WINDOW_RIGHT=$((WINDOW_LEFT + BACKGROUND_WIDTH))
+WINDOW_BOTTOM=$((WINDOW_TOP + BACKGROUND_HEIGHT + FINDER_CHROME_HEIGHT))
 MOUNT_POINT=""
 DEVICE=""
 
@@ -33,14 +40,13 @@ mkdir -p "$STAGE_DIR/.background"
 ditto "$APP_PATH" "$STAGE_DIR/$APP_NAME"
 ln -s /Applications "$STAGE_DIR/Applications"
 
-APP_ICON_PATH="$APP_PATH/Contents/Resources/AppIcon.icns"
-
 cat > "$BACKGROUND_SWIFT" <<'SWIFT'
 import AppKit
 
 let outputPath = CommandLine.arguments[1]
-let iconPath = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : ""
-let size = NSSize(width: 720, height: 460)
+let backgroundWidth = Double(CommandLine.arguments[2])!
+let backgroundHeight = Double(CommandLine.arguments[3])!
+let size = NSSize(width: backgroundWidth, height: backgroundHeight)
 let image = NSImage(size: size)
 
 func color(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat, _ alpha: CGFloat = 1.0) -> NSColor {
@@ -87,20 +93,16 @@ color(255, 255, 255, 0.16).setStroke()
 panel.lineWidth = 1.0
 panel.stroke()
 
-if let icon = NSImage(contentsOfFile: iconPath) {
-    icon.draw(in: NSRect(x: 318, y: 314, width: 84, height: 84), from: .zero, operation: .sourceOver, fraction: 1.0)
-}
-
 drawText(
     "Clawke",
-    rect: NSRect(x: 80, y: 276, width: 560, height: 46),
+    rect: NSRect(x: 80, y: 300, width: 560, height: 46),
     size: 34,
     weight: .bold,
     color: color(248, 255, 252)
 )
 drawText(
     "Drag Clawke to Applications",
-    rect: NSRect(x: 80, y: 242, width: 560, height: 28),
+    rect: NSRect(x: 80, y: 266, width: 560, height: 28),
     size: 16,
     weight: .medium,
     color: color(205, 224, 216)
@@ -148,7 +150,7 @@ guard let tiffData = image.tiffRepresentation,
 try pngData.write(to: URL(fileURLWithPath: outputPath))
 SWIFT
 
-swift "$BACKGROUND_SWIFT" "$BACKGROUND_PATH" "$APP_ICON_PATH"
+swift "$BACKGROUND_SWIFT" "$BACKGROUND_PATH" "$BACKGROUND_WIDTH" "$BACKGROUND_HEIGHT"
 
 APP_SIZE_MB="$(du -sm "$STAGE_DIR" | awk '{print $1}')"
 DMG_SIZE_MB="$((APP_SIZE_MB + 180))"
@@ -170,15 +172,17 @@ MOUNT_POINT="$(awk '/Apple_HFS/ {for (i=3; i<=NF; i++) printf "%s%s", (i == 3 ? 
 if [ -z "$MOUNT_POINT" ]; then
   MOUNT_POINT="/Volumes/$VOLUME_NAME"
 fi
+FINDER_VOLUME_NAME="$(basename "$MOUNT_POINT")"
 
 osascript <<APPLESCRIPT
 tell application "Finder"
-  tell disk "$VOLUME_NAME"
+  tell disk "$FINDER_VOLUME_NAME"
     open
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set bounds of container window to {160, 120, 880, 580}
+    set pathbar visible of container window to false
+    set bounds of container window to {$WINDOW_LEFT, $WINDOW_TOP, $WINDOW_RIGHT, $WINDOW_BOTTOM}
     set viewOptions to icon view options of container window
     set arrangement of viewOptions to not arranged
     set icon size of viewOptions to 104
