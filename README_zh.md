@@ -98,7 +98,7 @@ clawke server status      # 查看 Clawke 服务状态
 ### 安装客户端
 
 - **iOS**：请在 [App Store](https://apps.apple.com/us/app/clawke/id6760453431) 下载。
-- **Android**：请在 [Google Play](#) 下载（即将上线）。
+- **Android**：请在 [Google Play](#) 下载，或直接到 [Releases](https://github.com/clawke/clawke/releases) 页面下载 APK 安装包。
 - **macOS / Windows / Linux**：请前往 Github 的 [Releases](https://github.com/clawke/clawke/releases) 页面下载编译好的安装包。
 
 如果您希望自己构建客户端：

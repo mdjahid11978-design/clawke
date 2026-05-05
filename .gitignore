@@ -62,8 +62,9 @@ relay-server/frp-auth/
 bak/
 .worktrees/
 dump.rdb
-scripts/
+scripts/*
 !scripts/install.sh
+!scripts/create_macos_dmg.sh
 client/test_download.dart
 
 # Private (local only)

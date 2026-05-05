@@ -98,7 +98,7 @@ clawke server status      # Check server status
 ### Install Client
 
 - **iOS**: Download from the [App Store](https://apps.apple.com/us/app/clawke/id6760453431).
-- **Android**: Download from [Google Play](#) *(Coming soon)*.
+- **Android**: Download from [Google Play](#) *(Coming soon)*, or download the APK directly from the [Releases](https://github.com/clawke/clawke/releases) page.
 - **macOS / Windows / Linux**: Download compiled binaries from the [Releases](https://github.com/clawke/clawke/releases) page.
 
 Alternatively, you can build it yourself from source:

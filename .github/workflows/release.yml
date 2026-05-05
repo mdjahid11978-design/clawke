@@ -166,7 +166,7 @@ jobs:
           if [ ! -d "$APP_PATH" ]; then
             APP_PATH=$(find client/build/macos/Build/Products/Release -name "*.app" -maxdepth 1 | head -1)
           fi
-          hdiutil create -volname "Clawke" -srcfolder "$APP_PATH" -ov -format UDZO Clawke-macOS.dmg
+          bash scripts/create_macos_dmg.sh "$APP_PATH" Clawke-macOS.dmg Clawke
 
       - name: Sign, notarize and staple DMG
         env:
