@@ -40,6 +40,7 @@ BRANCH="main"
 SKIP_BUILD=false
 LOCAL_MODE=false
 LOCAL_SOURCE=""
+POST_INSTALL_SETUP=true
 
 # Detect non-interactive mode (e.g. curl | bash)
 if [ -t 0 ]; then
@@ -68,6 +69,10 @@ while [[ $# -gt 0 ]]; do
             SKIP_BUILD=true
             shift
             ;;
+        --no-post-install)
+            POST_INSTALL_SETUP=false
+            shift
+            ;;
         --local)
             LOCAL_MODE=true
             if [ -n "${2:-}" ] && [[ ! "$2" == --* ]]; then
@@ -87,6 +92,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --dir PATH          Installation directory (default: ~/.clawke/clawke)"
             echo "  --clawke-home PATH  Data directory (default: ~/.clawke)"
             echo "  --skip-build        Skip TypeScript compilation"
+            echo "  --no-post-install   Do not prompt for gateway/server startup after install"
             echo "  --local [PATH]      Use local project instead of git clone (dev mode)"
             echo "  -h, --help          Show this help"
             echo ""
@@ -171,6 +177,26 @@ prompt_yes_no() {
 
 get_command_link_dir() {
     echo "$HOME/.local/bin"
+}
+
+can_prompt() {
+    [ "$IS_INTERACTIVE" = true ] || { [ -r /dev/tty ] && [ -w /dev/tty ]; }
+}
+
+run_clawke_command() {
+    local clawke_cmd
+    clawke_cmd="$(get_command_link_dir)/clawke"
+
+    if [ ! -x "$clawke_cmd" ]; then
+        log_warn "clawke command not found at $clawke_cmd"
+        return 1
+    fi
+
+    if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+        "$clawke_cmd" "$@" < /dev/tty
+    else
+        "$clawke_cmd" "$@"
+    fi
 }
 
 # ────────────── Auto-detect local mode ──────────────
@@ -1037,6 +1063,52 @@ print_success() {
     echo ""
 }
 
+run_post_install_setup() {
+    if [ "$POST_INSTALL_SETUP" != true ]; then
+        return 0
+    fi
+
+    local clawke_cmd
+    clawke_cmd="$(get_command_link_dir)/clawke"
+
+    echo -e "${CYAN}─────────────────────────────────────────────────────────${NC}"
+    echo ""
+
+    if ! can_prompt; then
+        echo -e "${CYAN}${BOLD}▶ Continue now without reloading your shell:${NC}"
+        echo ""
+        echo "   $clawke_cmd gateway install"
+        echo "   $clawke_cmd server start"
+        echo ""
+        return 0
+    fi
+
+    echo -e "${CYAN}${BOLD}▶ Continue setup now:${NC}"
+    echo ""
+
+    if prompt_yes_no "Install an AI gateway now?" "yes"; then
+        log_info "Running: $clawke_cmd gateway install"
+        if run_clawke_command gateway install; then
+            log_success "Gateway setup completed"
+        else
+            log_warn "Gateway setup did not complete. Run later: $clawke_cmd gateway install"
+        fi
+        echo ""
+    else
+        log_info "Gateway setup skipped. Run later: $clawke_cmd gateway install"
+        echo ""
+    fi
+
+    if prompt_yes_no "Start Clawke Server now?" "yes"; then
+        log_info "Starting Clawke Server. Press Ctrl+C to stop it."
+        if ! run_clawke_command server start; then
+            log_warn "Server did not start. Run later: $clawke_cmd server start"
+        fi
+    else
+        log_info "Server start skipped. Run later: $clawke_cmd server start"
+    fi
+}
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -1055,6 +1127,7 @@ main() {
     install_builtin_skills
 
     print_success
+    run_post_install_setup
 }
 
 main

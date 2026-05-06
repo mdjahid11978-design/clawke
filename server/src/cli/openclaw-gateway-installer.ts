@@ -159,7 +159,16 @@ function restartOpenClaw(): void {
 
 function printRemoteGuide(): void {
   console.log(`[clawke] OpenClaw not detected on this machine.
-  
+
+If OpenClaw is installed locally:
+
+  1. Install OpenClaw first:
+     npm install -g openclaw@latest
+     openclaw onboard --install-daemon
+
+  2. Re-run:
+     clawke gateway install
+
 If OpenClaw is installed on a remote server, install the gateway manually:
 
   1. Copy the plugin:

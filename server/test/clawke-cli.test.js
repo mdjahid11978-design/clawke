@@ -118,6 +118,44 @@ test('clawke doctor prints a read-only setup report', () => {
   assert.match(result.stdout, /clawke\.json is missing/);
 });
 
+test('clawke gateway install does not offer disabled nanobot gateway', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
+
+  const result = spawnSync(process.execPath, [cliPath, 'gateway', 'install'], {
+    cwd: serverRoot,
+    env: {
+      ...process.env,
+      HOME: dir,
+    },
+    input: '\n',
+    encoding: 'utf-8',
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /OpenClaw/);
+  assert.match(result.stdout, /Hermes/);
+  assert.doesNotMatch(result.stdout, /nanobot/i);
+});
+
+test('clawke openclaw-gateway install explains local install when OpenClaw is missing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
+
+  const result = spawnSync(process.execPath, [cliPath, 'openclaw-gateway', 'install'], {
+    cwd: serverRoot,
+    env: {
+      ...process.env,
+      HOME: dir,
+    },
+    encoding: 'utf-8',
+  });
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /If OpenClaw is installed locally:/);
+  assert.match(result.stdout, /Install OpenClaw first:/);
+  assert.match(result.stdout, /clawke gateway install/);
+  assert.match(result.stdout, /If OpenClaw is installed on a remote server/);
+});
+
 test('clawke update switches to main, autostashes local changes, and rebuilds server', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
   const binDir = path.join(dir, 'bin');

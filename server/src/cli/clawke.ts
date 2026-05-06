@@ -5,7 +5,6 @@
  * 用法：
  *   clawke gateway install                — 自动检测并安装 Gateway 插件
  *   clawke openclaw-gateway install       — 安装 Gateway 插件到本机 OpenClaw（别名）
- *   clawke nanobot-gateway install        — 安装 Clawke channel 到本机 nanobot（别名）
  *   clawke server start                   — 启动 Clawke Server
  *   clawke doctor                         — 检查本机 Clawke 配置和运行状态
  *   clawke update                         — 更新 Clawke / Update Clawke
@@ -65,17 +64,17 @@ function detectAvailableGateways(): GatewayInfo[] {
     },
   });
 
-  // nanobot: 检查 ~/.nanobot/config.json
-  const nanobotConfig = path.join(os.homedir(), '.nanobot', 'config.json');
-  gateways.push({
-    name: 'nanobot',
-    displayName: 'nanobot',
-    configPath: nanobotConfig,
-    installFn: async () => {
-      const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
-      await installNanobotGateway();
-    },
-  });
+  // 暂时禁用 nanobot 入口，下次需要时可恢复 — Temporarily disable the nanobot entry; restore when needed.
+  // const nanobotConfig = path.join(os.homedir(), '.nanobot', 'config.json');
+  // gateways.push({
+  //   name: 'nanobot',
+  //   displayName: 'nanobot',
+  //   configPath: nanobotConfig,
+  //   installFn: async () => {
+  //     const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
+  //     await installNanobotGateway();
+  //   },
+  // });
 
   return gateways;
 }
@@ -471,9 +470,10 @@ async function main(): Promise<void> {
     const { installOpenClawGateway } = await import('./openclaw-gateway-installer.js');
     await installOpenClawGateway();
 
-  } else if (command === 'nanobot-gateway' && subCommand === 'install') {
-    const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
-    await installNanobotGateway();
+  // 暂时禁用 nanobot 入口，下次需要时可恢复 — Temporarily disable the nanobot entry; restore when needed.
+  // } else if (command === 'nanobot-gateway' && subCommand === 'install') {
+  //   const { installNanobotGateway } = await import('./nanobot-gateway-installer.js');
+  //   await installNanobotGateway();
 
   } else if (command === 'hermes-gateway' && subCommand === 'install') {
     const { installHermesGateway } = await import('./hermes-gateway-installer.js');
@@ -516,7 +516,6 @@ function printHelp(): void {
 
   Legacy Commands:
     openclaw-gateway install   Install OpenClaw gateway (same as gateway install)
-    nanobot-gateway install    Install nanobot gateway (same as gateway install)
     hermes-gateway install     Install Hermes gateway
 
   Options:
