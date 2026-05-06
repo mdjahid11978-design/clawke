@@ -179,9 +179,6 @@ tell application "Finder"
   tell disk "$FINDER_VOLUME_NAME"
     open
     set current view of container window to icon view
-    set toolbar visible of container window to false
-    set statusbar visible of container window to false
-    set pathbar visible of container window to false
     set bounds of container window to {$WINDOW_LEFT, $WINDOW_TOP, $WINDOW_RIGHT, $WINDOW_BOTTOM}
     set viewOptions to icon view options of container window
     set arrangement of viewOptions to not arranged

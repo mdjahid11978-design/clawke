@@ -769,10 +769,11 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get workDirHint => 'Enter OpenClaw work directory path';
+  String get workDirHint => 'Enter the current Gateway work directory path';
 
   @override
-  String get workDirNote => 'This is a path on the OpenClaw server, not local';
+  String get workDirNote =>
+      'This path belongs to the current Gateway runtime, not this device';
 
   @override
   String get noModelsAvailable =>

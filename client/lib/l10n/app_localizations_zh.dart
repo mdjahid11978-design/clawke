@@ -746,10 +746,10 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get workDirHint => '输入 OpenClaw 工作目录路径';
+  String get workDirHint => '输入当前 Gateway 工作目录路径';
 
   @override
-  String get workDirNote => '此目录为 OpenClaw 服务器上的路径，非本地路径';
+  String get workDirNote => '此目录为当前 Gateway 运行环境中的路径，非当前设备本地路径';
 
   @override
   String get noModelsAvailable => '暂无可用模型，请检查 Gateway 连接';

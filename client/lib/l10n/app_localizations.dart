@@ -1505,13 +1505,13 @@ abstract class AppLocalizations {
   /// No description provided for @workDirHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入 OpenClaw 工作目录路径'**
+  /// **'输入当前 Gateway 工作目录路径'**
   String get workDirHint;
 
   /// No description provided for @workDirNote.
   ///
   /// In zh, this message translates to:
-  /// **'此目录为 OpenClaw 服务器上的路径，非本地路径'**
+  /// **'此目录为当前 Gateway 运行环境中的路径，非当前设备本地路径'**
   String get workDirNote;
 
   /// No description provided for @noModelsAvailable.

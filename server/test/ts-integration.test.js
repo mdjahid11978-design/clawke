@@ -94,7 +94,7 @@ describe('TS: MessageStore', () => {
     db.close();
   });
 
-  it('getAfterSeq caps initial sync history at 100 messages', () => {
+  it('getAfterSeq caps incremental history at 100 messages', () => {
     const db = new Database(':memory:');
     const store = new MessageStore(db);
 
@@ -106,6 +106,22 @@ describe('TS: MessageStore', () => {
     assert.equal(msgs.length, 100);
     assert.equal(msgs[0].content, 'message 0');
     assert.equal(msgs[99].content, 'message 99');
+    db.close();
+  });
+
+  it('getLatestBatch returns newest messages in seq order', () => {
+    const db = new Database(':memory:');
+    const store = new MessageStore(db);
+
+    for (let i = 0; i < 105; i++) {
+      store.append('acc1', 'conv1', `latest_cmsg_${i}`, 'user', 'text', `message ${i}`);
+    }
+
+    const msgs = store.getLatestBatch(100);
+    assert.equal(msgs.length, 100);
+    assert.equal(msgs[0].content, 'message 5');
+    assert.equal(msgs[99].content, 'message 104');
+    assert.ok(msgs[0].seq < msgs[99].seq);
     db.close();
   });
 
@@ -290,9 +306,32 @@ describe('TS: CupV2Handler', () => {
     const seq0 = handler.handleSync({
       event_type: 'sync', data: { last_seq: 0 },
     });
-    // last_seq=0 → 拉取全量历史（最多 100 条）— Pull full history (up to LIMIT 100)
+    // 单条历史时首次同步仍完整返回 — First sync still returns full history when it fits one batch.
     assert.equal(seq0.messages.length, 1, 'new device gets all stored messages');
     assert.ok(seq0.current_seq > 0);
+    db.close();
+  });
+
+  it('handleSync initial sync returns the latest 100 messages', () => {
+    const { handler, db } = createHandler();
+
+    for (let i = 0; i < 105; i++) {
+      handler.handleUserMessage({
+        event_type: 'user_message',
+        context: { account_id: 'acc', client_msg_id: `init_cmsg_${i}` },
+        data: { content: `message ${i}` },
+      });
+    }
+
+    const sync = handler.handleSync({
+      event_type: 'sync',
+      data: { last_seq: 0 },
+    });
+
+    assert.equal(sync.messages.length, 100);
+    assert.equal(sync.messages[0].content, 'message 5');
+    assert.equal(sync.messages[99].content, 'message 104');
+    assert.equal(sync.current_seq, sync.messages[99].seq);
     db.close();
   });
 

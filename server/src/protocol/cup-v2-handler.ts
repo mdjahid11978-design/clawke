@@ -77,9 +77,11 @@ export class CupV2Handler {
       lastSeq = 0;
     }
 
-    // last_seq=0（新设备首次 sync）：返回全量历史，由 getAfterSeq 的 LIMIT 100 兜底
-    // last_seq=0 (new device): return full history, capped by getAfterSeq's LIMIT 100
-    const messages = this.messageStore.getAfterSeq(lastSeq);
+    // 新设备/新账号 DB 首次同步时优先返回最新窗口，避免拿到最老 100 条后直接推进游标。
+    // For first sync, return the latest window so advancing current_seq does not skip recent messages.
+    const messages = lastSeq <= 0
+      ? this.messageStore.getLatestBatch(100)
+      : this.messageStore.getAfterSeq(lastSeq);
     console.log(`[Tunnel] 📥 sync request: last_seq=${lastSeq}, returning ${messages.length} messages (currentSeq=${currentSeq})`);
     return {
       payload_type: 'sync_response',
