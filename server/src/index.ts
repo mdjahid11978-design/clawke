@@ -34,6 +34,7 @@ import { startMediaServer } from './media-server.js';
 import { processMessageMedia } from './services/file-upload.js';
 import { FrpcManager } from './tunnel/frpc-manager.js';
 import { DeviceAuth } from './tunnel/device-auth.js';
+import { printClientInstallBanner } from './client-install-banner.js';
 import { handleMessage as mockHandleMessage, abortConversation as mockAbortConversation, handleMockApprovalResponse, handleMockClarifyResponse } from './mock/mock-handler.js';
 import { createMockActionHandler } from './mock/mock-action-handler.js';
 import { handleReadFile } from './mock/mock-file-handler.js';
@@ -516,6 +517,7 @@ export async function startClawkeServer() {
     process.on('SIGTERM', shutdownOC);
     await Promise.all([unifiedReady, mediaReady, upstreamReady]);
     console.log('[Server] ✅ Ready');
+    printClientInstallBanner();
     return; // 不走通用 shutdown
   } else {
     console.error(`[Server] Unknown MODE: ${MODE}`);
@@ -548,6 +550,7 @@ export async function startClawkeServer() {
   process.on('SIGTERM', shutdown);
   await Promise.all([unifiedReady, mediaReady]);
   console.log('[Server] ✅ Ready');
+  printClientInstallBanner();
 }
 
 function isDirectRun(entryPath: string | undefined): boolean {

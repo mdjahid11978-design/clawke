@@ -11,9 +11,12 @@ import https from 'https';
 import http from 'http';
 import { exec } from 'child_process';
 import os from 'os';
+import { cyanBold, shouldUseColor, yellow, yellowBold } from '../terminal-style.js';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 600000;
+
+export { shouldUseColor };
 
 export interface AuthResult {
   token: string;
@@ -21,6 +24,31 @@ export interface AuthResult {
   relayUrl: string;
   serverAddr: string;
   serverPort: number;
+}
+
+export function formatAuthWaitingLine(line: string, useColor = shouldUseColor()): string {
+  return yellow(line, useColor);
+}
+
+export function formatAuthBanner(authUrl: string, expiresIn: number, useColor = shouldUseColor()): string[] {
+  const minutes = Math.ceil(expiresIn / 60);
+
+  return [
+    '',
+    cyanBold('╔══════════════════════════════════════════╗', useColor),
+    cyanBold('║                                          ║', useColor),
+    cyanBold('║   🔗 To authorize this server, visit:    ║', useColor),
+    cyanBold('║                                          ║', useColor),
+    cyanBold('╚══════════════════════════════════════════╝', useColor),
+    '',
+    yellowBold(`  ${authUrl}`, useColor),
+    '',
+    "  If the browser didn't open automatically,",
+    '  please copy the link above and open it manually.',
+    '',
+    formatAuthWaitingLine(`  ⏳ Waiting for authorization... (expires in ${minutes}:00)`, useColor),
+    '',
+  ];
 }
 
 export class DeviceAuth {
@@ -80,7 +108,8 @@ export class DeviceAuth {
           };
         case 'init': {
           const remaining = Math.ceil(result.expiresIn);
-          process.stdout.write(`\r  ⏳ Waiting for authorization... (${remaining}s remaining)  `);
+          const waitingLine = `  ⏳ Waiting for authorization... (${remaining}s remaining)  `;
+          process.stdout.write(`\r${formatAuthWaitingLine(waitingLine)}`);
           break;
         }
       }
@@ -94,21 +123,9 @@ export class DeviceAuth {
   }
 
   private _printAuthBanner(authUrl: string, expiresIn: number): void {
-    const minutes = Math.ceil(expiresIn / 60);
-    console.log('');
-    console.log('╔══════════════════════════════════════════╗');
-    console.log('║                                          ║');
-    console.log('║   🔗 To authorize this server, visit:    ║');
-    console.log('║                                          ║');
-    console.log('╚══════════════════════════════════════════╝');
-    console.log('');
-    console.log(`  ${authUrl}`);
-    console.log('');
-    console.log("  If the browser didn't open automatically,");
-    console.log('  please copy the link above and open it manually.');
-    console.log('');
-    console.log(`  ⏳ Waiting for authorization... (expires in ${minutes}:00)`);
-    console.log('');
+    for (const line of formatAuthBanner(authUrl, expiresIn)) {
+      console.log(line);
+    }
   }
 
   private _tryOpenBrowser(url: string): void {

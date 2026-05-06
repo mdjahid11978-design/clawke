@@ -20,6 +20,8 @@ test('server index exports explicit startup function and keeps standalone startu
   const indexSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'index.ts'), 'utf8');
 
   assert.match(indexSource, /export async function startClawkeServer\(\)/);
+  assert.match(indexSource, /import \{ printClientInstallBanner \} from '\.\/client-install-banner\.js'/);
+  assert.equal((indexSource.match(/printClientInstallBanner\(\)/g) || []).length, 2);
   assert.match(indexSource, /function isDirectRun\(entryPath: string \| undefined\): boolean/);
   assert.match(indexSource, /if \(isDirectRun\(process\.argv\[1\]\)\)/);
   assert.doesNotMatch(indexSource, /^main\(\)\.catch/m);
