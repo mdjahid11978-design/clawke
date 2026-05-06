@@ -24,3 +24,25 @@ test('server index exports explicit startup function and keeps standalone startu
   assert.match(indexSource, /if \(isDirectRun\(process\.argv\[1\]\)\)/);
   assert.doesNotMatch(indexSource, /^main\(\)\.catch/m);
 });
+
+test('gateway children are started in a killable process group', () => {
+  const cliSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'cli', 'clawke.ts'), 'utf8');
+
+  assert.match(cliSource, /function terminateGatewayProcess\(pid: number, signal: NodeJS\.Signals = 'SIGTERM'\): void/);
+  assert.match(cliSource, /process\.kill\(-pid, signal\)/);
+  assert.match(cliSource, /detached: process\.platform !== 'win32'/);
+  assert.match(cliSource, /terminateGatewayProcess\(oldPid\)/);
+  assert.match(cliSource, /terminateGatewayProcess\(child\.pid\)/);
+});
+
+test('server stop cleans gateways even when the server pid is missing or stale', () => {
+  const cliSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'cli', 'clawke.ts'), 'utf8');
+  const serverStopBody = cliSource.match(/function serverStop\(\): void \{([\s\S]*?)\n\}/);
+
+  assert.ok(serverStopBody, 'serverStop() not found');
+  assert.match(serverStopBody[1], /stopAllGateways\(\)/);
+  assert.match(serverStopBody[1], /stopFrpcFromPidFile\(\)/);
+  assert.match(serverStopBody[1], /No PID file found/);
+  assert.match(serverStopBody[1], /stale PID file/);
+  assert.match(serverStopBody[1], /return/);
+});

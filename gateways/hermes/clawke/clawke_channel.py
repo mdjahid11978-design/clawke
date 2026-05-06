@@ -22,6 +22,7 @@ Architecture reference:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -32,6 +33,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import websockets
 
@@ -117,6 +119,30 @@ def _backoff_delay(attempt: int) -> float:
     exp = BACKOFF_FIRST_S * (BACKOFF_BASE ** attempt)
     capped = min(exp, BACKOFF_MAX_S)
     return capped * (0.75 + random.random() * 0.5)
+
+
+def _is_loopback_ws_url(ws_url: str) -> bool:
+    """判断 WebSocket 地址是否为本机 — Detect loopback WebSocket URLs."""
+    try:
+        host = (urlparse(ws_url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _websocket_connect_kwargs(ws_url: str) -> dict[str, Any]:
+    """构建 WebSocket 连接参数 — Build WebSocket connect kwargs."""
+    kwargs: dict[str, Any] = {
+        "ping_interval": 30,
+        "ping_timeout": 10,
+    }
+    try:
+        supports_proxy = "proxy" in inspect.signature(websockets.connect).parameters
+    except (TypeError, ValueError):
+        supports_proxy = False
+    if supports_proxy and _is_loopback_ws_url(ws_url):
+        kwargs["proxy"] = None
+    return kwargs
 
 
 # ─── Error Classification ────────────────────────────────────────────────────
@@ -655,8 +681,7 @@ class ClawkeHermesGateway:
         """Establish WebSocket connection and handle messages."""
         async with websockets.connect(
             self.config.ws_url,
-            ping_interval=30,
-            ping_timeout=10,
+            **_websocket_connect_kwargs(self.config.ws_url),
         ) as ws:
             self._ws = ws
             self._reconnect_attempt = 0

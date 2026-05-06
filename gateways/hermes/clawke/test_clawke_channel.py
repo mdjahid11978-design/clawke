@@ -31,6 +31,7 @@ from clawke_channel import (
     AgentStatusValue,
     _backoff_delay,
     _configured_default_model,
+    _websocket_connect_kwargs,
     _sanitize_messages,
 )
 
@@ -318,6 +319,31 @@ class TestGatewayInit:
         assert len(gateway._session_locks) == 0
         assert len(gateway._pending_approvals) == 0
         assert len(gateway._pending_clarifies) == 0
+
+    def test_loopback_connection_disables_proxy_when_supported(self, monkeypatch):
+        def fake_connect(uri, *, ping_interval=30, ping_timeout=10, proxy=True):
+            return None
+
+        monkeypatch.setattr(clawke_channel.websockets, "connect", fake_connect)
+
+        assert _websocket_connect_kwargs("ws://127.0.0.1:8766") == {
+            "ping_interval": 30,
+            "ping_timeout": 10,
+            "proxy": None,
+        }
+        assert _websocket_connect_kwargs("ws://localhost:8766")["proxy"] is None
+        assert "proxy" not in _websocket_connect_kwargs("ws://remote.example:8766")
+
+    def test_loopback_connection_keeps_old_websockets_compatibility(self, monkeypatch):
+        def fake_connect(uri, *, ping_interval=30, ping_timeout=10):
+            return None
+
+        monkeypatch.setattr(clawke_channel.websockets, "connect", fake_connect)
+
+        assert _websocket_connect_kwargs("ws://127.0.0.1:8766") == {
+            "ping_interval": 30,
+            "ping_timeout": 10,
+        }
 
 
 # ── Send Tests ──────────────────────────────────────────────────────────────

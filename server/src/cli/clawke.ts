@@ -146,6 +146,7 @@ async function installGateway(): Promise<void> {
 
 const CLAWKE_HOME = path.join(os.homedir(), '.clawke');
 const PID_FILE = path.join(CLAWKE_HOME, 'server.pid');
+const FRPC_PID_FILE = path.join(CLAWKE_HOME, 'frpc.pid');
 
 // ────────────── Gateway 进程管理 ──────────────
 
@@ -193,6 +194,16 @@ function removeGatewayPid(id: string): void {
   try { fs.unlinkSync(path.join(CLAWKE_HOME, `${id}-gateway.pid`)); } catch {}
 }
 
+function terminateGatewayProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch {}
+  }
+  try { process.kill(pid, signal); } catch {}
+}
+
 // 验证 PID 是否属于目标 gateway 进程，防止误杀 — Verify PID belongs to gateway before kill
 function isGatewayProcess(pid: number, gwId: string): boolean {
   try {
@@ -200,6 +211,59 @@ function isGatewayProcess(pid: number, gwId: string): boolean {
     return cmd.includes(gwId) || cmd.includes('gateway') || cmd.includes('run.py') || cmd.includes('clawke');
   } catch {
     return false; // 进程已退出 — Process already exited
+  }
+}
+
+function isFrpcProcess(pid: number): boolean {
+  try {
+    const cmd = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf-8' }).trim();
+    return cmd.includes('/frpc') || cmd.endsWith('frpc') || cmd.includes(' frpc ');
+  } catch {
+    return false;
+  }
+}
+
+function stopFrpcFromPidFile(): void {
+  try {
+    const pid = parseInt(fs.readFileSync(FRPC_PID_FILE, 'utf-8').trim(), 10);
+    if (!isNaN(pid) && isProcessAlive(pid) && isFrpcProcess(pid)) {
+      try { process.kill(pid, 'SIGTERM'); } catch {}
+    }
+  } catch {}
+  try { fs.unlinkSync(FRPC_PID_FILE); } catch {}
+}
+
+function getGatewayCommandNeedles(gw: GatewayInstance): string[] {
+  const startShell = resolveGatewayStartShell(gw);
+  if (!startShell) return [];
+  const needles = new Set<string>([startShell]);
+  for (const match of startShell.matchAll(/\/[^\s"'`]+\/run\.py/g)) {
+    needles.add(match[0]);
+  }
+  return Array.from(needles).filter(needle => needle.length > 8);
+}
+
+function findGatewayProcessPids(gw: GatewayInstance): number[] {
+  if (process.platform === 'win32') return [];
+  const needles = getGatewayCommandNeedles(gw);
+  if (needles.length === 0) return [];
+  try {
+    const output = execSync('ps -eo pid=,command=', { encoding: 'utf-8' });
+    const pids: number[] = [];
+    for (const line of output.split('\n')) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^(\d+)\s+(.+)$/);
+      if (!match) continue;
+      const pid = Number(match[1]);
+      const commandLine = match[2];
+      if (!Number.isFinite(pid) || pid === process.pid) continue;
+      if (needles.some(needle => commandLine.includes(needle))) {
+        pids.push(pid);
+      }
+    }
+    return pids;
+  } catch {
+    return [];
   }
 }
 
@@ -226,7 +290,7 @@ async function startGateways(): Promise<void> {
         removeGatewayPid(gw.id);
       } else {
         console.log(`[clawke] 🔄 Killing old ${gw.id} gateway (PID ${oldPid})...`);
-        try { process.kill(oldPid, 'SIGTERM'); } catch {}
+        terminateGatewayProcess(oldPid);
         // Brief wait for graceful shutdown
         let waited = 0;
         while (isProcessAlive(oldPid) && waited < 3000) {
@@ -234,7 +298,7 @@ async function startGateways(): Promise<void> {
           waited += 200;
         }
         if (isProcessAlive(oldPid)) {
-          try { process.kill(oldPid, 'SIGKILL'); } catch {}
+          terminateGatewayProcess(oldPid, 'SIGKILL');
         }
         removeGatewayPid(gw.id);
       }
@@ -243,7 +307,7 @@ async function startGateways(): Promise<void> {
     // 通过 shell 启动，正确处理含空格路径和引号参数 — Use shell to handle spaces/quotes in paths
     const child = spawn(startShell, [], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
+      detached: process.platform !== 'win32',
       shell: true,
     });
 
@@ -277,10 +341,13 @@ async function startGateways(): Promise<void> {
 }
 
 function stopAllGateways(): void {
+  const stopped = new Set<number>();
+
   // Kill tracked child processes
   for (const child of gatewayChildren) {
-    if (child.pid && isProcessAlive(child.pid)) {
-      try { child.kill('SIGTERM'); } catch {}
+    if (child.pid && isProcessAlive(child.pid) && !stopped.has(child.pid)) {
+      terminateGatewayProcess(child.pid);
+      stopped.add(child.pid);
     }
   }
 
@@ -288,8 +355,15 @@ function stopAllGateways(): void {
   const instances = loadGatewayInstances();
   for (const gw of instances) {
     const pid = readGatewayPid(gw.id);
-    if (pid && isProcessAlive(pid)) {
-      try { process.kill(pid, 'SIGTERM'); } catch {}
+    if (pid && isProcessAlive(pid) && !stopped.has(pid)) {
+      terminateGatewayProcess(pid);
+      stopped.add(pid);
+    }
+    for (const orphanPid of findGatewayProcessPids(gw)) {
+      if (isProcessAlive(orphanPid) && !stopped.has(orphanPid)) {
+        terminateGatewayProcess(orphanPid);
+        stopped.add(orphanPid);
+      }
     }
     removeGatewayPid(gw.id);
   }
@@ -325,6 +399,8 @@ function removePidFile(): void {
 // ────────────── Server 命令 ──────────────
 
 async function serverStart(): Promise<void> {
+  let serverStartupStarted = false;
+
   // 检查是否已有实例在运行 — Check if already running
   const existingPid = readPid();
   if (existingPid && isProcessAlive(existingPid)) {
@@ -349,18 +425,22 @@ async function serverStart(): Promise<void> {
   writePid();
 
   // 进程退出时清理 PID 文件 + Gateway 子进程 — Cleanup on exit
-  const cleanup = () => { stopAllGateways(); removePidFile(); };
+  const cleanup = () => { stopAllGateways(); stopFrpcFromPidFile(); removePidFile(); };
   process.on('exit', cleanup);
-  process.on('SIGINT', () => { cleanup(); process.exit(0); });
-  process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+  process.on('SIGINT', () => { cleanup(); if (!serverStartupStarted) process.exit(0); });
+  process.on('SIGTERM', () => { cleanup(); if (!serverStartupStarted) process.exit(0); });
 
   // 等待 server ready 后再启动 Gateway — Start gateways only after server is ready.
+  serverStartupStarted = true;
   const { startClawkeServer } = await import('../index.js');
   await startClawkeServer();
   await startGateways();
 }
 
 function serverStop(): void {
+  stopAllGateways();
+  stopFrpcFromPidFile();
+
   const pid = readPid();
   if (!pid) {
     console.log('[clawke] No PID file found. Server may not be running.');
@@ -372,9 +452,6 @@ function serverStop(): void {
     removePidFile();
     return;
   }
-
-  // 先停 Gateway
-  stopAllGateways();
 
   console.log(`[clawke] Stopping server (PID ${pid})...`);
   try {
@@ -420,6 +497,8 @@ function serverStatus(): void {
 }
 
 async function serverRestart(): Promise<void> {
+  stopAllGateways();
+  stopFrpcFromPidFile();
   const pid = readPid();
   if (pid && isProcessAlive(pid)) {
     console.log(`[clawke] Stopping server (PID ${pid})...`);

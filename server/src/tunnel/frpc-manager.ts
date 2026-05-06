@@ -4,6 +4,7 @@
  * 功能：自动下载 frpc、生成配置、运行子进程、异常重连、PID 管理
  */
 import { spawn, execSync, type ChildProcess } from 'child_process';
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -22,6 +23,7 @@ const ARCH_MAP: Record<string, string> = {
 
 const FRP_VERSION = '0.61.1';
 const RECONNECT_DELAY = 10000;
+const PROXY_ENV_NAMES = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'];
 
 export interface FrpcConfig {
   relayToken: string;
@@ -74,6 +76,7 @@ export class FrpcManager {
 
     this._writeConfig();
 
+    this._printStartupDetails(frpcPath);
     console.log(`[frpc] Starting: ${frpcPath} -c ${this.configPath}`);
     this.proc = spawn(frpcPath, ['-c', this.configPath], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -106,6 +109,25 @@ export class FrpcManager {
     });
 
     console.log(`[Clawke] 🌐 Relay: https://${this.subdomain}.${this.relayServer}`);
+  }
+
+  private _printStartupDetails(frpcPath: string): void {
+    const transport = this.transport ? ` transport=${this.transport}` : '';
+    const proxyEnv = PROXY_ENV_NAMES
+      .filter(name => Boolean(process.env[name]))
+      .map(name => `${name}=set`);
+    console.log(`[frpc] Manual command: ${shellQuote(frpcPath)} -c ${shellQuote(this.configPath)}`);
+    console.log(`[frpc] Params: serverAddr=${this.relayServer} serverPort=${this.relayPort} subdomain=${this.subdomain} localPort=${this.localPort}${transport}`);
+    console.log(`[frpc] Config SHA256: ${this._configHash()}`);
+    console.log(`[frpc] Proxy env: ${proxyEnv.length ? proxyEnv.join(' ') : 'none'}`);
+  }
+
+  private _configHash(): string {
+    try {
+      return createHash('sha256').update(fs.readFileSync(this.configPath)).digest('hex');
+    } catch {
+      return 'unavailable';
+    }
   }
 
   stop(): void {
@@ -226,4 +248,11 @@ subdomain = "${this.subdomain}"
     fs.writeFileSync(this.configPath, config);
     console.log(`[frpc] Config written: ${this.configPath}`);
   }
+}
+
+function shellQuote(value: string): string {
+  if (process.platform === 'win32') {
+    return `"${value.replace(/"/g, '\\"')}"`;
+  }
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
