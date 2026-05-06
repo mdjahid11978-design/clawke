@@ -8,6 +8,10 @@ const test = require('node:test');
 const repoRoot = path.resolve(__dirname, '..', '..');
 const installScriptPath = path.join(repoRoot, 'scripts', 'install.sh');
 
+function stripAnsi(value) {
+  return value.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 test('install.sh is valid bash syntax', () => {
   execFileSync('bash', ['-n', installScriptPath], { stdio: 'pipe' });
 });
@@ -49,7 +53,7 @@ test('install.sh supports local non-interactive install without post-install pro
     { mode: 0o755 },
   );
 
-  const output = execFileSync(
+  const output = stripAnsi(execFileSync(
     'bash',
     [
       installScriptPath,
@@ -71,10 +75,15 @@ test('install.sh supports local non-interactive install without post-install pro
         SHELL: '/bin/bash',
       },
     },
-  );
+  ));
 
   assert.match(output, /Installation Complete/);
+  assert.match(output, /clawke doctor\s+Check local setup/);
   assert.doesNotMatch(output, /Continue setup now/);
+  assert.match(output, /If 'clawke' is not found in this terminal/);
+  assert.doesNotMatch(output, /Reload shell \(above\)/);
+  assert.match(output, /1\. clawke gateway install/);
+  assert.match(output, /2\. clawke server start/);
   assert.ok(fs.existsSync(path.join(homeDir, '.local', 'bin', 'clawke')));
   assert.ok(fs.existsSync(path.join(homeDir, '.clawke', 'clawke.json')));
 });

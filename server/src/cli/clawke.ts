@@ -354,14 +354,10 @@ async function serverStart(): Promise<void> {
   process.on('SIGINT', () => { cleanup(); process.exit(0); });
   process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 
-  // 加载 server 入口 — Load server entry
-  await import('../index.js');
-
-  // Server 启动后启动 Gateway — Start gateways after server is ready
-  // 延迟 1s 确保 WS 端口就绪
-  setTimeout(async () => {
-    await startGateways();
-  }, 1000);
+  // 等待 server ready 后再启动 Gateway — Start gateways only after server is ready.
+  const { startClawkeServer } = await import('../index.js');
+  await startClawkeServer();
+  await startGateways();
 }
 
 function serverStop(): void {

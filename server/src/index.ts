@@ -78,7 +78,37 @@ function checkPortConflict(port: number, label: string): Promise<void> {
   });
 }
 
-async function main() {
+type Listenable = {
+  listening?: boolean;
+  once: (event: string, listener: (...args: any[]) => void) => unknown;
+  removeListener: (event: string, listener: (...args: any[]) => void) => unknown;
+  address?: () => unknown;
+};
+
+function waitForListening(server: Listenable): Promise<void> {
+  if (server.listening || (typeof server.address === 'function' && server.address())) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      server.removeListener('listening', onListening);
+      server.removeListener('error', onError);
+    };
+    const onListening = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    server.once('listening', onListening);
+    server.once('error', onError);
+  });
+}
+
+export async function startClawkeServer() {
   // 日志持久化：所有 console.log/error/warn 自动写入 ~/.clawke/logs/server-YYYY-MM-DD.log
   initLogger();
 
@@ -204,7 +234,9 @@ async function main() {
   statsCollector.startPeriodicSave();
   // ━━━ 通信层 ━━━
   const { server: unifiedServer, wss: clientWss } = startUnifiedServer(HTTP_PORT);
+  const unifiedReady = waitForListening(unifiedServer);
   const mediaServer = startMediaServer(MEDIA_PORT);
+  const mediaReady = waitForListening(mediaServer);
 
   // ━━━ Handler 层 ━━━
   const registry = new EventRegistry();
@@ -441,6 +473,7 @@ async function main() {
         broadcastToClients({ payload_type: 'conv_changed' });
       }
     });
+    const upstreamReady = waitForListening(upstreamWss as unknown as Listenable);
 
     // 客户端连接 → 补发 ai_connected
     clientWss.on('connection', (ws: unknown) => {
@@ -481,6 +514,8 @@ async function main() {
     };
     process.on('SIGINT', shutdownOC);
     process.on('SIGTERM', shutdownOC);
+    await Promise.all([unifiedReady, mediaReady, upstreamReady]);
+    console.log('[Server] ✅ Ready');
     return; // 不走通用 shutdown
   } else {
     console.error(`[Server] Unknown MODE: ${MODE}`);
@@ -511,9 +546,17 @@ async function main() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  await Promise.all([unifiedReady, mediaReady]);
+  console.log('[Server] ✅ Ready');
 }
 
-main().catch(err => {
-  console.error('[Server] Fatal error:', err);
-  process.exit(1);
-});
+function isDirectRun(entryPath: string | undefined): boolean {
+  return Boolean(entryPath) && path.resolve(entryPath!) === path.resolve(__filename);
+}
+
+if (isDirectRun(process.argv[1])) {
+  startClawkeServer().catch(err => {
+    console.error('[Server] Fatal error:', err);
+    process.exit(1);
+  });
+}

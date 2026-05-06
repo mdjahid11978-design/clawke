@@ -1034,6 +1034,7 @@ print_success() {
     echo -e "   ${GREEN}clawke server start${NC}           Start Clawke Server"
     echo -e "   ${GREEN}clawke server stop${NC}            Stop Clawke Server"
     echo -e "   ${GREEN}clawke server restart${NC}         Restart Clawke Server"
+    echo -e "   ${GREEN}clawke doctor${NC}                 Check local setup"
     echo -e "   ${GREEN}clawke gateway install${NC}        Install AI gateway plugin"
     echo -e "   ${GREEN}clawke --help${NC}                 Show all commands"
     echo ""
@@ -1042,7 +1043,7 @@ print_success() {
     echo ""
 
     LOGIN_SHELL="$(basename "${SHELL:-/bin/bash}")"
-    echo -e "${YELLOW}⚡ Reload your shell to use 'clawke' command:${NC}"
+    echo -e "${YELLOW}⚡ If 'clawke' is not found in this terminal, reload your shell:${NC}"
     echo ""
     if [ "$LOGIN_SHELL" = "zsh" ]; then
         echo "   source ~/.zshrc"
@@ -1057,9 +1058,8 @@ print_success() {
 
     echo -e "${CYAN}${BOLD}📖 Quick Start:${NC}"
     echo ""
-    echo "   1. Reload shell (above)"
-    echo "   2. clawke gateway install    # Connect to your AI agent"
-    echo "   3. clawke server start       # Start the server"
+    echo "   1. clawke gateway install    # Connect to your AI agent"
+    echo "   2. clawke server start       # Start the server"
     echo ""
 }
 
