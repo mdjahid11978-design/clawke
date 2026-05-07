@@ -4,32 +4,31 @@
   <strong>简体中文</strong>
 </p>
 
-# Clawke — AI Agent 原生富客户端
-
-<div align="center">
-  <img src="client/assets/images/logo.png" width="120" title="Clawke" alt="Clawke" />
-
-<h1>
-  AI Agent 原生移动工作空间
+<h1 align="center">
+  <img src="client/assets/images/logo.png" width="72" alt="Clawke" />
+  <br />
+  Clawke
 </h1>
 
-<h3>
-在手机或桌面端统一管理 OpenClaw、Hermes、Nanobot、Codex 和 Claude Code。
-</h3>
+<h2 align="center">
+AI Agent 原生移动工作空间
+</h2>
 
-<p>
-  <a href="https://apps.apple.com/us/app/clawke/id6760453431">📱 <strong>iOS App</strong></a>
+<h4 align="center">
+在手机或桌面端统一管理 OpenClaw、Hermes、Codex 和 Claude Code。
+</h4>
+
+<p align="center">
+  🖥 <strong>Mac</strong>
   ·
-  <a href="#手动安装">🔧 <strong>从源码构建</strong></a>
+  🪟 <strong>Windows</strong>
   ·
-  <a href="docs/CONFIGURATION_zh.md">📚 <strong>文档</strong></a>
+  🐧 <strong>Linux</strong>
   ·
-  <a href="docs/GATEWAY_INTEGRATION.md">🔌 <strong>Gateway 接入</strong></a>
+  📱 <strong>iOS</strong>
   ·
-  <a href="README.md">English</a>
+  🤖 <strong>Android</strong>
 </p>
-
-<br />
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/readme-hero-dark.png">
@@ -37,38 +36,17 @@
   <img width="1800" alt="Clawke AI Agent 原生移动工作空间" src=".github/readme-hero-light.png">
 </picture>
 
-<br />
-<br />
-
-<h2>
-步骤 1：下载客户端
-</h2>
-
-<p>
-  <a href="https://apps.apple.com/us/app/clawke/id6760453431"><strong>iOS App Store</strong></a>
-  ·
-  Android 即将上线
-</p>
-
-<h2>
-步骤 2：安装 Clawke Server
-</h2>
-
-</div>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
-```
-
 ## 功能特性
 
 - **CUP 协议** — AI 流式响应，支持思考块、工具调用和用量统计
 - **SDUI** — 服务端驱动 UI：仪表盘、表单、对话框由服务端指令渲染
-- **多 Agent 在线管理** — 可通过移动端或桌面端管理 OpenClaw、Hermes、Nanobot 等 Agent
+- **多 Agent 在线管理** — 可通过移动端或桌面端管理 OpenClaw、Hermes 等 Agent
 - **媒体** — 图片/PDF/文本文件上传与内联渲染
 - **Relay** — 内置隧道，无需端口转发即可远程访问
 
-## 快速安装
+## 步骤 1：安装 Clawke Server
+
+### 快速安装
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
@@ -77,14 +55,6 @@ curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.
 支持 macOS、Linux 和 WSL2 环境。安装器会自动为您编译后端服务、探测系统环境并配置好全局 CLI 命令。
 
 > **Windows:** 不支持原生 Windows，请安装 [WSL2](https://learn.microsoft.com/zh-cn/windows/wsl/install) 后再运行上述命令。
-
-安装完成后：
-
-```bash
-source ~/.bashrc           # 重新加载环境（若是 zsh 请使用 source ~/.zshrc）
-clawke gateway install     # 自动检测并安装 AI Gateway 插件
-clawke server start        # 启动 Clawke 服务
-```
 
 ### 手动安装
 
@@ -117,10 +87,10 @@ clawke server restart     # 重启 Clawke 服务
 clawke server status      # 查看 Clawke 服务状态
 ```
 
-### 安装客户端
+## 步骤 2：下载客户端
 
 - **iOS**：请在 [App Store](https://apps.apple.com/us/app/clawke/id6760453431) 下载。
-- **Android**：请在 [Google Play](#) 下载，或直接到 [Releases](https://github.com/clawke/clawke/releases) 页面下载 APK 安装包。
+- **Android**：请直接到 [Releases](https://github.com/clawke/clawke/releases) 页面下载 APK 安装包。
 - **macOS / Windows / Linux**：请前往 Github 的 [Releases](https://github.com/clawke/clawke/releases) 页面下载编译好的安装包。
 
 如果您希望自己构建客户端：
@@ -144,7 +114,7 @@ clawke/
 │   └── test/            # 测试（42 个用例）
 ├── gateways/            # Gateway 插件
 │   ├── openclaw/clawke/ # OpenClaw Gateway
-│   └── nanobot/clawke/  # Nanobot Gateway
+│   └── hermes/clawke/   # Hermes Gateway
 └── relay-server/        # Relay 服务配置
 ```
 
@@ -168,7 +138,7 @@ clawke/
 ### v1.1.17 (2026-04-29)
 
 **[新功能]** 新增 `clawke doctor` 运行时与 Gateway 诊断命令。
-**[功能优化]** 明确支持 OpenClaw、Hermes、Nanobot 等多 Agent 在线管理，并强调移动端随时管理能力。
+**[功能优化]** 明确支持 OpenClaw、Hermes 等多 Agent 在线管理，并强调移动端随时管理能力。
 **[问题修复]** 修复流式回复断线后 `Thinking`、工具状态和停止按钮残留的问题。
 
 ### v1.1.15 (2026-04-29)
