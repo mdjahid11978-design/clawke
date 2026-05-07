@@ -41,7 +41,7 @@ AI Agent 原生移动工作空间
 - **多端协同** — 同时支持 Mac、Windows、Linux、iOS、Android。无论走到哪里都可以继续工作。
 - **CUP 协议** — AI 流式响应，支持思考块、工具调用和用量统计
 - **SDUI** — 服务端驱动 UI：仪表盘、表单、对话框由服务端指令渲染
-- **多 Agent 在线管理** — 可通过移动端或桌面端管理 OpenClaw、Hermes 等 Agent
+- **多 Agent 管理** — 可同时管理 OpenClaw、Hermes、Nanobot 等 AI Agent
 - **媒体** — 图片/PDF/文本文件上传与内联渲染
 - **Relay** — 内置隧道，无需端口转发即可远程访问
 
