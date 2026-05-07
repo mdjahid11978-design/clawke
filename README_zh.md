@@ -28,7 +28,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset=".github/readme-hero-dark.png">
   <source media="(prefers-color-scheme: light)" srcset=".github/readme-hero-light.png">
-  <img width="1800" height="820" alt="Clawke AI Agent 原生移动工作空间" src=".github/readme-hero-light.png">
+  <img width="1800" alt="Clawke AI Agent 原生移动工作空间" src=".github/readme-hero-light.png">
 </picture>
 
 <br />
