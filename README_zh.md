@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="README.md">English</a>
+  ·
+  <strong>简体中文</strong>
+</p>
+
 # Clawke — AI Agent 原生富客户端
 
 <div align="center">

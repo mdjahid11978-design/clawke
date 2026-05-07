@@ -1,3 +1,9 @@
+<p align="center">
+  <strong>English</strong>
+  ·
+  <a href="README_zh.md">简体中文</a>
+</p>
+
 <h1 align="center">
   <img src="client/assets/images/logo.png" width="72" alt="Clawke" />
   <br />
