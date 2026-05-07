@@ -38,6 +38,7 @@ AI Agent 原生移动工作空间
 
 ## 功能特性
 
+- **多端协同** — 同时支持 Mac、Windows、Linux、iOS、Android。无论走到哪里都可以继续工作。
 - **CUP 协议** — AI 流式响应，支持思考块、工具调用和用量统计
 - **SDUI** — 服务端驱动 UI：仪表盘、表单、对话框由服务端指令渲染
 - **多 Agent 在线管理** — 可通过移动端或桌面端管理 OpenClaw、Hermes 等 Agent
