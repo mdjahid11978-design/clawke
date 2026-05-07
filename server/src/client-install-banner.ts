@@ -1,6 +1,6 @@
 import { cyanBold, shouldUseColor, yellowBold } from './terminal-style.js';
 
-export const IOS_CLIENT_URL = 'https://apps.apple.com/us/app/clawke/id6760453431';
+export const DOWNLOAD_URL = 'https://clawke.ai/#download';
 export const RELEASES_URL = 'https://github.com/clawke/clawke/releases';
 
 const BOX_WIDTH = 52;
@@ -21,7 +21,8 @@ export function formatClientInstallBanner(useColor = shouldUseColor()): string[]
     boxLine('Install Clawke Client to connect', useColor),
     boxRule('╚', '╝', useColor),
     '',
-    `   iOS:             ${yellowBold(IOS_CLIENT_URL, useColor)}`,
+    '   iOS/iPadOS:      Open App Store on your device and search "Clawke"',
+    `   Download:        ${yellowBold(DOWNLOAD_URL, useColor)}`,
     `   Other platforms: ${yellowBold(RELEASES_URL, useColor)}`,
     '',
   ];
