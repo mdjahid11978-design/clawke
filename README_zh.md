@@ -1,41 +1,57 @@
-[English](README.md)
-[中文文档](README_zh.md)
+# Clawke — AI Agent 原生富客户端
 
-# Clawke
+<div align="center">
+  <img src="client/assets/images/logo.png" width="120" title="Clawke" alt="Clawke" />
 
-Clawke 目前支持多 Agent 在线管理，包括 OpenClaw、Hermes、Nanobot 等。尤其适合移动端使用：你可以通过 iOS 客户端随时随地管理自己的 Agent，Android 支持即将上线。
+<h1>
+  AI Agent 原生移动工作空间
+</h1>
 
-安全的边缘-云端协作 AI 工作空间。Clawke 通过 CUP 协议（Clawke Unified Protocol）连接本地服务器与 AI 提供商，并通过 SDUI（Server-Driven UI）提供丰富的原生客户端体验。
+<h3>
+在手机或桌面端统一管理 OpenClaw、Hermes、Nanobot、Codex 和 Claude Code。
+</h3>
 
-[📱 iOS App](https://apps.apple.com/us/app/clawke/id6760453431) • 🖥 Mac App（即将上线） • 🤖 Android（即将上线） • [🔧 从源码构建](#从源码构建)
+<p>
+  <a href="https://apps.apple.com/us/app/clawke/id6760453431">📱 <strong>iOS App</strong></a>
+  ·
+  <a href="#手动安装">🔧 <strong>从源码构建</strong></a>
+  ·
+  <a href="docs/CONFIGURATION_zh.md">📚 <strong>文档</strong></a>
+  ·
+  <a href="docs/GATEWAY_INTEGRATION.md">🔌 <strong>Gateway 接入</strong></a>
+  ·
+  <a href="README.md">English</a>
+</p>
 
-## 架构
+<br />
 
-```mermaid
-graph TD
-    subgraph Client ["📱 客户端"]
-        direction LR
-        C1["iOS"] ~~~ C2["Android"] ~~~ C3["Mac"] ~~~ C4["Windows"] ~~~ C5["Linux"]
-    end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme-hero-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset=".github/readme-hero-light.png">
+  <img width="1800" height="820" alt="Clawke AI Agent 原生移动工作空间" src=".github/readme-hero-light.png">
+</picture>
 
-    subgraph Core ["⚙️ Clawke 核心"]
-        direction LR
-        R["Relay"] ~~~ S["Clawke Server"] ~~~ G["Gateway"]
-    end
+<br />
+<br />
 
-    subgraph Agent ["🤖 Agent"]
-        direction LR
-        A1["OpenClaw"] ~~~ A2["Hermes"] ~~~ A3["Nanobot"]
-    end
+<h2>
+步骤 1：下载客户端
+</h2>
 
-    subgraph LLM ["🧠 LLM"]
-        direction LR
-        L1["Minimax"] ~~~ L2["Codex"] ~~~ L3["Claude Code"]
-    end
+<p>
+  <a href="https://apps.apple.com/us/app/clawke/id6760453431"><strong>iOS App Store</strong></a>
+  ·
+  Android 即将上线
+</p>
 
-    Client --> Core
-    Core --> Agent
-    Agent --> LLM
+<h2>
+步骤 2：安装 Clawke Server
+</h2>
+
+</div>
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
 ```
 
 ## 功能特性

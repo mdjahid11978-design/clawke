@@ -1,52 +1,46 @@
-[English](README.md)
-[中文文档](README_zh.md)
+<h1 align="center">
+  <img src="client/assets/images/logo.png" width="72" alt="Clawke" />
+  <br />
+  Clawke
+</h1>
 
-# Clawke
+<h2 align="center">
+Native Mobile Workspace for AI Agents
+</h2>
 
-Clawke currently supports online management for multiple AI agents, including OpenClaw, Hermes, Nanobot, and more. It is especially useful on mobile: you can manage your agents anytime, anywhere from the iOS client, with Android support coming soon.
+<h4 align="center">
+Manage OpenClaw, Hermes, Codex and Claude Code from your phone or desktop.
+</h4>
 
-A secure, edge-cloud collaborative AI workspace. Clawke connects your local server to AI providers through the CUP (Clawke Unified Protocol) and delivers a rich native client experience via SDUI (Server-Driven UI).
+<p align="center">
+  🖥 <strong>Mac</strong>
+  ·
+  🪟 <strong>Windows</strong>
+  ·
+  🐧 <strong>Linux</strong>
+  ·
+  📱 <strong>iOS</strong>
+  ·
+  🤖 <strong>Android</strong>
+</p>
 
-[📱 iOS App](https://apps.apple.com/us/app/clawke/id6760453431) • 🖥 Mac App (coming soon) • 🤖 Android (coming soon) • [🔧 Build from Source](#build-from-source)
-
-## Architecture
-
-```mermaid
-graph TD
-    subgraph Client ["📱 Client"]
-        direction LR
-        C1["iOS"] ~~~ C2["Android"] ~~~ C3["Mac"] ~~~ C4["Windows"] ~~~ C5["Linux"]
-    end
-
-    subgraph Core ["⚙️ Clawke Core"]
-        direction LR
-        R["Relay"] ~~~ S["Clawke Server"] ~~~ G["Gateway"]
-    end
-
-    subgraph Agent ["🤖 Agent"]
-        direction LR
-        A1["OpenClaw"] ~~~ A2["Hermes"] ~~~ A3["Nanobot"]
-    end
-
-    subgraph LLM ["🧠 LLM"]
-        direction LR
-        L1["Minimax"] ~~~ L2["Codex"] ~~~ L3["Claude Code"]
-    end
-
-    Client --> Core
-    Core --> Agent
-    Agent --> LLM
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/readme-hero-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset=".github/readme-hero-light.png">
+  <img width="1800" height="820" alt="Clawke native mobile workspace" src=".github/readme-hero-light.png">
+</picture>
 
 ## Features
 
 - **CUP Protocol** — Streaming AI responses with thinking blocks, tool calls, and usage tracking
 - **SDUI** — Server-driven UI: dashboards, forms, dialogs rendered from server instructions
-- **Multi-agent online management** — Manage OpenClaw, Hermes, Nanobot, and other agents from mobile or desktop clients
+- **Multi-agent online management** — Manage OpenClaw, Hermes, and other agents from mobile or desktop clients
 - **Media** — Image/PDF/text file upload and inline rendering
 - **Relay** — Built-in tunnel for remote access without port forwarding
 
-## Quick Install
+## Step 1: Install Clawke Server
+
+### Quick Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
@@ -56,13 +50,6 @@ Works on macOS, Linux, and WSL2. The installer handles compiling the server, det
 
 > **Windows:** Native Windows is not supported. Please install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) and run the command above.
 
-After installation:
-
-```bash
-source ~/.bashrc           # reload shell (or ~/.zshrc)
-clawke gateway install     # Auto-detect and install AI gateway plugin
-clawke server start        # Start Clawke Server
-```
 
 ### Manual Install
 
@@ -95,10 +82,10 @@ clawke server restart     # Restart Clawke Server
 clawke server status      # Check server status
 ```
 
-### Install Client
+## Step 2: Download Client
 
 - **iOS**: Download from the [App Store](https://apps.apple.com/us/app/clawke/id6760453431).
-- **Android**: Download from [Google Play](#) *(Coming soon)*, or download the APK directly from the [Releases](https://github.com/clawke/clawke/releases) page.
+- **Android**: Download the APK directly from the [Releases](https://github.com/clawke/clawke/releases) page.
 - **macOS / Windows / Linux**: Download compiled binaries from the [Releases](https://github.com/clawke/clawke/releases) page.
 
 Alternatively, you can build it yourself from source:
@@ -122,7 +109,7 @@ clawke/
 │   └── test/            # Tests (42 cases)
 ├── gateways/            # Gateway plugins
 │   ├── openclaw/clawke/ # OpenClaw gateway
-│   └── nanobot/clawke/  # Nanobot gateway
+│   └── hermes/clawke/   # Hermes gateway
 └── relay-server/        # Relay server config
 ```
 
@@ -146,7 +133,7 @@ clawke/
 ### v1.1.17 (2026-04-29)
 
 **[New Feature]** Added `clawke doctor` runtime and gateway diagnostics.
-**[Enhancement]** Clarified multi-agent online management across OpenClaw, Hermes, Nanobot, and mobile clients.
+**[Enhancement]** Clarified multi-agent online management across OpenClaw, Hermes, and mobile clients.
 **[Bug Fix]** Fixed streamed reply recovery after disconnect so `Thinking`, tool state, and stop button no longer get stuck.
 
 ### v1.1.15 (2026-04-29)
