@@ -307,6 +307,7 @@ process.exit(1);
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /Already up to date/);
+  assert.match(result.stdout, /No configured gateways found/);
 
   const commands = fs.readFileSync(logPath, 'utf-8').trim().split('\n');
   assert.deepEqual(commands, [

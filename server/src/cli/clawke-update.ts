@@ -316,7 +316,7 @@ export function runClawkeUpdate(options: UpdateOptions = {}): number {
         runGit(gitCmd, ['checkout', currentBranch], projectRoot);
       }
       stdout.write('[clawke] ✓ Already up to date!\n');
-      return 0;
+      return runGatewayUpdateAfterBuild(projectRoot, stdout, stderr);
     }
 
     stdout.write(`[clawke] Found ${commitCount} new commit(s)\n`);

@@ -96,11 +96,9 @@ test('cli exposes gateway update and clawke update calls it after rebuild', () =
   const repoRoot = path.resolve(__dirname, '..', '..');
   const cliSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'cli', 'clawke.ts'), 'utf-8');
   const updateSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'cli', 'clawke-update.ts'), 'utf-8');
-  const rebuildPosition = updateSource.indexOf("stdout.write('[clawke] Rebuilding server...");
-  const gatewayUpdatePosition = updateSource.indexOf('runGatewayUpdateAfterBuild(projectRoot');
 
   assert.match(cliSource, /command === 'gateway' && subCommand === 'update'/);
   assert.match(updateSource, /runGatewayUpdate\(/);
-  assert.ok(rebuildPosition > 0, 'rebuild step not found');
-  assert.ok(gatewayUpdatePosition > rebuildPosition, 'gateway update should run after rebuild');
+  assert.match(updateSource, /commitCount === 0[\s\S]*return runGatewayUpdateAfterBuild\(projectRoot/);
+  assert.match(updateSource, /Rebuilding server[\s\S]*const gatewayUpdateCode = runGatewayUpdateAfterBuild\(projectRoot/);
 });
