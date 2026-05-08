@@ -82,6 +82,7 @@ clawke doctor             # 检查本机 Clawke 配置和运行状态
 clawke update             # 更新 Clawke 到最新版本
 clawke update --check     # 只检查更新，不安装
 clawke gateway install    # 自动检测并安装 Gateway 插件
+clawke gateway update     # 更新已配置的 Gateway 插件代码（不重启）
 clawke server start       # 启动 Clawke 服务
 clawke server stop        # 停止 Clawke 服务
 clawke server restart     # 重启 Clawke 服务

@@ -83,6 +83,7 @@ clawke doctor             # Check local Clawke setup and runtime status
 clawke update             # Update Clawke to the latest version
 clawke update --check     # Check for updates without installing
 clawke gateway install    # Auto-detect and install gateway plugin
+clawke gateway update     # Update configured gateway plugin code (no restart)
 clawke server start       # Start Clawke Server
 clawke server stop        # Stop Clawke Server
 clawke server restart     # Restart Clawke Server

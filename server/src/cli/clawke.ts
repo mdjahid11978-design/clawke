@@ -4,6 +4,7 @@
  *
  * 用法：
  *   clawke gateway install                — 自动检测并安装 Gateway 插件
+ *   clawke gateway update                 — 更新已配置 Gateway 插件代码 / Update configured Gateway plugin code
  *   clawke openclaw-gateway install       — 安装 Gateway 插件到本机 OpenClaw（别名）
  *   clawke server start                   — 启动 Clawke Server
  *   clawke doctor                         — 检查本机 Clawke 配置和运行状态
@@ -540,6 +541,11 @@ async function main(): Promise<void> {
   } else if (command === 'gateway' && subCommand === 'install') {
     await installGateway();
 
+  } else if (command === 'gateway' && subCommand === 'update') {
+    const { runGatewayUpdate } = await import('./gateway-updater.js');
+    const result = runGatewayUpdate();
+    if (result !== 0) process.exit(result);
+
   // 旧命令别名兼容 — Legacy command aliases
   } else if (command === 'openclaw-gateway' && subCommand === 'install') {
     const { installOpenClawGateway } = await import('./openclaw-gateway-installer.js');
@@ -588,6 +594,7 @@ function printHelp(): void {
     server restart             Restart Clawke Server
     server status              Check if server is running
     gateway install            Auto-detect and install gateway plugin
+    gateway update             Update configured gateway plugin code (no restart)
 
   Legacy Commands:
     openclaw-gateway install   Install OpenClaw gateway (same as gateway install)
@@ -599,6 +606,7 @@ function printHelp(): void {
 
   Quick Start:
     clawke gateway install     # Connect to your AI agent
+    clawke gateway update      # Update installed gateway code, no restart
     clawke server start        # Start the server
 `);
 }

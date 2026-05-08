@@ -38,6 +38,7 @@ process.exit(1);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
@@ -83,6 +84,7 @@ process.exit(0);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
@@ -227,6 +229,7 @@ process.exit(0);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
@@ -296,6 +299,7 @@ process.exit(1);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
@@ -353,6 +357,7 @@ process.exit(0);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
@@ -426,6 +431,7 @@ process.exit(0);
     cwd: serverRoot,
     env: {
       ...process.env,
+      CLAWKE_DATA_DIR: path.join(dir, '.clawke'),
       PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
     },
     encoding: 'utf-8',
