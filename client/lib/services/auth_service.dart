@@ -38,6 +38,23 @@ class AuthService {
     };
   }
 
+  static bool get supportsAppleSignIn {
+    if (kIsWeb) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => true,
+      TargetPlatform.macOS => !kReleaseMode || EnvConfig.enableMacosAppleSignIn,
+      _ => false,
+    };
+  }
+
+  static bool get _usesDesktopGoogleOAuth {
+    if (kIsWeb || EnvConfig.googleDesktopClientId.isEmpty) return false;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.windows || TargetPlatform.linux => true,
+      _ => false,
+    };
+  }
+
   // ── 本地状态查询 ──
 
   /// 检查是否已登录（本地有持久化的 uid + securit）。
@@ -238,9 +255,8 @@ class AuthService {
   );
 
   static Future<DesktopGoogleAccount> _getGoogleAccount() async {
-    if (!kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.windows ||
-            defaultTargetPlatform == TargetPlatform.linux)) {
+    if (_usesDesktopGoogleOAuth) {
+      debugPrint('[Auth] Using desktop Google OAuth loopback flow');
       return DesktopGoogleOAuthService(
         clientId: EnvConfig.googleDesktopClientId,
         clientSecret: EnvConfig.googleDesktopClientSecret,
@@ -288,6 +304,10 @@ class AuthService {
     debugPrint('[Auth] Apple login on ${Platform.operatingSystem}');
 
     try {
+      if (!supportsAppleSignIn) {
+        throw const ApiException('Apple 登录暂不可用，请使用邮箱或 Google 登录');
+      }
+
       final credential = await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,

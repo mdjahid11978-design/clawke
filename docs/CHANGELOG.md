@@ -7,8 +7,8 @@
 ## v1.1.27 (2026-05-09)
 
 **[Bug Fix]** macOS release sign-in and desktop OAuth packaging.
-- Added the Google Sign-In keychain access group to macOS entitlements so release builds no longer fail Google login with a keychain error.
-- Restored the macOS release Sign in with Apple entitlement and kept Apple/Google sign-in entitlements covered in release validation.
+- Keeps macOS release Google sign-in on the native GoogleSignIn flow and validates the required keychain access groups.
+- Keeps macOS release Apple sign-in hidden unless the provisioning profile enables the Sign in with Apple entitlement, avoiding a broken login button.
 
 **[Enhancement]** Desktop release coverage and assets.
 - Polished the desktop OAuth callback flow and refreshed Windows/Linux desktop icons.

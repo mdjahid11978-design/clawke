@@ -2,6 +2,11 @@ name: Internal Desktop Builds
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional existing release tag to refresh Linux assets, e.g. v1.1.27'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -271,53 +276,20 @@ jobs:
         include:
           - arch: x64
             runner: ubuntu-latest
+            container_platform: linux/amd64
             archive_name: Clawke-internal-linux-x64.tar.gz
             artifact_name: internal-linux-x64
             bundle_path: client/build/linux/x64/release/bundle
           - arch: arm64
             runner: ubuntu-24.04-arm
+            container_platform: linux/arm64
             archive_name: Clawke-internal-linux-arm64.tar.gz
             artifact_name: internal-linux-arm64
             bundle_path: client/build/linux/arm64/release/bundle
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Flutter (Linux x64)
-        if: matrix.arch == 'x64'
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          architecture: x64
-
-      - name: Set up Flutter (Linux ARM64)
-        if: matrix.arch == 'arm64'
-        run: |
-          set -euo pipefail
-          FLUTTER_ROOT="$RUNNER_TOOL_CACHE/flutter-linux-arm64-${FLUTTER_VERSION}"
-          git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
-          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
-          "$FLUTTER_ROOT/bin/flutter" --version
-
-      - name: Enable Linux desktop
-        run: flutter config --enable-linux-desktop
-
-      - name: Install Linux dependencies
-        run: |
-          set -euo pipefail
-          sudo apt-get update -y
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
-
-      - name: Install dependencies
-        working-directory: client
-        run: flutter pub get
-
-      - name: Generate code (Drift ORM)
-        working-directory: client
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Build Linux
-        working-directory: client
+      - name: Build Linux in Ubuntu 20.04 container
         env:
           GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
           GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
@@ -325,9 +297,30 @@ jobs:
           set -euo pipefail
           test -n "${GOOGLE_DESKTOP_CLIENT_ID:-}"
           test -n "${GOOGLE_DESKTOP_CLIENT_SECRET:-}"
-          flutter build linux --release \
-            "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}" \
-            "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}"
+          docker run --rm \
+            --platform "${{ matrix.container_platform }}" \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e FLUTTER_VERSION="${FLUTTER_VERSION}" \
+            -e GOOGLE_DESKTOP_CLIENT_ID="${GOOGLE_DESKTOP_CLIENT_ID}" \
+            -e GOOGLE_DESKTOP_CLIENT_SECRET="${GOOGLE_DESKTOP_CLIENT_SECRET}" \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            ubuntu:20.04 bash -euxo pipefail -c '
+              apt-get update -y
+              apt-get install -y ca-certificates curl git unzip xz-utils zip clang lld cmake ninja-build pkg-config libgtk-3-dev liblzma-dev binutils file
+              git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git /opt/flutter
+              export PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:$PATH"
+              git config --global --add safe.directory /opt/flutter
+              git config --global --add safe.directory /workspace
+              flutter --version
+              flutter config --enable-linux-desktop
+              cd /workspace/client
+              flutter pub get
+              dart run build_runner build --delete-conflicting-outputs
+              flutter build linux --release \
+                "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}" \
+                "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}"
+            '
 
       - name: Verify Linux binary architecture
         run: |
@@ -335,6 +328,14 @@ jobs:
           EXE_PATH="${{ matrix.bundle_path }}/clawke"
           test -x "$EXE_PATH"
           file "$EXE_PATH"
+          command -v readelf
+          while IFS= read -r -d '' binary; do
+            if readelf --version-info "$binary" 2>/dev/null | grep -Eq 'GLIBC_2\.(3[2-9]|[4-9][0-9])'; then
+              echo "::error::$binary requires glibc newer than 2.31."
+              readelf --version-info "$binary" | grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])' || true
+              exit 1
+            fi
+          done < <(find "${{ matrix.bundle_path }}" -type f \( -name clawke -o -name "*.so" \) -print0)
 
       - name: Create TAR
         run: tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
@@ -345,3 +346,33 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.archive_name }}
           retention-days: 7
+
+  refresh-linux-release-assets:
+    name: refresh-linux-release-assets
+    needs: build-linux
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: internal-linux-*
+          path: artifacts
+
+      - name: Upload Linux assets to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp artifacts/internal-linux-x64/Clawke-internal-linux-x64.tar.gz "release/Clawke-${RELEASE_TAG}-linux-x64.tar.gz"
+          cp artifacts/internal-linux-arm64/Clawke-internal-linux-arm64.tar.gz "release/Clawke-${RELEASE_TAG}-linux-arm64.tar.gz"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" \
+            "release/Clawke-${RELEASE_TAG}-linux-x64.tar.gz" \
+            "release/Clawke-${RELEASE_TAG}-linux-arm64.tar.gz" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

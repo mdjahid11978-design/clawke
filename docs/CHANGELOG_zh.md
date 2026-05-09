@@ -7,8 +7,8 @@
 ## v1.1.27 (2026-05-09)
 
 **[问题修复]** macOS release 登录与桌面端 OAuth 打包。
-- macOS entitlements 新增 Google Sign-In 所需的 Keychain access group，修复 release 版 Google 登录 `keychain error`。
-- 恢复 macOS release 版 Sign in with Apple entitlement，并在发布验证中覆盖 Apple/Google 登录相关 entitlement。
+- macOS release 版保持原生 GoogleSignIn 流程，并校验必需的 Keychain access groups。
+- macOS release 版默认隐藏 Apple 登录，直到 provisioning profile 真正启用 Sign in with Apple entitlement，避免显示不可用按钮。
 
 **[功能优化]** 桌面端发布覆盖与图标资源。
 - 优化桌面端 OAuth 回调流程，并刷新 Windows/Linux 桌面端图标。

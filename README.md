@@ -137,7 +137,7 @@ clawke/
 <!-- README_CHANGELOG_START -->
 ### v1.1.27 (2026-05-09)
 
-**[Bug Fix]** Restored macOS Google/Apple sign-in entitlements and fixed release Google login keychain errors.
+**[Bug Fix]** Preserved native macOS Google Sign-In and hid unavailable Apple login until the release profile supports it.
 **[Enhancement]** Polished desktop OAuth packaging, refreshed desktop icons, and updated release workflows for the current GitHub Actions runtime.
 
 ### v1.1.26 (2026-05-09)

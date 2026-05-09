@@ -94,6 +94,21 @@ void main() {
       }
     });
 
+    testWidgets('keeps native Google sign-in available on macOS', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+
+      try {
+        await tester.pumpWidget(_buildLocalizedApp(const LoginScreen()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Google 登录'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
     testWidgets('shows validation error if fields empty on register', (
       tester,
     ) async {

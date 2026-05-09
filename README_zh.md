@@ -136,7 +136,7 @@ clawke/
 <!-- README_CHANGELOG_START -->
 ### v1.1.27 (2026-05-09)
 
-**[问题修复]** 恢复 macOS Google/Apple 登录 entitlement，修复 release 版 Google 登录 keychain error。
+**[问题修复]** macOS release 版保持原生 Google 登录，并隐藏当前 profile 尚不支持的 Apple 登录。
 **[功能优化]** 优化桌面端 OAuth 打包，刷新桌面端图标，并将发布流程更新到当前 GitHub Actions runtime。
 
 ### v1.1.26 (2026-05-09)

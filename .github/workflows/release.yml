@@ -590,77 +590,58 @@ jobs:
         include:
           - arch: x64
             runner: ubuntu-latest
+            container_platform: linux/amd64
             archive_name: Clawke-linux-x64.tar.gz
             artifact_name: linux-x64-tar
             bundle_path: client/build/linux/x64/release/bundle
           - arch: arm64
             runner: ubuntu-24.04-arm
+            container_platform: linux/arm64
             archive_name: Clawke-linux-arm64.tar.gz
             artifact_name: linux-arm64-tar
             bundle_path: client/build/linux/arm64/release/bundle
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Flutter (Linux x64)
-        if: matrix.arch == 'x64'
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          architecture: x64
-
-      - name: Set up Flutter (Linux ARM64)
-        if: matrix.arch == 'arm64'
-        run: |
-          set -euo pipefail
-          FLUTTER_ROOT="$RUNNER_TOOL_CACHE/flutter-linux-arm64-${FLUTTER_VERSION}"
-          git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
-          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
-          "$FLUTTER_ROOT/bin/flutter" --version
-
-      - name: Enable Linux desktop
-        run: flutter config --enable-linux-desktop
-
-      - name: Install Linux dependencies
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3; do
-            echo "Linux dependency install attempt ${attempt}/3"
-            if timeout 600s bash -c 'sudo apt-get update -y && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev'; then
-              exit 0
-            fi
-            sleep $((attempt * 15))
-          done
-          exit 1
-
-      - name: Install dependencies
-        working-directory: client
-        run: flutter pub get
-
-      - name: Generate code (Drift ORM)
-        working-directory: client
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Build Linux
-        working-directory: client
+      - name: Build Linux in Ubuntu 20.04 container
         env:
           GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
           GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          defines=()
-          if [ -n "${GOOGLE_DESKTOP_CLIENT_ID:-}" ]; then
-            echo "Building Linux with desktop Google OAuth enabled."
-            defines+=("--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}")
-            if [ -n "${GOOGLE_DESKTOP_CLIENT_SECRET:-}" ]; then
-              defines+=("--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}")
-            else
-              echo "::warning::GOOGLE_DESKTOP_CLIENT_SECRET secret is not configured; Google token exchange may fail if the OAuth client requires it."
-            fi
-          else
-            echo "::warning::GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Linux Google login will remain disabled."
+          if [ -z "${GOOGLE_DESKTOP_CLIENT_ID:-}" ]; then
+            echo "::error::GOOGLE_DESKTOP_CLIENT_ID secret is required for Linux Google login release builds."
+            exit 1
           fi
-          flutter build linux --release "${defines[@]}"
+          if [ -z "${GOOGLE_DESKTOP_CLIENT_SECRET:-}" ]; then
+            echo "::error::GOOGLE_DESKTOP_CLIENT_SECRET secret is required for Linux Google login release builds."
+            exit 1
+          fi
+          echo "Building Linux with desktop Google OAuth enabled."
+          docker run --rm \
+            --platform "${{ matrix.container_platform }}" \
+            -e DEBIAN_FRONTEND=noninteractive \
+            -e FLUTTER_VERSION="${FLUTTER_VERSION}" \
+            -e GOOGLE_DESKTOP_CLIENT_ID="${GOOGLE_DESKTOP_CLIENT_ID}" \
+            -e GOOGLE_DESKTOP_CLIENT_SECRET="${GOOGLE_DESKTOP_CLIENT_SECRET}" \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            ubuntu:20.04 bash -euxo pipefail -c '
+              apt-get update -y
+              apt-get install -y ca-certificates curl git unzip xz-utils zip clang lld cmake ninja-build pkg-config libgtk-3-dev liblzma-dev binutils file
+              git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git /opt/flutter
+              export PATH="/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:$PATH"
+              git config --global --add safe.directory /opt/flutter
+              git config --global --add safe.directory /workspace
+              flutter --version
+              flutter config --enable-linux-desktop
+              cd /workspace/client
+              flutter pub get
+              dart run build_runner build --delete-conflicting-outputs
+              flutter build linux --release \
+                "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}" \
+                "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}"
+            '
 
       - name: Verify Linux binary architecture
         run: |
@@ -680,6 +661,14 @@ jobs:
               exit 1
               ;;
           esac
+          command -v readelf
+          while IFS= read -r -d '' binary; do
+            if readelf --version-info "$binary" 2>/dev/null | grep -Eq 'GLIBC_2\.(3[2-9]|[4-9][0-9])'; then
+              echo "::error::$binary requires glibc newer than 2.31."
+              readelf --version-info "$binary" | grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])' || true
+              exit 1
+            fi
+          done < <(find "${{ matrix.bundle_path }}" -type f \( -name clawke -o -name "*.so" \) -print0)
 
       - name: Create tar.gz
         run: |
