@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -69,6 +70,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('请填写邮箱和密码'), findsOneWidget);
+    });
+
+    testWidgets('hides Google sign-in on unsupported Windows builds', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+      try {
+        await tester.pumpWidget(_buildLocalizedApp(const LoginScreen()));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Google 登录'), findsNothing);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
 
     testWidgets('shows validation error if fields empty on register', (

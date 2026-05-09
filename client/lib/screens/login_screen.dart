@@ -471,20 +471,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Widget _buildSocialButtons(ColorScheme colorScheme) {
     return Column(
       children: [
-        // Google Sign-In
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: _isLoading ? null : _handleGoogleLogin,
-            icon: Text('G', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-            label: Text(context.l10n.googleSignIn, style: Theme.of(context).textTheme.bodyMedium),
-            style: OutlinedButton.styleFrom(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3)),
+        if (AuthService.supportsGoogleSignIn)
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _handleGoogleLogin,
+              icon: Text('G', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              label: Text(context.l10n.googleSignIn, style: Theme.of(context).textTheme.bodyMedium),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(color: colorScheme.outline.withValues(alpha: 0.3)),
+              ),
             ),
           ),
-        ),
 
         // Apple Sign-In (iOS only)
         if (Platform.isIOS || Platform.isMacOS) ...[

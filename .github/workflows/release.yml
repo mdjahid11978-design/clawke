@@ -442,6 +442,49 @@ jobs:
         working-directory: client
         run: flutter build windows --release
 
+      - name: Bundle Visual C++ runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = "client\build\windows\x64\runner\Release"
+          $clientExe = Join-Path $releaseDir "client.exe"
+          if (-not (Test-Path $clientExe)) {
+            throw "Windows release output is missing client.exe."
+          }
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstall) {
+            throw "Unable to locate Visual Studio with VC tools."
+          }
+
+          $redistRoot = Join-Path $vsInstall "VC\Redist\MSVC"
+          $crtDir = Get-ChildItem -Path $redistRoot -Directory |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
+            Where-Object { Test-Path (Join-Path $_ "vcruntime140_1.dll") } |
+            Select-Object -First 1
+          if (-not $crtDir) {
+            throw "Unable to locate x64 Visual C++ runtime under $redistRoot."
+          }
+
+          $runtimeDlls = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+          foreach ($dll in $runtimeDlls) {
+            $source = Join-Path $crtDir $dll
+            if (-not (Test-Path $source)) {
+              throw "Missing Visual C++ runtime DLL: $source"
+            }
+            Copy-Item -Path $source -Destination $releaseDir -Force
+          }
+
+          foreach ($dll in $runtimeDlls) {
+            $bundled = Join-Path $releaseDir $dll
+            if (-not (Test-Path $bundled)) {
+              throw "Failed to bundle Visual C++ runtime DLL: $dll"
+            }
+          }
+          Write-Host "Bundled Visual C++ runtime from $crtDir"
+
       - name: Create ZIP
         run: |
           Compress-Archive -Path "client\build\windows\x64\runner\Release\*" -DestinationPath "Clawke-windows-x64.zip"

@@ -25,6 +25,14 @@ class AuthService {
   static const _kLoggedOutKey = 'clawke_logged_out';
   static const _kKnownAccountsKey = 'clawke_known_accounts';
 
+  static bool get supportsGoogleSignIn {
+    if (kIsWeb) return true;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.macOS => true,
+      _ => false,
+    };
+  }
+
   // ── 本地状态查询 ──
 
   /// 检查是否已登录（本地有持久化的 uid + securit）。
@@ -159,6 +167,10 @@ class AuthService {
     debugPrint('[Auth] Google login on ${Platform.operatingSystem}');
 
     try {
+      if (!supportsGoogleSignIn) {
+        throw const ApiException('Google 登录暂不可用，请使用邮箱登录');
+      }
+
       final googleSignIn = GoogleSignIn(scopes: ['email']);
 
       debugPrint('[Auth] Google signIn starting...');

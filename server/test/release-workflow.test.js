@@ -38,4 +38,17 @@ describe('release workflow guardrails', () => {
     assert.match(androidBuildGradle, /integration_test/);
     assert.match(androidBuildGradle, /compileReleaseJavaWithJavac/);
   });
+
+  it('bundles the Visual C++ runtime into Windows release zips', () => {
+    const bundleStep = workflow.indexOf('Bundle Visual C++ runtime');
+    const zipStep = workflow.indexOf('Create ZIP');
+    assert.ok(bundleStep > -1, 'Windows workflow must bundle Visual C++ runtime DLLs');
+    assert.ok(zipStep > -1, 'Windows workflow must create a release ZIP');
+    assert.ok(bundleStep < zipStep, 'Visual C++ runtime DLLs must be copied before zipping');
+    assert.match(workflow, /Microsoft\.VC143\.CRT/);
+    assert.match(workflow, /msvcp140\.dll/);
+    assert.match(workflow, /vcruntime140\.dll/);
+    assert.match(workflow, /vcruntime140_1\.dll/);
+    assert.match(workflow, /Failed to bundle Visual C\+\+ runtime DLL/);
+  });
 });
