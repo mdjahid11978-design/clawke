@@ -7,7 +7,7 @@ on:
       - codex/fix-android-1.1.21-google-login
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   FLUTTER_VERSION: '3.41.4'
@@ -141,3 +141,20 @@ jobs:
         with:
           name: android-release-smoke-signing
           path: apk-signing.txt
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          TAG="android-release-smoke-${GITHUB_RUN_ID}"
+          mkdir -p release
+          cp client/build/app/outputs/flutter-apk/app-release.apk "release/Clawke-${SHORT_SHA}-android.apk"
+          cp apk-signing.txt "release/Clawke-${SHORT_SHA}-android-signing.txt"
+          gh release create "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --draft \
+            --prerelease \
+            --title "Android release smoke ${SHORT_SHA}" \
+            --notes "Draft Android release smoke build for Google sign-in validation. Commit: ${GITHUB_SHA}"
