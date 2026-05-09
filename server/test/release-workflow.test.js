@@ -30,6 +30,10 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, 'client', 'windows', 'runner', 'Runner.rc'),
     'utf8',
   );
+  const macosReleaseEntitlements = fs.readFileSync(
+    path.join(repoRoot, 'client', 'macos', 'Runner', 'Release.entitlements'),
+    'utf8',
+  );
   it('requires Android release signing and rejects debug-signed APKs', () => {
     assert.match(workflow, /ANDROID_KEYSTORE_BASE64/);
     assert.match(workflow, /ANDROID_RELEASE_CERT_SHA256/);
@@ -72,10 +76,14 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /find "\$APP_PATH\/Contents\/Frameworks" -maxdepth 1 -name "\*\.framework" -type d -print0/);
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
+    assert.match(macosBuild, /com\.apple\.developer\.applesignin/);
     assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
     assert.match(macosVerify, /grep -qw x86_64/);
     assert.match(macosVerify, /grep -qw arm64/);
     assert.match(macosVerify, /Published macOS binary is not universal/);
+    assert.match(macosVerify, /com\.apple\.developer\.applesignin/);
+    assert.match(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
+    assert.match(macosReleaseEntitlements, /<string>Default<\/string>/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
@@ -158,6 +166,7 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(internalDesktopWorkflow, /gh release/);
     assert.match(internalDesktopWorkflow, /build-macos-universal/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-macOS\.dmg/);
+    assert.match(internalDesktopWorkflow, /com\.apple\.developer\.applesignin/);
     assert.match(internalDesktopWorkflow, /build-windows-x64/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
     assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
