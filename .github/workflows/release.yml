@@ -426,6 +426,40 @@ jobs:
           fi
           echo "Published Android release certificate SHA-256 verified: $ACTUAL_SHA256"
 
+  # ── Verify published Linux assets ────────────────────────────
+  verify-linux-release:
+    needs: release
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            expected_pattern: x86-64
+          - arch: arm64
+            expected_pattern: ARM aarch64|aarch64|ARM64
+    steps:
+      - name: Download and verify published Linux tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERIFY_DIR="$RUNNER_TEMP/release-verify-linux-${{ matrix.arch }}"
+          mkdir -p "$VERIFY_DIR/extract"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "Clawke-${TAG}-linux-${{ matrix.arch }}.tar.gz" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+
+          TARBALL_PATH="$VERIFY_DIR/Clawke-${TAG}-linux-${{ matrix.arch }}.tar.gz"
+          tar xzf "$TARBALL_PATH" -C "$VERIFY_DIR/extract"
+          EXE_PATH="$VERIFY_DIR/extract/clawke"
+          test -x "$EXE_PATH"
+          file "$EXE_PATH" | tee "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
+          grep -Eq '${{ matrix.expected_pattern }}' "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
+
   # ── Windows ──────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
@@ -465,9 +499,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $releaseDir = "client\build\windows\x64\runner\Release"
-          $clientExe = Join-Path $releaseDir "client.exe"
-          if (-not (Test-Path $clientExe)) {
-            throw "Windows release output is missing client.exe."
+          $clawkeExe = Join-Path $releaseDir "clawke.exe"
+          if (-not (Test-Path $clawkeExe)) {
+            throw "Windows release output is missing clawke.exe."
           }
 
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -515,22 +549,52 @@ jobs:
 
   # ── Linux ────────────────────────────────────────────────────
   build-linux:
-    runs-on: ubuntu-latest
+    name: build-linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+            archive_name: Clawke-linux-x64.tar.gz
+            artifact_name: linux-x64-tar
+            bundle_path: client/build/linux/x64/release/bundle
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            archive_name: Clawke-linux-arm64.tar.gz
+            artifact_name: linux-arm64-tar
+            bundle_path: client/build/linux/arm64/release/bundle
     steps:
       - uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
+      - name: Set up Flutter (Linux x64)
+        if: matrix.arch == 'x64'
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
+          architecture: x64
+
+      - name: Set up Flutter (Linux ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          FLUTTER_ROOT="$RUNNER_TOOL_CACHE/flutter-linux-arm64-${FLUTTER_VERSION}"
+          git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" --version
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
 
       - name: Install Linux dependencies
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
             echo "Linux dependency install attempt ${attempt}/3"
-            if timeout 600s bash -c 'sudo apt-get update -y && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ninja-build libgtk-3-dev'; then
+            if timeout 600s bash -c 'sudo apt-get update -y && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev'; then
               exit 0
             fi
             sleep $((attempt * 15))
@@ -549,16 +613,35 @@ jobs:
         working-directory: client
         run: flutter build linux --release
 
+      - name: Verify Linux binary architecture
+        run: |
+          set -euo pipefail
+          EXE_PATH="${{ matrix.bundle_path }}/clawke"
+          test -x "$EXE_PATH"
+          file "$EXE_PATH" | tee "linux-${{ matrix.arch }}-file.txt"
+          case "${{ matrix.arch }}" in
+            x64)
+              grep -Eq 'x86-64' "linux-${{ matrix.arch }}-file.txt"
+              ;;
+            arm64)
+              grep -Eq 'ARM aarch64|aarch64|ARM64' "linux-${{ matrix.arch }}-file.txt"
+              ;;
+            *)
+              echo "::error::Unsupported Linux architecture: ${{ matrix.arch }}"
+              exit 1
+              ;;
+          esac
+
       - name: Create tar.gz
         run: |
-          cd client/build/linux/x64/release/bundle
-          tar czf $GITHUB_WORKSPACE/Clawke-linux-x64.tar.gz .
+          cd "${{ matrix.bundle_path }}"
+          tar czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-tar
-          path: Clawke-linux-x64.tar.gz
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.archive_name }}
 
   # ── Create GitHub Release ────────────────────────────────────
   release:
@@ -582,7 +665,8 @@ jobs:
           cp artifacts/android-signing-report/apk-signing.txt "release/Clawke-${TAG}-android-signing.txt"
           cp artifacts/macos-dmg/Clawke-macOS.dmg      "release/Clawke-${TAG}-macOS.dmg"
           cp artifacts/windows-zip/Clawke-windows-x64.zip "release/Clawke-${TAG}-windows-x64.zip"
-          cp artifacts/linux-tar/Clawke-linux-x64.tar.gz  "release/Clawke-${TAG}-linux-x64.tar.gz"
+          cp artifacts/linux-x64-tar/Clawke-linux-x64.tar.gz  "release/Clawke-${TAG}-linux-x64.tar.gz"
+          cp artifacts/linux-arm64-tar/Clawke-linux-arm64.tar.gz  "release/Clawke-${TAG}-linux-arm64.tar.gz"
 
       - name: Generate release notes
         run: |
@@ -606,7 +690,8 @@ jobs:
           | 🖥 macOS | `Clawke-TAG-macOS.dmg` | Open DMG, drag to Applications |
           | 🤖 Android | `Clawke-TAG-android.apk` | Enable "Unknown sources", install APK |
           | 🪟 Windows | `Clawke-TAG-windows-x64.zip` | Unzip, run `clawke.exe` |
-          | 🐧 Linux | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./clawke` |
+          | 🐧 Linux x64 | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./clawke` |
+          | 🐧 Linux ARM64 | `Clawke-TAG-linux-arm64.tar.gz` | Extract, run `./clawke` |
 
           ## Server Setup
           ```bash

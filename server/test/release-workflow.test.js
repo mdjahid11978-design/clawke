@@ -14,6 +14,18 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, 'client', 'android', 'app', 'build.gradle.kts'),
     'utf8',
   );
+  const linuxCMake = fs.readFileSync(
+    path.join(repoRoot, 'client', 'linux', 'CMakeLists.txt'),
+    'utf8',
+  );
+  const windowsCMake = fs.readFileSync(
+    path.join(repoRoot, 'client', 'windows', 'CMakeLists.txt'),
+    'utf8',
+  );
+  const windowsRunnerRc = fs.readFileSync(
+    path.join(repoRoot, 'client', 'windows', 'runner', 'Runner.rc'),
+    'utf8',
+  );
   it('requires Android release signing and rejects debug-signed APKs', () => {
     assert.match(workflow, /ANDROID_KEYSTORE_BASE64/);
     assert.match(workflow, /ANDROID_RELEASE_CERT_SHA256/);
@@ -69,6 +81,8 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /vcruntime140\.dll/);
     assert.match(workflow, /vcruntime140_1\.dll/);
     assert.match(workflow, /Failed to bundle Visual C\+\+ runtime DLL/);
+    assert.match(workflow, /clawke\.exe/);
+    assert.doesNotMatch(workflow, /client\.exe/);
   });
 
   it('enables Windows desktop Google OAuth only when the release secret is configured', () => {
@@ -82,5 +96,42 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /--dart-define=GOOGLE_DESKTOP_CLIENT_ID=/);
     assert.match(workflow, /flutter build windows --release/);
     assert.doesNotMatch(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login/);
+  });
+
+  it('builds Linux release artifacts for x64 and ARM64', () => {
+    assert.match(workflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
+    assert.match(workflow, /ubuntu-24\.04-arm/);
+    assert.match(workflow, /Clawke-linux-x64\.tar\.gz/);
+    assert.match(workflow, /Clawke-linux-arm64\.tar\.gz/);
+    assert.match(workflow, /linux-x64-tar/);
+    assert.match(workflow, /linux-arm64-tar/);
+    assert.match(workflow, /client\/build\/linux\/x64\/release\/bundle/);
+    assert.match(workflow, /client\/build\/linux\/arm64\/release\/bundle/);
+    assert.match(workflow, /architecture: x64/);
+    assert.match(workflow, /git clone --branch "\$FLUTTER_VERSION" --depth 1 https:\/\/github\.com\/flutter\/flutter\.git "\$FLUTTER_ROOT"/);
+    assert.match(workflow, /flutter config --enable-linux-desktop/);
+    assert.match(workflow, /Verify Linux binary architecture/);
+    assert.match(workflow, /EXE_PATH="\$\{\{ matrix\.bundle_path \}\}\/clawke"/);
+    assert.match(workflow, /EXE_PATH="\$VERIFY_DIR\/extract\/clawke"/);
+    assert.doesNotMatch(workflow, /\/client"/);
+    assert.match(workflow, /ARM aarch64\|aarch64\|ARM64/);
+    assert.match(workflow, /Clawke-\$\{TAG\}-linux-arm64\.tar\.gz/);
+    assert.match(workflow, /verify-linux-release/);
+    assert.match(workflow, /Download and verify published Linux tarball/);
+    assert.match(workflow, /gh release download "\$TAG"/);
+    assert.match(workflow, /--pattern "Clawke-\$\{TAG\}-linux-\$\{\{ matrix\.arch \}\}\.tar\.gz"/);
+    assert.match(workflow, /published-linux-\$\{\{ matrix\.arch \}\}-file\.txt/);
+    assert.match(workflow, /Linux ARM64/);
+  });
+
+  it('uses Clawke as the desktop executable name', () => {
+    assert.match(linuxCMake, /set\(BINARY_NAME "clawke"\)/);
+    assert.match(windowsCMake, /project\(clawke LANGUAGES CXX\)/);
+    assert.match(windowsCMake, /set\(BINARY_NAME "clawke"\)/);
+    assert.match(windowsRunnerRc, /VALUE "OriginalFilename", "clawke\.exe"/);
+    assert.match(windowsRunnerRc, /VALUE "ProductName", "Clawke"/);
+    assert.doesNotMatch(linuxCMake, /set\(BINARY_NAME "client"\)/);
+    assert.doesNotMatch(windowsCMake, /set\(BINARY_NAME "client"\)/);
+    assert.doesNotMatch(windowsRunnerRc, /client\.exe/);
   });
 });
