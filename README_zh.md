@@ -105,6 +105,14 @@ flutter build macos  # 也可以是 ios, apk, windows, linux
 
 > 如果需要运行调试模式，请执行 `flutter run -d macos`（可将 `macos` 替换为其他平台）。
 
+## 社区交流
+
+有问题或想交流使用经验，可以扫码加入 Clawke 微信交流群讨论。
+
+<p align="center">
+  <img src=".github/wechat-group.jpg" width="320" alt="Clawke 微信交流群二维码" />
+</p>
+
 ## 项目结构
 
 ```

@@ -68,6 +68,10 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /find "\$APP_PATH\/Contents\/Frameworks" -maxdepth 1 -name "\*\.framework" -type d -print0/);
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
+    assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
+    assert.match(macosVerify, /grep -qw x86_64/);
+    assert.match(macosVerify, /grep -qw arm64/);
+    assert.match(macosVerify, /Published macOS binary is not universal/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
@@ -92,8 +96,11 @@ describe('release workflow guardrails', () => {
     assert.ok(bundleStep > -1, 'Windows workflow must bundle Visual C++ runtime DLLs');
     assert.ok(buildStep < bundleStep, 'Windows app must be built before bundling runtime DLLs');
     assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID: \$\{\{ secrets\.GOOGLE_DESKTOP_CLIENT_ID \}\}/);
+    assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_SECRET: \$\{\{ secrets\.GOOGLE_DESKTOP_CLIENT_SECRET \}\}/);
     assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Windows Google login will remain disabled/);
+    assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_SECRET secret is not configured; Google token exchange may fail/);
     assert.match(workflow, /--dart-define=GOOGLE_DESKTOP_CLIENT_ID=/);
+    assert.match(workflow, /--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=/);
     assert.match(workflow, /flutter build windows --release/);
     assert.doesNotMatch(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login/);
   });
@@ -110,6 +117,11 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /architecture: x64/);
     assert.match(workflow, /git clone --branch "\$FLUTTER_VERSION" --depth 1 https:\/\/github\.com\/flutter\/flutter\.git "\$FLUTTER_ROOT"/);
     assert.match(workflow, /flutter config --enable-linux-desktop/);
+    assert.match(workflow, /Building Linux with desktop Google OAuth enabled/);
+    assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Linux Google login will remain disabled/);
+    assert.match(workflow, /defines\+=\("--dart-define=GOOGLE_DESKTOP_CLIENT_ID=\$\{GOOGLE_DESKTOP_CLIENT_ID\}"\)/);
+    assert.match(workflow, /defines\+=\("--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=\$\{GOOGLE_DESKTOP_CLIENT_SECRET\}"\)/);
+    assert.match(workflow, /flutter build linux --release "\$\{defines\[@\]\}"/);
     assert.match(workflow, /Verify Linux binary architecture/);
     assert.match(workflow, /EXE_PATH="\$\{\{ matrix\.bundle_path \}\}\/clawke"/);
     assert.match(workflow, /EXE_PATH="\$VERIFY_DIR\/extract\/clawke"/);

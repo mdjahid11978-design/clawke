@@ -53,6 +53,8 @@ void main() {
           expect(form['code_verifier'], 'verifier-token');
           expect(form['grant_type'], 'authorization_code');
           expect(form['redirect_uri'], startsWith('http://127.0.0.1:'));
+          expect(form['redirect_uri'], isNot(endsWith('/')));
+          expect(form.containsKey('client_secret'), isFalse);
 
           return ResponseBody.fromString(
             jsonEncode({'id_token': jwt, 'access_token': 'access-token'}),
@@ -75,6 +77,7 @@ void main() {
           expect(uri.queryParameters['state'], 'state-token');
           expect(uri.queryParameters['code_challenge_method'], 'S256');
           expect(uri.queryParameters['redirect_uri'], isNotEmpty);
+          expect(uri.queryParameters['redirect_uri'], isNot(endsWith('/')));
 
           final redirectUri = Uri.parse(uri.queryParameters['redirect_uri']!);
           unawaited(_sendLoopbackCallback(redirectUri, uri));
@@ -89,6 +92,90 @@ void main() {
       expect(account.displayName, 'Clawke User');
       expect(account.idToken, jwt);
       expect(account.accessToken, 'access-token');
+    });
+
+    test('sends client secret when configured', () async {
+      final jwt = _fakeJwt({
+        'sub': 'google-user-1',
+        'email': 'user@example.com',
+      });
+      final dio = Dio()
+        ..httpClientAdapter = _FakeHttpClientAdapter((
+          options,
+          requestStream,
+          cancelFuture,
+        ) async {
+          final form = await _readFormBody(requestStream);
+          expect(form['client_secret'], 'desktop-client-secret');
+
+          return ResponseBody.fromString(
+            jsonEncode({'id_token': jwt, 'access_token': 'access-token'}),
+            200,
+            headers: {
+              Headers.contentTypeHeader: ['application/json;charset=UTF-8'],
+            },
+          );
+        });
+
+      final service = DesktopGoogleOAuthService(
+        clientId: 'desktop-client-id',
+        clientSecret: 'desktop-client-secret',
+        dio: dio,
+        randomString: (length) =>
+            length == 32 ? 'state-token' : 'verifier-token',
+        launcher: (uri, {mode = LaunchMode.platformDefault}) async {
+          final redirectUri = Uri.parse(uri.queryParameters['redirect_uri']!);
+          unawaited(_sendLoopbackCallback(redirectUri, uri));
+          return true;
+        },
+      );
+
+      final account = await service.signIn();
+
+      expect(account.id, 'google-user-1');
+    });
+
+    test('surfaces Google token error details', () async {
+      final dio = Dio()
+        ..httpClientAdapter = _FakeHttpClientAdapter((
+          options,
+          requestStream,
+          cancelFuture,
+        ) async {
+          return ResponseBody.fromString(
+            jsonEncode({
+              'error': 'invalid_grant',
+              'error_description': 'Bad Request',
+            }),
+            400,
+            headers: {
+              Headers.contentTypeHeader: ['application/json;charset=UTF-8'],
+            },
+          );
+        });
+
+      final service = DesktopGoogleOAuthService(
+        clientId: 'desktop-client-id',
+        dio: dio,
+        randomString: (length) =>
+            length == 32 ? 'state-token' : 'verifier-token',
+        launcher: (uri, {mode = LaunchMode.platformDefault}) async {
+          final redirectUri = Uri.parse(uri.queryParameters['redirect_uri']!);
+          unawaited(_sendLoopbackCallback(redirectUri, uri));
+          return true;
+        },
+      );
+
+      await expectLater(
+        service.signIn(),
+        throwsA(
+          isA<DesktopGoogleOAuthException>().having(
+            (e) => e.message,
+            'message',
+            contains('invalid_grant - Bad Request'),
+          ),
+        ),
+      );
     });
 
     test('builds account from Google token response', () {

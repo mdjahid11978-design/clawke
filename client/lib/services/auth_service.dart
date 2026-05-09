@@ -243,6 +243,7 @@ class AuthService {
             defaultTargetPlatform == TargetPlatform.linux)) {
       return DesktopGoogleOAuthService(
         clientId: EnvConfig.googleDesktopClientId,
+        clientSecret: EnvConfig.googleDesktopClientSecret,
       ).signIn();
     }
 

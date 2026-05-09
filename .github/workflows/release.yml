@@ -377,6 +377,14 @@ jobs:
 
           DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
           test -n "$DMG_APP_PATH"
+          DMG_EXE_PATH="$DMG_APP_PATH/Contents/MacOS/clawke"
+          test -x "$DMG_EXE_PATH"
+          DMG_ARCHS="$(lipo -archs "$DMG_EXE_PATH")"
+          echo "Published macOS binary architectures: $DMG_ARCHS"
+          if ! printf '%s\n' "$DMG_ARCHS" | grep -qw x86_64 || ! printf '%s\n' "$DMG_ARCHS" | grep -qw arm64; then
+            echo "::error::Published macOS binary is not universal: $DMG_ARCHS"
+            exit 1
+          fi
           codesign --verify --deep --strict --verbose=2 "$DMG_APP_PATH"
           assert_signature_has_certificate "$DMG_APP_PATH"
           find "$DMG_APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
@@ -484,11 +492,18 @@ jobs:
         shell: pwsh
         env:
           GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:GOOGLE_DESKTOP_CLIENT_ID) {
             Write-Host "Building Windows with desktop Google OAuth enabled."
-            flutter build windows --release "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID"
+            $defines = @("--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID")
+            if ($env:GOOGLE_DESKTOP_CLIENT_SECRET) {
+              $defines += "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$env:GOOGLE_DESKTOP_CLIENT_SECRET"
+            } else {
+              Write-Warning "GOOGLE_DESKTOP_CLIENT_SECRET secret is not configured; Google token exchange may fail if the OAuth client requires it."
+            }
+            flutter build windows --release $defines
           } else {
             Write-Warning "GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Windows Google login will remain disabled."
             flutter build windows --release
@@ -611,7 +626,24 @@ jobs:
 
       - name: Build Linux
         working-directory: client
-        run: flutter build linux --release
+        env:
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          defines=()
+          if [ -n "${GOOGLE_DESKTOP_CLIENT_ID:-}" ]; then
+            echo "Building Linux with desktop Google OAuth enabled."
+            defines+=("--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}")
+            if [ -n "${GOOGLE_DESKTOP_CLIENT_SECRET:-}" ]; then
+              defines+=("--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}")
+            else
+              echo "::warning::GOOGLE_DESKTOP_CLIENT_SECRET secret is not configured; Google token exchange may fail if the OAuth client requires it."
+            fi
+          else
+            echo "::warning::GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Linux Google login will remain disabled."
+          fi
+          flutter build linux --release "${defines[@]}"
 
       - name: Verify Linux binary architecture
         run: |

@@ -1,0 +1,166 @@
+name: Internal Desktop Builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.41.4'
+
+jobs:
+  build-windows:
+    name: build-windows-x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: client
+        run: flutter pub get
+
+      - name: Generate code (Drift ORM)
+        working-directory: client
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build Windows
+        working-directory: client
+        shell: pwsh
+        env:
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GOOGLE_DESKTOP_CLIENT_ID) {
+            throw "GOOGLE_DESKTOP_CLIENT_ID secret is required for internal Windows Google login builds."
+          }
+          if (-not $env:GOOGLE_DESKTOP_CLIENT_SECRET) {
+            throw "GOOGLE_DESKTOP_CLIENT_SECRET secret is required for internal Windows Google login builds."
+          }
+          flutter build windows --release `
+            "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID" `
+            "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=$env:GOOGLE_DESKTOP_CLIENT_SECRET"
+
+      - name: Bundle Visual C++ runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir = "client\build\windows\x64\runner\Release"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstall) {
+            throw "Unable to locate Visual Studio with VC tools."
+          }
+          $redistRoot = Join-Path $vsInstall "VC\Redist\MSVC"
+          $crtDir = Get-ChildItem -Path $redistRoot -Directory |
+            Sort-Object Name -Descending |
+            ForEach-Object { Join-Path $_.FullName "x64\Microsoft.VC143.CRT" } |
+            Where-Object { Test-Path (Join-Path $_ "vcruntime140_1.dll") } |
+            Select-Object -First 1
+          if (-not $crtDir) {
+            throw "Unable to locate x64 Visual C++ runtime under $redistRoot."
+          }
+          foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
+            Copy-Item -Path (Join-Path $crtDir $dll) -Destination $releaseDir -Force
+          }
+
+      - name: Create ZIP
+        run: Compress-Archive -Path "client\build\windows\x64\runner\Release\*" -DestinationPath "Clawke-internal-windows-x64.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: internal-windows-x64
+          path: Clawke-internal-windows-x64.zip
+          retention-days: 7
+
+  build-linux:
+    name: build-linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+            archive_name: Clawke-internal-linux-x64.tar.gz
+            artifact_name: internal-linux-x64
+            bundle_path: client/build/linux/x64/release/bundle
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            archive_name: Clawke-internal-linux-arm64.tar.gz
+            artifact_name: internal-linux-arm64
+            bundle_path: client/build/linux/arm64/release/bundle
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter (Linux x64)
+        if: matrix.arch == 'x64'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          architecture: x64
+
+      - name: Set up Flutter (Linux ARM64)
+        if: matrix.arch == 'arm64'
+        run: |
+          set -euo pipefail
+          FLUTTER_ROOT="$RUNNER_TOOL_CACHE/flutter-linux-arm64-${FLUTTER_VERSION}"
+          git clone --branch "$FLUTTER_VERSION" --depth 1 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" --version
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Install Linux dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Install dependencies
+        working-directory: client
+        run: flutter pub get
+
+      - name: Generate code (Drift ORM)
+        working-directory: client
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build Linux
+        working-directory: client
+        env:
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+          GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "${GOOGLE_DESKTOP_CLIENT_ID:-}"
+          test -n "${GOOGLE_DESKTOP_CLIENT_SECRET:-}"
+          flutter build linux --release \
+            "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=${GOOGLE_DESKTOP_CLIENT_ID}" \
+            "--dart-define=GOOGLE_DESKTOP_CLIENT_SECRET=${GOOGLE_DESKTOP_CLIENT_SECRET}"
+
+      - name: Verify Linux binary architecture
+        run: |
+          set -euo pipefail
+          EXE_PATH="${{ matrix.bundle_path }}/clawke"
+          test -x "$EXE_PATH"
+          file "$EXE_PATH"
+
+      - name: Create TAR
+        run: tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.archive_name }}
+          retention-days: 7

@@ -29,6 +29,7 @@ class DesktopGoogleAccount {
 class DesktopGoogleOAuthService {
   DesktopGoogleOAuthService({
     required this.clientId,
+    this.clientSecret = '',
     Dio? dio,
     Future<bool> Function(Uri, {LaunchMode mode})? launcher,
     String Function(int length)? randomString,
@@ -37,6 +38,7 @@ class DesktopGoogleOAuthService {
        _randomString = randomString ?? _secureRandomString;
 
   final String clientId;
+  final String clientSecret;
   final Dio _dio;
   final Future<bool> Function(Uri, {LaunchMode mode}) _launcher;
   final String Function(int length) _randomString;
@@ -53,7 +55,7 @@ class DesktopGoogleOAuthService {
     }
 
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final redirectUri = 'http://127.0.0.1:${server.port}/';
+    final redirectUri = 'http://127.0.0.1:${server.port}';
     final state = _randomString(32);
     final codeVerifier = _randomString(64);
     final codeChallenge = _base64UrlNoPadding(
@@ -121,21 +123,36 @@ class DesktopGoogleOAuthService {
     required String redirectUri,
     required String codeVerifier,
   }) async {
+    final form = {
+      'client_id': clientId,
+      'code': code,
+      'code_verifier': codeVerifier,
+      'grant_type': 'authorization_code',
+      'redirect_uri': redirectUri,
+      if (clientSecret.trim().isNotEmpty) 'client_secret': clientSecret.trim(),
+    };
+
     final response = await _dio.post<Map<String, dynamic>>(
       _tokenEndpoint,
-      data: {
-        'client_id': clientId,
-        'code': code,
-        'code_verifier': codeVerifier,
-        'grant_type': 'authorization_code',
-        'redirect_uri': redirectUri,
-      },
-      options: Options(contentType: Headers.formUrlEncodedContentType),
+      data: form,
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+        validateStatus: (_) => true,
+      ),
     );
 
     final data = response.data;
     if (data == null) {
       throw const DesktopGoogleOAuthException('Google token 响应为空');
+    }
+    if (response.statusCode != null && response.statusCode! >= 400) {
+      final error = data['error']?.toString() ?? 'HTTP ${response.statusCode}';
+      final description = data['error_description']?.toString();
+      throw DesktopGoogleOAuthException(
+        description == null || description.isEmpty
+            ? 'Google token 交换失败：$error'
+            : 'Google token 交换失败：$error - $description',
+      );
     }
     if (data['error'] != null) {
       throw DesktopGoogleOAuthException('Google token 交换失败：${data['error']}');

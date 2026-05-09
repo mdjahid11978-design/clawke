@@ -106,6 +106,14 @@ flutter build macos  # Or: ios, apk, windows, linux
 
 > To run in debug mode, use `flutter run -d macos` (replace `macos` with your target platform).
 
+## Community
+
+Have questions or want to discuss Clawke? Scan the QR code below to join the Clawke WeChat discussion group.
+
+<p align="center">
+  <img src=".github/wechat-group.jpg" width="320" alt="Clawke WeChat discussion group QR code" />
+</p>
+
 ## Project Structure
 
 ```

@@ -11,6 +11,12 @@ class EnvConfig {
     defaultValue: '',
   );
 
+  /// Windows/Linux 桌面端 Google OAuth client secret — Google OAuth client secret for Windows/Linux desktop.
+  static const String googleDesktopClientSecret = String.fromEnvironment(
+    'GOOGLE_DESKTOP_CLIENT_SECRET',
+    defaultValue: '',
+  );
+
   /// 是否允许自签名证书（本地开发时设为 true）
   static const bool allowBadCertificates = false;
 }
