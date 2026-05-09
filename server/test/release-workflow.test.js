@@ -14,6 +14,10 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, 'client', 'android', 'app', 'build.gradle.kts'),
     'utf8',
   );
+  const macosReleaseEntitlements = fs.readFileSync(
+    path.join(repoRoot, 'client', 'macos', 'Runner', 'Release.entitlements'),
+    'utf8',
+  );
 
   it('requires Android release signing and rejects debug-signed APKs', () => {
     assert.match(workflow, /ANDROID_KEYSTORE_BASE64/);
@@ -52,10 +56,16 @@ describe('release workflow guardrails', () => {
 
     assert.match(macosBuild, /runs-on: macos-26/);
     assert.match(macosVerify, /runs-on: macos-26/);
+    assert.match(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
+    assert.match(macosBuild, /Verify macOS production entitlements/);
+    assert.match(macosBuild, /APPLE_SIGNIN=\$\(\/usr\/libexec\/PlistBuddy -c 'Print :com\.apple\.developer\.applesignin:0'/);
+    assert.match(macosBuild, /PROFILE_APPLE_SIGNIN=\$\(\/usr\/libexec\/PlistBuddy -c 'Print :Entitlements:com\.apple\.developer\.applesignin:0'/);
+    assert.match(macosBuild, /test "\$PROFILE_APPLE_SIGNIN" = "Default"/);
     assert.doesNotMatch(macosBuild, /codesign --force --deep --options runtime/);
     assert.match(macosBuild, /find "\$APP_PATH\/Contents\/Frameworks" -maxdepth 1 -name "\*\.framework" -type d -print0/);
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
+    assert.match(macosVerify, /com\.apple\.developer\.applesignin/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
@@ -71,14 +81,16 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /Failed to bundle Visual C\+\+ runtime DLL/);
   });
 
-  it('passes desktop Google OAuth client id into Windows release builds', () => {
+  it('enables Windows desktop Google OAuth only when the release secret is configured', () => {
     const buildStep = workflow.indexOf('Build Windows');
     const bundleStep = workflow.indexOf('Bundle Visual C++ runtime');
     assert.ok(buildStep > -1, 'Windows workflow must build the Flutter Windows app');
     assert.ok(bundleStep > -1, 'Windows workflow must bundle Visual C++ runtime DLLs');
     assert.ok(buildStep < bundleStep, 'Windows app must be built before bundling runtime DLLs');
     assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID: \$\{\{ secrets\.GOOGLE_DESKTOP_CLIENT_ID \}\}/);
-    assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login/);
+    assert.match(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Windows Google login will remain disabled/);
     assert.match(workflow, /--dart-define=GOOGLE_DESKTOP_CLIENT_ID=/);
+    assert.match(workflow, /flutter build windows --release/);
+    assert.doesNotMatch(workflow, /GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login/);
   });
 });

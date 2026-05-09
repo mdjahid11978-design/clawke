@@ -162,11 +162,14 @@ jobs:
         working-directory: client
         run: dart run build_runner build --delete-conflicting-outputs
 
-      - name: Verify macOS production APNs entitlement
+      - name: Verify macOS production entitlements
         run: |
           APNS_ENV=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.aps-environment' client/macos/Runner/Release.entitlements)
+          APPLE_SIGNIN=$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin:0' client/macos/Runner/Release.entitlements)
           echo "macOS Release APNs environment: ${APNS_ENV}"
+          echo "macOS Release Apple Sign In entitlement: ${APPLE_SIGNIN}"
           test "$APNS_ENV" = "production"
+          test "$APPLE_SIGNIN" = "Default"
 
       - name: Import macOS signing assets
         env:
@@ -246,6 +249,8 @@ jobs:
           security cms -D -i "$RUNNER_TEMP/macos.provisionprofile" > "$RUNNER_TEMP/macos-profile.plist"
           APP_ID_PREFIX=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationIdentifierPrefix:0' "$RUNNER_TEMP/macos-profile.plist")
           PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$RUNNER_TEMP/macos-profile.plist")
+          PROFILE_APPLE_SIGNIN=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "$RUNNER_TEMP/macos-profile.plist")
+          test "$PROFILE_APPLE_SIGNIN" = "Default"
           export APP_ID_PREFIX
           export APP_ID_PREFIX_PLACEHOLDER='$(AppIdentifierPrefix)'
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
@@ -274,6 +279,8 @@ jobs:
           cat "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "Default" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
       - name: Create DMG
@@ -386,6 +393,8 @@ jobs:
           cat "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "Default" "$RUNNER_TEMP/macos-release-entitlements.txt"
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
 
   # ── Verify published Android asset ───────────────────────────
@@ -452,10 +461,13 @@ jobs:
           GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if (-not $env:GOOGLE_DESKTOP_CLIENT_ID) {
-            throw "GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login."
+          if ($env:GOOGLE_DESKTOP_CLIENT_ID) {
+            Write-Host "Building Windows with desktop Google OAuth enabled."
+            flutter build windows --release "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID"
+          } else {
+            Write-Warning "GOOGLE_DESKTOP_CLIENT_ID secret is not configured; Windows Google login will remain disabled."
+            flutter build windows --release
           }
-          flutter build windows --release "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID"
 
       - name: Bundle Visual C++ runtime
         shell: pwsh

@@ -4,13 +4,13 @@
 
 <!-- CHANGELOG_START -->
 
-## v1.1.24 (2026-05-09)
+## v1.1.25 (2026-05-09)
 
 **[Bug Fix]** macOS release signing and Windows desktop Google login.
 - Reworked macOS release signing to sign nested frameworks explicitly before signing the app bundle, matching current Apple signing guidance and macOS 26 validation.
 - Switched macOS release build and post-publish verification to macOS 26 runners so published DMGs are validated on the same OS family users reported failures on.
 - Added Windows/Linux desktop Google OAuth through system browser loopback flow with PKCE, gated by `GOOGLE_DESKTOP_CLIENT_ID`.
-- Updated Windows release builds to require `GOOGLE_DESKTOP_CLIENT_ID` so official Windows packages do not ship with a disabled Google login path.
+- Updated Windows release builds to enable desktop Google OAuth when `GOOGLE_DESKTOP_CLIENT_ID` is configured, while keeping release validation runnable when the secret is absent.
 
 ## v1.1.23 (2026-05-09)
 

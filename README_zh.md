@@ -126,7 +126,7 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
-### v1.1.24 (2026-05-09)
+### v1.1.25 (2026-05-09)
 
 **[问题修复]** 修复 macOS release 在 macOS 26 下的签名验证问题，并新增 Windows 桌面端浏览器 loopback Google OAuth。
 
