@@ -127,6 +127,10 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.24 (2026-05-09)
+
+**[Bug Fix]** Fixed macOS release signing for macOS 26 validation and added Windows desktop Google OAuth via browser loopback flow.
+
 ### v1.1.23 (2026-05-09)
 
 **[Bug Fix]** Bundled Windows Visual C++ runtime DLLs and hid unsupported desktop Google sign-in so official Windows packages start reliably.

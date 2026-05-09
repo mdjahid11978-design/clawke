@@ -4,6 +4,14 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.24 (2026-05-09)
+
+**[问题修复]** macOS release 签名与 Windows 桌面端 Google 登录。
+- macOS release 签名改为先显式签名嵌套 framework，再签名 app bundle，符合当前 Apple 签名建议和 macOS 26 验证规则。
+- macOS release 构建和发布后回验切换到 macOS 26 runner，确保发布 DMG 在用户报错的同一系统大版本上验证。
+- Windows/Linux 桌面端新增系统浏览器 loopback + PKCE 的 Google OAuth 流程，通过 `GOOGLE_DESKTOP_CLIENT_ID` 控制开启。
+- Windows release 构建强制要求 `GOOGLE_DESKTOP_CLIENT_ID`，避免官方 Windows 包继续发布不可用的 Google 登录路径。
+
 ## v1.1.23 (2026-05-09)
 
 **[问题修复]** Windows 发布包启动与桌面端登录体验。

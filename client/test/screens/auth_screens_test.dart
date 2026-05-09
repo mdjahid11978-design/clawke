@@ -72,7 +72,7 @@ void main() {
       expect(find.text('请填写邮箱和密码'), findsOneWidget);
     });
 
-    testWidgets('hides Google sign-in on unsupported Windows builds', (
+    testWidgets('respects desktop Google sign-in configuration on Windows', (
       tester,
     ) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -81,7 +81,14 @@ void main() {
         await tester.pumpWidget(_buildLocalizedApp(const LoginScreen()));
         await tester.pumpAndSettle();
 
-        expect(find.text('Google 登录'), findsNothing);
+        const desktopGoogleClientId = String.fromEnvironment(
+          'GOOGLE_DESKTOP_CLIENT_ID',
+        );
+        final hasDesktopGoogleClientId = desktopGoogleClientId.isNotEmpty;
+        expect(
+          find.text('Google 登录'),
+          hasDesktopGoogleClientId ? findsOneWidget : findsNothing,
+        );
       } finally {
         debugDefaultTargetPlatformOverride = null;
       }

@@ -145,7 +145,7 @@ jobs:
 
   # ── macOS ────────────────────────────────────────────────────
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
@@ -251,7 +251,14 @@ jobs:
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
 
-          codesign --force --deep --options runtime --timestamp \
+          find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
+            codesign --force --options runtime --timestamp \
+              --keychain "$MACOS_SIGNING_KEYCHAIN" \
+              --sign "$MACOS_SIGN_IDENTITY_HASH" \
+              "$framework"
+          done
+
+          codesign --force --options runtime --timestamp \
             --keychain "$MACOS_SIGNING_KEYCHAIN" \
             --sign "$MACOS_SIGN_IDENTITY_HASH" \
             --entitlements "$RUNNER_TEMP/macos-release.entitlements" \
@@ -335,7 +342,7 @@ jobs:
   # ── Verify published macOS asset ─────────────────────────────
   verify-macos-release:
     needs: release
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Download and verify published macOS DMG
         env:
@@ -440,7 +447,15 @@ jobs:
 
       - name: Build Windows
         working-directory: client
-        run: flutter build windows --release
+        shell: pwsh
+        env:
+          GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.GOOGLE_DESKTOP_CLIENT_ID }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:GOOGLE_DESKTOP_CLIENT_ID) {
+            throw "GOOGLE_DESKTOP_CLIENT_ID secret is required for Windows Google login."
+          }
+          flutter build windows --release "--dart-define=GOOGLE_DESKTOP_CLIENT_ID=$env:GOOGLE_DESKTOP_CLIENT_ID"
 
       - name: Bundle Visual C++ runtime
         shell: pwsh

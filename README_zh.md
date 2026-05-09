@@ -126,6 +126,10 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.24 (2026-05-09)
+
+**[问题修复]** 修复 macOS release 在 macOS 26 下的签名验证问题，并新增 Windows 桌面端浏览器 loopback Google OAuth。
+
 ### v1.1.23 (2026-05-09)
 
 **[问题修复]** Windows 发布包随包携带 Visual C++ runtime，并隐藏不支持的桌面 Google 登录入口，确保官方 Windows 包能稳定启动。

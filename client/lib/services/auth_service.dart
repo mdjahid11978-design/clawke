@@ -12,6 +12,7 @@ import 'package:client/core/http_util.dart';
 import 'package:client/core/push_registration_service.dart';
 import 'package:client/models/user_model.dart';
 import 'package:client/models/account_summary.dart';
+import 'package:client/services/desktop_google_oauth_service.dart';
 
 /// 认证服务 —— 对接 clawke.ai 后端真实 API。
 ///
@@ -28,7 +29,11 @@ class AuthService {
   static bool get supportsGoogleSignIn {
     if (kIsWeb) return true;
     return switch (defaultTargetPlatform) {
-      TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.macOS => true,
+      TargetPlatform.android ||
+      TargetPlatform.iOS ||
+      TargetPlatform.macOS => true,
+      TargetPlatform.windows ||
+      TargetPlatform.linux => EnvConfig.googleDesktopClientId.isNotEmpty,
       _ => false,
     };
   }
@@ -171,50 +176,20 @@ class AuthService {
         throw const ApiException('Google 登录暂不可用，请使用邮箱登录');
       }
 
-      final googleSignIn = GoogleSignIn(scopes: ['email']);
+      final account = await _getGoogleAccount();
+      debugPrint('[Auth] Google signIn result: ${account.email}');
 
-      debugPrint('[Auth] Google signIn starting...');
-      // 清除上一次残留的登录状态（macOS 上旧 session 可能阻塞新弹窗）
-      await googleSignIn.signOut();
-      final googleUser = await googleSignIn.signIn().timeout(
-        const Duration(seconds: 120),
-        onTimeout: () {
-          debugPrint('[Auth] Google signIn timeout after 120s');
-          return null;
-        },
-      );
-      debugPrint(
-        '[Auth] Google signIn result: ${googleUser?.email ?? 'null (cancelled)'}',
-      );
-
-      if (googleUser == null) {
-        throw const ApiException('Google 登录已取消');
-      }
-
-      // 获取认证 token（idToken 用于服务端验证）
-      final googleAuth = await googleUser.authentication;
-      debugPrint(
-        '[Auth] Got Google auth, idToken: ${googleAuth.idToken != null ? "OK" : "null"}',
-      );
-
-      // 服务端 googleLogin 接口返回 302 + set-cookie（web OAuth 模式），
-      // 不走 HttpUtil.doPost，而是直接发请求并从 Cookie 中提取凭证。
-      final dio = Dio(
-        BaseOptions(followRedirects: false, validateStatus: (status) => true),
-      );
-      final formData = FormData.fromMap({
-        'idToken': googleAuth.idToken ?? '',
-        'accessToken': googleAuth.accessToken ?? '',
-        'uid': googleUser.id,
-        'name': googleUser.displayName ?? '',
-        'email': googleUser.email,
-        'imageUrl': googleUser.photoUrl ?? '',
-        'state': 'clawke',
-      });
-
-      final response = await dio.post(
+      final response = await _googleLoginDio.post(
         '${EnvConfig.webBaseUrl}/oauth/user/googleLogin.json',
-        data: formData,
+        data: FormData.fromMap({
+          'idToken': account.idToken,
+          'accessToken': account.accessToken,
+          'uid': account.id,
+          'name': account.displayName ?? '',
+          'email': account.email,
+          'imageUrl': account.photoUrl ?? '',
+          'state': 'clawke',
+        }),
       );
 
       debugPrint('[Auth] Google login response status: ${response.statusCode}');
@@ -256,6 +231,51 @@ class AuthService {
       debugPrint('[Auth] Google login failed: $e\n$st');
       throw ApiException('Google 登录失败: $e');
     }
+  }
+
+  static final Dio _googleLoginDio = Dio(
+    BaseOptions(followRedirects: false, validateStatus: (status) => true),
+  );
+
+  static Future<DesktopGoogleAccount> _getGoogleAccount() async {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux)) {
+      return DesktopGoogleOAuthService(
+        clientId: EnvConfig.googleDesktopClientId,
+      ).signIn();
+    }
+
+    final googleSignIn = GoogleSignIn(scopes: ['email']);
+
+    debugPrint('[Auth] Google signIn starting...');
+    // 清理旧会话，避免旧 session 阻塞新弹窗 — Clear stale session before opening a new prompt.
+    await googleSignIn.signOut();
+    final googleUser = await googleSignIn.signIn().timeout(
+      const Duration(seconds: 120),
+      onTimeout: () {
+        debugPrint('[Auth] Google signIn timeout after 120s');
+        return null;
+      },
+    );
+
+    if (googleUser == null) {
+      throw const ApiException('Google 登录已取消');
+    }
+
+    final googleAuth = await googleUser.authentication;
+    debugPrint(
+      '[Auth] Got Google auth, idToken: ${googleAuth.idToken != null ? "OK" : "null"}',
+    );
+
+    return DesktopGoogleAccount(
+      id: googleUser.id,
+      email: googleUser.email,
+      idToken: googleAuth.idToken ?? '',
+      accessToken: googleAuth.accessToken ?? '',
+      displayName: googleUser.displayName,
+      photoUrl: googleUser.photoUrl,
+    );
   }
 
   // ── Apple 登录 ──
