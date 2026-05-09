@@ -34,6 +34,16 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, 'client', 'macos', 'Runner', 'Release.entitlements'),
     'utf8',
   );
+  const macosDebugProfileEntitlements = fs.readFileSync(
+    path.join(
+      repoRoot,
+      'client',
+      'macos',
+      'Runner',
+      'DebugProfile.entitlements',
+    ),
+    'utf8',
+  );
   it('requires Android release signing and rejects debug-signed APKs', () => {
     assert.match(workflow, /ANDROID_KEYSTORE_BASE64/);
     assert.match(workflow, /ANDROID_RELEASE_CERT_SHA256/);
@@ -77,13 +87,23 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
     assert.match(macosBuild, /com\.apple\.developer\.applesignin/);
+    assert.match(macosBuild, /com\.google\.GIDSignIn/);
     assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
     assert.match(macosVerify, /grep -qw x86_64/);
     assert.match(macosVerify, /grep -qw arm64/);
     assert.match(macosVerify, /Published macOS binary is not universal/);
     assert.match(macosVerify, /com\.apple\.developer\.applesignin/);
+    assert.match(macosVerify, /com\.google\.GIDSignIn/);
     assert.match(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
     assert.match(macosReleaseEntitlements, /<string>Default<\/string>/);
+    assert.match(
+      macosReleaseEntitlements,
+      /\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn[\s\S]*\$\(AppIdentifierPrefix\)ai\.clawke\.app/,
+    );
+    assert.match(
+      macosDebugProfileEntitlements,
+      /\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn[\s\S]*\$\(AppIdentifierPrefix\)ai\.clawke\.app/,
+    );
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
