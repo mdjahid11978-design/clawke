@@ -14,6 +14,10 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, '.github', 'workflows', 'internal-desktop-build.yml'),
     'utf8',
   );
+  const androidReleaseSmokeWorkflow = fs.readFileSync(
+    path.join(repoRoot, '.github', 'workflows', 'android-release-smoke.yml'),
+    'utf8',
+  );
   const androidBuildGradle = fs.readFileSync(
     path.join(repoRoot, 'client', 'android', 'app', 'build.gradle.kts'),
     'utf8',
@@ -66,6 +70,17 @@ describe('release workflow guardrails', () => {
     assert.match(androidBuildGradle, /GeneratedPluginRegistrant\.java/);
     assert.match(androidBuildGradle, /integration_test/);
     assert.match(androidBuildGradle, /compileReleaseJavaWithJavac/);
+  });
+
+  it('opts GitHub JavaScript actions into Node 24 runtime', () => {
+    for (const candidate of [
+      workflow,
+      internalDesktopWorkflow,
+      androidReleaseSmokeWorkflow,
+    ]) {
+      assert.match(candidate, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'/);
+      assert.doesNotMatch(candidate, /ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION/);
+    }
   });
 
   it('builds and verifies macOS releases on macOS 26 with explicit nested signing', () => {
