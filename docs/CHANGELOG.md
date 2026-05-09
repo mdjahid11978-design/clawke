@@ -4,6 +4,16 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.27 (2026-05-09)
+
+**[Bug Fix]** macOS release sign-in and desktop OAuth packaging.
+- Added the Google Sign-In keychain access group to macOS entitlements so release builds no longer fail Google login with a keychain error.
+- Restored the macOS release Sign in with Apple entitlement and kept Apple/Google sign-in entitlements covered in release validation.
+
+**[Enhancement]** Desktop release coverage and assets.
+- Polished the desktop OAuth callback flow and refreshed Windows/Linux desktop icons.
+- Updated GitHub Actions to the current Node runtime and added internal desktop build coverage for release workflows.
+
 ## v1.1.26 (2026-05-09)
 
 **[Bug Fix]** macOS release signing and Windows desktop Google login.
