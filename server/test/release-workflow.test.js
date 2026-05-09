@@ -24,7 +24,7 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /Verify Android Firebase OAuth config/);
     assert.match(workflow, /google-services\.json does not include the release certificate SHA-1/);
     assert.match(workflow, /verify --print-certs/);
-    assert.match(workflow, /\/certificate SHA-256 digest\//);
+    assert.match(workflow, /\/certificate SHA-256 digest\/ \{print \$NF; exit\}/);
     assert.match(workflow, /CN=Android Debug/);
     assert.match(workflow, /Android release APK certificate SHA-256 does not match/);
     assert.match(workflow, /verify-android-release/);
