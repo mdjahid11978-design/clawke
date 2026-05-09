@@ -4,7 +4,7 @@
 
 <!-- CHANGELOG_START -->
 
-## v1.1.25 (2026-05-09)
+## v1.1.26 (2026-05-09)
 
 **[Bug Fix]** macOS release signing and Windows desktop Google login.
 - Reworked macOS release signing to sign nested frameworks explicitly before signing the app bundle, matching current Apple signing guidance and macOS 26 validation.

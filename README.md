@@ -127,7 +127,7 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
-### v1.1.25 (2026-05-09)
+### v1.1.26 (2026-05-09)
 
 **[Bug Fix]** Fixed macOS release signing for macOS 26 validation and added Windows desktop Google OAuth via browser loopback flow.
 

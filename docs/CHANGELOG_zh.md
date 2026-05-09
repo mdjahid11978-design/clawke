@@ -4,7 +4,7 @@
 
 <!-- CHANGELOG_START -->
 
-## v1.1.25 (2026-05-09)
+## v1.1.26 (2026-05-09)
 
 **[问题修复]** macOS release 签名与 Windows 桌面端 Google 登录。
 - macOS release 签名改为先显式签名嵌套 framework，再签名 app bundle，符合当前 Apple 签名建议和 macOS 26 验证规则。
