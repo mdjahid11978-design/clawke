@@ -251,6 +251,20 @@ jobs:
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
 
+          validate_profile_entitlement() {
+            local entitlement="$1"
+            if /usr/libexec/PlistBuddy -c "Print :${entitlement}" "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1; then
+              if ! /usr/libexec/PlistBuddy -c "Print :Entitlements:${entitlement}" "$RUNNER_TEMP/macos-profile.plist" >/dev/null 2>&1; then
+                echo "::error::Missing macOS provisioning profile entitlement: ${entitlement}"
+                exit 1
+              fi
+            fi
+          }
+
+          validate_profile_entitlement "com.apple.developer.aps-environment"
+          validate_profile_entitlement "keychain-access-groups"
+          validate_profile_entitlement "com.apple.developer.applesignin"
+
           find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
             codesign --force --options runtime --timestamp \
               --keychain "$MACOS_SIGNING_KEYCHAIN" \
@@ -273,7 +287,6 @@ jobs:
           codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
-          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
@@ -379,7 +392,8 @@ jobs:
 
           DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
           test -n "$DMG_APP_PATH"
-          DMG_EXE_PATH="$DMG_APP_PATH/Contents/MacOS/clawke"
+          DMG_EXE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DMG_APP_PATH/Contents/Info.plist")
+          DMG_EXE_PATH="$DMG_APP_PATH/Contents/MacOS/$DMG_EXE_NAME"
           test -x "$DMG_EXE_PATH"
           DMG_ARCHS="$(lipo -archs "$DMG_EXE_PATH")"
           echo "Published macOS binary architectures: $DMG_ARCHS"
@@ -395,7 +409,6 @@ jobs:
           codesign -d --entitlements - "$DMG_APP_PATH" > "$RUNNER_TEMP/macos-release-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-release-entitlements.txt"
-          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
@@ -698,7 +711,6 @@ jobs:
           TAG=${GITHUB_REF_NAME}
           mkdir -p release
           cp artifacts/android-apk/app-release.apk    "release/Clawke-${TAG}-android.apk"
-          cp artifacts/android-signing-report/apk-signing.txt "release/Clawke-${TAG}-android-signing.txt"
           cp artifacts/macos-dmg/Clawke-macOS.dmg      "release/Clawke-${TAG}-macOS.dmg"
           cp artifacts/windows-zip/Clawke-windows-x64.zip "release/Clawke-${TAG}-windows-x64.zip"
           cp artifacts/linux-x64-tar/Clawke-linux-x64.tar.gz  "release/Clawke-${TAG}-linux-x64.tar.gz"

@@ -65,6 +65,11 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /android-signing-report/);
   });
 
+  it('keeps Android signing report out of public GitHub Release assets', () => {
+    assert.match(workflow, /name: android-signing-report/);
+    assert.doesNotMatch(workflow, /release\/Clawke-\$\{TAG\}-android-signing\.txt/);
+  });
+
   it('keeps Android release builds free of dev-only integration_test registration', () => {
     assert.match(androidBuildGradle, /stripReleaseIntegrationTestPlugin/);
     assert.match(androidBuildGradle, /GeneratedPluginRegistrant\.java/);
@@ -105,16 +110,14 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /find "\$APP_PATH\/Contents\/Frameworks" -maxdepth 1 -name "\*\.framework" -type d -print0/);
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
-    assert.match(macosBuild, /com\.apple\.developer\.applesignin/);
+    assert.match(macosBuild, /Missing macOS provisioning profile entitlement/);
     assert.match(macosBuild, /com\.google\.GIDSignIn/);
     assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
     assert.match(macosVerify, /grep -qw x86_64/);
     assert.match(macosVerify, /grep -qw arm64/);
     assert.match(macosVerify, /Published macOS binary is not universal/);
-    assert.match(macosVerify, /com\.apple\.developer\.applesignin/);
     assert.match(macosVerify, /com\.google\.GIDSignIn/);
-    assert.match(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
-    assert.match(macosReleaseEntitlements, /<string>Default<\/string>/);
+    assert.doesNotMatch(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
     assert.match(
       macosReleaseEntitlements,
       /\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn[\s\S]*\$\(AppIdentifierPrefix\)ai\.clawke\.app/,
