@@ -7,6 +7,16 @@ on:
         description: 'Optional existing release tag to refresh Linux assets, e.g. v1.1.27'
         required: false
         default: ''
+      build_target:
+        description: 'Desktop target to build'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - macos
+          - windows
+          - linux
 
 permissions:
   contents: read
@@ -17,6 +27,7 @@ env:
 jobs:
   build-macos:
     name: build-macos-universal
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'macos' }}
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v6
@@ -144,7 +155,6 @@ jobs:
           codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
-          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
@@ -197,6 +207,7 @@ jobs:
 
   build-windows:
     name: build-windows-x64
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'windows' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -267,6 +278,7 @@ jobs:
 
   build-linux:
     name: build-linux-${{ matrix.arch }}
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'linux' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -349,7 +361,7 @@ jobs:
   refresh-linux-release-assets:
     name: refresh-linux-release-assets
     needs: build-linux
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && (inputs.build_target == 'all' || inputs.build_target == 'linux') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

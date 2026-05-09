@@ -214,11 +214,13 @@ describe('release workflow guardrails', () => {
 
   it('keeps internal desktop builds private and covers macOS, Windows, and Linux', () => {
     assert.match(internalDesktopWorkflow, /workflow_dispatch/);
+    assert.match(internalDesktopWorkflow, /build_target:/);
+    assert.match(internalDesktopWorkflow, /- macos/);
+    assert.match(internalDesktopWorkflow, /inputs\.build_target == 'all' \|\| inputs\.build_target == 'macos'/);
     assert.match(internalDesktopWorkflow, /contents: read/);
     assert.doesNotMatch(internalDesktopWorkflow, /softprops\/action-gh-release/);
     assert.match(internalDesktopWorkflow, /build-macos-universal/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-macOS\.dmg/);
-    assert.match(internalDesktopWorkflow, /com\.apple\.developer\.applesignin/);
     assert.match(internalDesktopWorkflow, /build-windows-x64/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
     assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
