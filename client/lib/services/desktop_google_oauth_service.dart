@@ -209,19 +209,62 @@ class DesktopGoogleOAuthService {
   static Future<void> _respondToBrowser(HttpRequest request) async {
     request.response
       ..statusCode = HttpStatus.ok
-      ..headers.contentType = ContentType.html
-      ..write('''
-<!doctype html>
-<html>
-  <head><meta charset="utf-8"><title>Clawke</title></head>
-  <body>
-    <p>Google 登录已完成，可以返回 Clawke。</p>
-    <p>Google sign-in is complete. You can return to Clawke.</p>
-  </body>
-</html>
-''');
+      ..headers.contentType = ContentType('text', 'html', charset: 'utf-8')
+      ..headers.set(HttpHeaders.cacheControlHeader, 'no-store')
+      ..write(_browserCompletionHtml);
     await request.response.close();
   }
+
+  static const _browserCompletionHtml = '''
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <title>Clawke</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      main {
+        max-width: 640px;
+        padding: 32px;
+        line-height: 1.6;
+      }
+      h1 { font-size: 24px; margin: 0 0 12px; }
+      p { font-size: 16px; margin: 8px 0; }
+      .fallback { visibility: hidden; }
+      .manual-close .fallback { visibility: visible; }
+    </style>
+    <script>
+      (function () {
+        function showFallback() {
+          if (document.body) {
+            document.body.classList.add('manual-close');
+          }
+        }
+        function closePage() {
+          window.open('', '_self');
+          window.close();
+          setTimeout(showFallback, 900);
+        }
+        setTimeout(closePage, 250);
+      })();
+    </script>
+  </head>
+  <body>
+    <main>
+      <h1>Google 登录已完成，正在返回 Clawke。</h1>
+      <p>Google sign-in is complete. Returning to Clawke.</p>
+      <p class="fallback">如果浏览器没有自动关闭，请手动关闭此页面并返回 Clawke。</p>
+    </main>
+  </body>
+</html>
+''';
 
   static String _base64UrlNoPadding(List<int> bytes) =>
       base64UrlEncode(bytes).replaceAll('=', '');

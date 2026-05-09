@@ -35,6 +35,7 @@ class _FakeHttpClientAdapter implements HttpClientAdapter {
 void main() {
   group('DesktopGoogleOAuthService', () {
     test('completes browser loopback OAuth flow', () async {
+      final browserBody = Completer<String>();
       final jwt = _fakeJwt({
         'sub': 'google-user-1',
         'email': 'user@example.com',
@@ -80,18 +81,27 @@ void main() {
           expect(uri.queryParameters['redirect_uri'], isNot(endsWith('/')));
 
           final redirectUri = Uri.parse(uri.queryParameters['redirect_uri']!);
-          unawaited(_sendLoopbackCallback(redirectUri, uri));
+          unawaited(
+            _sendLoopbackCallback(
+              redirectUri,
+              uri,
+            ).then(browserBody.complete, onError: browserBody.completeError),
+          );
           return true;
         },
       );
 
       final account = await service.signIn();
+      final completionHtml = await browserBody.future;
 
       expect(account.id, 'google-user-1');
       expect(account.email, 'user@example.com');
       expect(account.displayName, 'Clawke User');
       expect(account.idToken, jwt);
       expect(account.accessToken, 'access-token');
+      expect(completionHtml, contains('window.close()'));
+      expect(completionHtml, contains('Returning to Clawke'));
+      expect(completionHtml, contains('如果浏览器没有自动关闭'));
     });
 
     test('sends client secret when configured', () async {
@@ -229,7 +239,7 @@ String _fakeJwt(Map<String, dynamic> claims) {
 String _base64UrlJson(Map<String, dynamic> value) =>
     base64UrlEncode(utf8.encode(jsonEncode(value))).replaceAll('=', '');
 
-Future<void> _sendLoopbackCallback(Uri redirectUri, Uri authUri) async {
+Future<String> _sendLoopbackCallback(Uri redirectUri, Uri authUri) async {
   final client = HttpClient();
   try {
     final callbackUri = redirectUri.replace(
@@ -240,7 +250,7 @@ Future<void> _sendLoopbackCallback(Uri redirectUri, Uri authUri) async {
     );
     final request = await client.getUrl(callbackUri);
     final response = await request.close();
-    await response.drain<void>();
+    return utf8.decoder.bind(response).join();
   } finally {
     client.close(force: true);
   }
