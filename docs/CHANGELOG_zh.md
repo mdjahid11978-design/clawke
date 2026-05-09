@@ -4,6 +4,13 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.23 (2026-05-09)
+
+**[问题修复]** Windows 发布包启动与桌面端登录体验。
+- Windows release zip 现在会随包携带 Visual C++ runtime DLL，即使系统 runtime 缺失或损坏也能启动 Clawke。
+- 新增发布流程校验，确保 Windows 包包含 `msvcp140.dll`、`vcruntime140.dll` 和 `vcruntime140_1.dll`。
+- Windows 和 Linux 桌面端会隐藏暂不支持的 Google 登录入口，避免触发桌面端 `MissingPluginException`。
+
 ## v1.1.22 (2026-05-09)
 
 **[问题修复]** Android 发布签名与 Google 登录。

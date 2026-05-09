@@ -126,6 +126,10 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.23 (2026-05-09)
+
+**[问题修复]** Windows 发布包随包携带 Visual C++ runtime，并隐藏不支持的桌面 Google 登录入口，确保官方 Windows 包能稳定启动。
+
 ### v1.1.22 (2026-05-09)
 
 **[问题修复]** 恢复 Android release 签名并新增证书校验，防止 debug 签名 APK 导致 Google 登录失败。

@@ -127,6 +127,10 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.23 (2026-05-09)
+
+**[Bug Fix]** Bundled Windows Visual C++ runtime DLLs and hid unsupported desktop Google sign-in so official Windows packages start reliably.
+
 ### v1.1.22 (2026-05-09)
 
 **[Bug Fix]** Restored Android release signing and added certificate verification to prevent Google login failures caused by debug-signed APKs.

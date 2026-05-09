@@ -4,6 +4,13 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.23 (2026-05-09)
+
+**[Bug Fix]** Windows release startup and desktop login behavior.
+- Bundled the Visual C++ runtime DLLs into the Windows release zip so Clawke can start even when the system runtime is missing or corrupted.
+- Added release workflow validation to ensure Windows packages include `msvcp140.dll`, `vcruntime140.dll`, and `vcruntime140_1.dll`.
+- Hid Google sign-in on Windows and Linux desktop builds where the native plugin is unavailable, avoiding the desktop `MissingPluginException` path.
+
 ## v1.1.22 (2026-05-09)
 
 **[Bug Fix]** Android release signing and Google login.
