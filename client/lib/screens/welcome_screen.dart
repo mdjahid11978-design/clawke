@@ -4,6 +4,7 @@ import 'package:client/core/url_utils.dart';
 import 'package:client/screens/login_screen.dart';
 import 'package:client/screens/manual_config_screen.dart';
 import 'package:client/providers/locale_provider.dart';
+import 'package:client/providers/app_version_provider.dart';
 import 'package:client/l10n/app_localizations.dart';
 
 /// Welcome screen shown on first app launch.
@@ -23,6 +24,9 @@ class WelcomeScreen extends ConsumerWidget {
     final currentLang =
         locale?.languageCode ?? Localizations.localeOf(context).languageCode;
     final t = AppLocalizations.of(context)!;
+    final appVersion = ref
+        .watch(appVersionProvider)
+        .maybeWhen(data: (info) => info.fullVersion, orElse: () => '...');
 
     return Scaffold(
       appBar: showBackButton
@@ -179,6 +183,15 @@ class WelcomeScreen extends ConsumerWidget {
                       onTap: () => openPrivacyPolicy(context),
                     ),
                   ],
+                ),
+
+                const SizedBox(height: 24),
+
+                Text(
+                  'Clawke v$appVersion',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                  ),
                 ),
 
                 const SizedBox(height: 40),

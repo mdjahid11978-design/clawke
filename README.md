@@ -127,6 +127,10 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.22 (2026-05-09)
+
+**[Bug Fix]** Restored Android release signing and added certificate verification to prevent Google login failures caused by debug-signed APKs.
+
 ### v1.1.21 (2026-05-03)
 
 **[Enhancement]** Stabilized runtime path handling and task UI E2E setup for release validation.

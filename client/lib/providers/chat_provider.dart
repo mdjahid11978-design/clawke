@@ -19,6 +19,7 @@ import 'package:client/providers/chat_limit_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/providers/locale_provider.dart';
+import 'package:client/providers/app_version_provider.dart';
 import 'package:client/l10n/app_localizations.dart';
 import 'package:client/upgrade/upgrade_handler.dart';
 import 'package:client/core/file_logger.dart';
@@ -227,19 +228,20 @@ class WsMessageHandler with WidgetsBindingObserver {
     }
 
     final ws = _ref.read(wsServiceProvider);
+    final appVersion = await _resolveAppVersion();
     ws.sendJson({
       'id': 'sync_${DateTime.now().millisecondsSinceEpoch}',
       'protocol': 'cup_v2',
       'event_type': 'sync',
       'data': {
         'last_seq': lastSeq,
-        'app_version': _appVersion,
+        'app_version': appVersion,
         'platform': _platform,
         'arch': _arch,
       },
     });
     debugPrint(
-      '[WsMessageHandler] Sent sync, last_seq=$lastSeq, version=$_appVersion',
+      '[WsMessageHandler] Sent sync, last_seq=$lastSeq, version=$appVersion',
     );
   }
 
@@ -313,13 +315,14 @@ class WsMessageHandler with WidgetsBindingObserver {
   }
 
   void sendCheckUpdate() {
+    unawaited(_sendCheckUpdate());
+  }
+
+  Future<void> _sendCheckUpdate() async {
+    final appVersion = await _resolveAppVersion();
     _ws.sendJson({
       'event_type': 'check_update',
-      'data': {
-        'app_version': _appVersion,
-        'platform': _platform,
-        'arch': _arch,
-      },
+      'data': {'app_version': appVersion, 'platform': _platform, 'arch': _arch},
     });
     debugPrint('[WsMessageHandler] Sent check_update');
   }
@@ -449,8 +452,15 @@ class WsMessageHandler with WidgetsBindingObserver {
     _ref.read(streamingThinkingProvider.notifier).state = null;
   }
 
-  // 版本信息（后续可从 package_info_plus 获取）
-  static const String _appVersion = '0.1.0';
+  Future<String> _resolveAppVersion() async {
+    try {
+      return (await _ref.read(appVersionProvider.future)).fullVersion;
+    } catch (error) {
+      debugPrint('[WsMessageHandler] Failed to read app version: $error');
+      return 'unknown';
+    }
+  }
+
   String get _platform {
     if (defaultTargetPlatform == TargetPlatform.macOS) return 'macos';
     if (defaultTargetPlatform == TargetPlatform.windows) return 'windows';

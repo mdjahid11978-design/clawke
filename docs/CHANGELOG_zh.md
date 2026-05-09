@@ -4,6 +4,12 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.22 (2026-05-09)
+
+**[问题修复]** Android 发布签名与 Google 登录。
+- 恢复 GitHub 发布流程中的固定 Android release 签名，确保官方 APK 使用预期的 release 证书。
+- 新增证书指纹校验和已发布 APK 回验，防止再次发布 debug 签名的 Android release 包。
+
 ## v1.1.21 (2026-05-03)
 
 **[功能优化]** 发布与运行路径稳定性增强。

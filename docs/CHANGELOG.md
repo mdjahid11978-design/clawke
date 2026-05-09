@@ -4,6 +4,12 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.22 (2026-05-09)
+
+**[Bug Fix]** Android release signing and Google login.
+- Restored fixed Android release signing in the GitHub release workflow so official APKs use the expected release certificate.
+- Added certificate fingerprint checks and published APK verification to prevent debug-signed Android release artifacts.
+
 ## v1.1.21 (2026-05-03)
 
 **[Enhancement]** Release and runtime path stability.

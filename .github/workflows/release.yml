@@ -43,15 +43,105 @@ jobs:
           test -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64"
           echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > client/android/app/google-services.json
 
+      - name: Restore Android release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_RELEASE_CERT_SHA256"
+
+          mkdir -p client/android/keystore
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > client/android/keystore/clawke-release.jks
+          {
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'storeFile=%s\n' '../keystore/clawke-release.jks'
+          } > client/android/key.properties
+
+          CERT_INFO="$(keytool -list -v \
+            -keystore client/android/keystore/clawke-release.jks \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD")"
+          RELEASE_CERT_SHA1="$(printf '%s\n' "$CERT_INFO" | awk -F': ' '/SHA1:/ {print $2; exit}' | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          RELEASE_CERT_SHA256="$(printf '%s\n' "$CERT_INFO" | awk -F': ' '/SHA256:/ {print $2; exit}' | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED_SHA256="$(printf '%s' "$ANDROID_RELEASE_CERT_SHA256" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          test -n "$RELEASE_CERT_SHA1"
+          test -n "$RELEASE_CERT_SHA256"
+          if [ "$RELEASE_CERT_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Android release keystore certificate SHA-256 does not match ANDROID_RELEASE_CERT_SHA256."
+            echo "Actual SHA-256: $RELEASE_CERT_SHA256"
+            exit 1
+          fi
+          echo "ANDROID_RELEASE_CERT_SHA1=$RELEASE_CERT_SHA1" >> "$GITHUB_ENV"
+
+      - name: Verify Android Firebase OAuth config
+        run: |
+          test -n "$ANDROID_RELEASE_CERT_SHA1"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const expected = process.env.ANDROID_RELEASE_CERT_SHA1.replace(/[^a-fA-F0-9]/g, '').toLowerCase();
+          const config = JSON.parse(fs.readFileSync('client/android/app/google-services.json', 'utf8'));
+          const hashes = [];
+          for (const client of config.client || []) {
+            for (const oauthClient of client.oauth_client || []) {
+              const hash = oauthClient.android_info?.certificate_hash;
+              if (hash) hashes.push(hash.replace(/[^a-fA-F0-9]/g, '').toLowerCase());
+            }
+          }
+          if (!hashes.includes(expected)) {
+            console.error(`::error::Android google-services.json does not include the release certificate SHA-1 ${expected}. Update Firebase Android app SHA fingerprints and refresh ANDROID_GOOGLE_SERVICES_JSON_BASE64.`);
+            console.error(`Configured SHA-1 values: ${hashes.join(', ') || '(none)'}`);
+            process.exit(1);
+          }
+          console.log(`Android Firebase OAuth SHA-1 verified: ${expected}`);
+          NODE
+
       - name: Build APK
         working-directory: client
         run: flutter build apk --release
+
+      - name: Verify Android release signing
+        env:
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          test -n "$ANDROID_RELEASE_CERT_SHA256"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs client/build/app/outputs/flutter-apk/app-release.apk | tee "$RUNNER_TEMP/apk-signing.txt"
+          if grep -q "CN=Android Debug" "$RUNNER_TEMP/apk-signing.txt"; then
+            echo "::error::Android release APK was signed with the debug certificate."
+            exit 1
+          fi
+          EXPECTED_SHA256="$(printf '%s' "$ANDROID_RELEASE_CERT_SHA256" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_SHA256="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}' "$RUNNER_TEMP/apk-signing.txt" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL_SHA256"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Android release APK certificate SHA-256 does not match the expected release certificate."
+            echo "Actual SHA-256: $ACTUAL_SHA256"
+            exit 1
+          fi
+          echo "Android release certificate SHA-256 verified: $ACTUAL_SHA256"
+          cp "$RUNNER_TEMP/apk-signing.txt" apk-signing.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: client/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload Android signing report
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-report
+          path: apk-signing.txt
 
   # ── macOS ────────────────────────────────────────────────────
   build-macos:
@@ -291,6 +381,44 @@ jobs:
           grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
 
+  # ── Verify published Android asset ───────────────────────────
+  verify-android-release:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify published Android APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ANDROID_RELEASE_CERT_SHA256: ${{ secrets.ANDROID_RELEASE_CERT_SHA256 }}
+        run: |
+          test -n "$ANDROID_RELEASE_CERT_SHA256"
+          TAG="${GITHUB_REF_NAME}"
+          VERIFY_DIR="$RUNNER_TEMP/release-verify"
+          mkdir -p "$VERIFY_DIR"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "Clawke-${TAG}-android.apk" \
+            --dir "$VERIFY_DIR" \
+            --clobber
+
+          APK_PATH="$VERIFY_DIR/Clawke-${TAG}-android.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK_PATH" | tee "$RUNNER_TEMP/release-apk-signing.txt"
+          if grep -q "CN=Android Debug" "$RUNNER_TEMP/release-apk-signing.txt"; then
+            echo "::error::Published Android APK was signed with the debug certificate."
+            exit 1
+          fi
+          EXPECTED_SHA256="$(printf '%s' "$ANDROID_RELEASE_CERT_SHA256" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          ACTUAL_SHA256="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}' "$RUNNER_TEMP/release-apk-signing.txt" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL_SHA256"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Published Android APK certificate SHA-256 does not match the expected release certificate."
+            echo "Actual SHA-256: $ACTUAL_SHA256"
+            exit 1
+          fi
+          echo "Published Android release certificate SHA-256 verified: $ACTUAL_SHA256"
+
   # ── Windows ──────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
@@ -390,6 +518,7 @@ jobs:
           TAG=${GITHUB_REF_NAME}
           mkdir -p release
           cp artifacts/android-apk/app-release.apk    "release/Clawke-${TAG}-android.apk"
+          cp artifacts/android-signing-report/apk-signing.txt "release/Clawke-${TAG}-android-signing.txt"
           cp artifacts/macos-dmg/Clawke-macOS.dmg      "release/Clawke-${TAG}-macOS.dmg"
           cp artifacts/windows-zip/Clawke-windows-x64.zip "release/Clawke-${TAG}-windows-x64.zip"
           cp artifacts/linux-tar/Clawke-linux-x64.tar.gz  "release/Clawke-${TAG}-linux-x64.tar.gz"
