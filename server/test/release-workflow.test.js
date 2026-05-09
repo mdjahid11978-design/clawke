@@ -113,21 +113,15 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /Missing macOS provisioning profile entitlement/);
     assert.match(macosBuild, /flutter build macos --release/);
     assert.doesNotMatch(macosBuild, /GOOGLE_DESKTOP_CLIENT_ID/);
-    assert.match(macosBuild, /com\.google\.GIDSignIn/);
     assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
     assert.match(macosVerify, /grep -qw x86_64/);
     assert.match(macosVerify, /grep -qw arm64/);
     assert.match(macosVerify, /Published macOS binary is not universal/);
-    assert.match(macosVerify, /com\.google\.GIDSignIn/);
     assert.doesNotMatch(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
-    assert.match(
-      macosReleaseEntitlements,
-      /\$\(AppIdentifierPrefix\)ai\.clawke\.app[\s\S]*\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn/,
-    );
-    assert.match(
-      macosDebugProfileEntitlements,
-      /\$\(AppIdentifierPrefix\)ai\.clawke\.app[\s\S]*\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn/,
-    );
+    assert.match(macosReleaseEntitlements, /\$\(AppIdentifierPrefix\)ai\.clawke\.app/);
+    assert.match(macosDebugProfileEntitlements, /\$\(AppIdentifierPrefix\)ai\.clawke\.app/);
+    assert.doesNotMatch(macosReleaseEntitlements, /com\.google\.GIDSignIn/);
+    assert.doesNotMatch(macosDebugProfileEntitlements, /com\.google\.GIDSignIn/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {

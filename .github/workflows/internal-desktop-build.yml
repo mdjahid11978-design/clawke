@@ -145,7 +145,6 @@ jobs:
           cat "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
-          grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
