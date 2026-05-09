@@ -11,13 +11,12 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.41.4'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build-android-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-java@v4
         with:
@@ -132,13 +131,13 @@ jobs:
           echo "Android release certificate SHA-256 verified: $ACTUAL_SHA256"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-release-smoke-apk
           path: client/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload signing report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-release-smoke-signing
           path: apk-signing.txt

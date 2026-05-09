@@ -72,13 +72,17 @@ describe('release workflow guardrails', () => {
     assert.match(androidBuildGradle, /compileReleaseJavaWithJavac/);
   });
 
-  it('opts GitHub JavaScript actions into Node 24 runtime', () => {
+  it('uses GitHub JavaScript actions with native Node 24 support', () => {
     for (const candidate of [
       workflow,
       internalDesktopWorkflow,
       androidReleaseSmokeWorkflow,
     ]) {
-      assert.match(candidate, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'/);
+      assert.match(candidate, /actions\/checkout@v6/);
+      assert.match(candidate, /actions\/upload-artifact@v7/);
+      assert.doesNotMatch(candidate, /actions\/checkout@v4/);
+      assert.doesNotMatch(candidate, /actions\/upload-artifact@v4/);
+      assert.doesNotMatch(candidate, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24/);
       assert.doesNotMatch(candidate, /ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION/);
     }
   });

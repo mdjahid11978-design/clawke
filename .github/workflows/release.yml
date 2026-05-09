@@ -10,14 +10,13 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.41.4'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   # ── Android APK ──────────────────────────────────────────────
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-java@v4
         with:
@@ -133,13 +132,13 @@ jobs:
           cp "$RUNNER_TEMP/apk-signing.txt" apk-signing.txt
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-apk
           path: client/build/app/outputs/flutter-apk/app-release.apk
 
       - name: Upload Android signing report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-signing-report
           path: apk-signing.txt
@@ -148,7 +147,7 @@ jobs:
   build-macos:
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -337,7 +336,7 @@ jobs:
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-dmg
           path: Clawke-macOS.dmg
@@ -477,7 +476,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -562,7 +561,7 @@ jobs:
           Compress-Archive -Path "client\build\windows\x64\runner\Release\*" -DestinationPath "Clawke-windows-x64.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-zip
           path: Clawke-windows-x64.zip
@@ -587,7 +586,7 @@ jobs:
             artifact_name: linux-arm64-tar
             bundle_path: client/build/linux/arm64/release/bundle
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Flutter (Linux x64)
         if: matrix.arch == 'x64'
@@ -675,7 +674,7 @@ jobs:
           tar czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.archive_name }}
@@ -685,7 +684,7 @@ jobs:
     needs: [build-android, build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 

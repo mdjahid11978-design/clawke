@@ -8,14 +8,13 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.41.4'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   build-macos:
     name: build-macos-universal
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -186,7 +185,7 @@ jobs:
           hdiutil verify Clawke-internal-macOS.dmg
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: internal-macos-dmg
           path: Clawke-internal-macOS.dmg
@@ -196,7 +195,7 @@ jobs:
     name: build-windows-x64
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -256,7 +255,7 @@ jobs:
         run: Compress-Archive -Path "client\build\windows\x64\runner\Release\*" -DestinationPath "Clawke-internal-windows-x64.zip"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: internal-windows-x64
           path: Clawke-internal-windows-x64.zip
@@ -281,7 +280,7 @@ jobs:
             artifact_name: internal-linux-arm64
             bundle_path: client/build/linux/arm64/release/bundle
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Flutter (Linux x64)
         if: matrix.arch == 'x64'
@@ -341,7 +340,7 @@ jobs:
         run: tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.archive_name }}
