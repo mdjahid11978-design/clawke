@@ -48,6 +48,10 @@ describe('release workflow guardrails', () => {
     ),
     'utf8',
   );
+  const macosPodfile = fs.readFileSync(
+    path.join(repoRoot, 'client', 'macos', 'Podfile'),
+    'utf8',
+  );
   it('requires Android release signing and rejects debug-signed APKs', () => {
     assert.match(workflow, /ANDROID_KEYSTORE_BASE64/);
     assert.match(workflow, /ANDROID_RELEASE_CERT_SHA256/);
@@ -122,6 +126,11 @@ describe('release workflow guardrails', () => {
     assert.match(macosDebugProfileEntitlements, /\$\(AppIdentifierPrefix\)ai\.clawke\.app/);
     assert.doesNotMatch(macosReleaseEntitlements, /com\.google\.GIDSignIn/);
     assert.doesNotMatch(macosDebugProfileEntitlements, /com\.google\.GIDSignIn/);
+    assert.match(macosPodfile, /patch_google_sign_in_keychain_access_group/);
+    assert.match(macosPodfile, /CBGN3JTHC4\.ai\.clawke\.app/);
+    assert.match(macosPodfile, /initWithItemName:kGTMAppAuthKeychainName/);
+    assert.match(macosPodfile, /keychainAttributes:\[NSSet setWithObject:/);
+    assert.match(macosPodfile, /keychainAccessGroupWithName:keychainAccessGroup/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
