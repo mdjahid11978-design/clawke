@@ -122,11 +122,11 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
     assert.match(
       macosReleaseEntitlements,
-      /\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn[\s\S]*\$\(AppIdentifierPrefix\)ai\.clawke\.app/,
+      /\$\(AppIdentifierPrefix\)ai\.clawke\.app[\s\S]*\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn/,
     );
     assert.match(
       macosDebugProfileEntitlements,
-      /\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn[\s\S]*\$\(AppIdentifierPrefix\)ai\.clawke\.app/,
+      /\$\(AppIdentifierPrefix\)ai\.clawke\.app[\s\S]*\$\(AppIdentifierPrefix\)com\.google\.GIDSignIn/,
     );
   });
 

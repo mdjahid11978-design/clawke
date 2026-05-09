@@ -266,8 +266,15 @@ class AuthService {
     final googleSignIn = GoogleSignIn(scopes: ['email']);
 
     debugPrint('[Auth] Google signIn starting...');
-    // 清理旧会话，避免旧 session 阻塞新弹窗 — Clear stale session before opening a new prompt.
-    await googleSignIn.signOut();
+    try {
+      debugPrint('[Auth] Google signOut stale session starting...');
+      // 清理旧会话不应阻塞新登录 — Stale-session cleanup must not block a fresh sign-in.
+      await googleSignIn.signOut();
+      debugPrint('[Auth] Google signOut stale session OK');
+    } catch (e, st) {
+      debugPrint('[Auth] Google signOut stale session skipped: $e\n$st');
+    }
+    debugPrint('[Auth] Google interactive signIn starting...');
     final googleUser = await googleSignIn.signIn().timeout(
       const Duration(seconds: 120),
       onTimeout: () {
