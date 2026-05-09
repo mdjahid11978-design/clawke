@@ -10,6 +10,10 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, '.github', 'workflows', 'release.yml'),
     'utf8',
   );
+  const internalDesktopWorkflow = fs.readFileSync(
+    path.join(repoRoot, '.github', 'workflows', 'internal-desktop-build.yml'),
+    'utf8',
+  );
   const androidBuildGradle = fs.readFileSync(
     path.join(repoRoot, 'client', 'android', 'app', 'build.gradle.kts'),
     'utf8',
@@ -145,5 +149,20 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(linuxCMake, /set\(BINARY_NAME "client"\)/);
     assert.doesNotMatch(windowsCMake, /set\(BINARY_NAME "client"\)/);
     assert.doesNotMatch(windowsRunnerRc, /client\.exe/);
+  });
+
+  it('keeps internal desktop builds private and covers macOS, Windows, and Linux', () => {
+    assert.match(internalDesktopWorkflow, /workflow_dispatch/);
+    assert.match(internalDesktopWorkflow, /contents: read/);
+    assert.doesNotMatch(internalDesktopWorkflow, /softprops\/action-gh-release/);
+    assert.doesNotMatch(internalDesktopWorkflow, /gh release/);
+    assert.match(internalDesktopWorkflow, /build-macos-universal/);
+    assert.match(internalDesktopWorkflow, /Clawke-internal-macOS\.dmg/);
+    assert.match(internalDesktopWorkflow, /build-windows-x64/);
+    assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
+    assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
+    assert.match(internalDesktopWorkflow, /Clawke-internal-linux-x64\.tar\.gz/);
+    assert.match(internalDesktopWorkflow, /Clawke-internal-linux-arm64\.tar\.gz/);
+    assert.match(internalDesktopWorkflow, /GOOGLE_DESKTOP_CLIENT_SECRET/);
   });
 });
