@@ -47,6 +47,10 @@ test('Windows and Linux desktop bundles use the Clawke app icon', () => {
     path.join(repoRoot, 'client', 'linux', 'runner', 'my_application.cc'),
     'utf8',
   );
+  const windowsRunner = fs.readFileSync(
+    path.join(repoRoot, 'client', 'windows', 'runner', 'win32_window.cpp'),
+    'utf8',
+  );
 
   assert.notEqual(
     sha256File(windowsIconPath),
@@ -56,4 +60,7 @@ test('Windows and Linux desktop bundles use the Clawke app icon', () => {
   assert.match(linuxCMake, /runner\/resources\/app_icon\.png/);
   assert.match(linuxRunner, /gtk_window_set_icon_from_file/);
   assert.match(linuxRunner, /"data", "app_icon\.png"/);
+  assert.match(windowsRunner, /hIconSm = LoadAppIcon/);
+  assert.match(windowsRunner, /WM_SETICON, ICON_SMALL/);
+  assert.match(windowsRunner, /SM_CXSMICON/);
 });
