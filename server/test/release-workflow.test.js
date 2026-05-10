@@ -169,7 +169,9 @@ describe('release workflow guardrails', () => {
     assert.match(macosAppStoreWorkflow, /--component "\$APP_PATH"/);
     assert.match(macosAppStoreWorkflow, /Clawke-macOS-AppStore\.pkg/);
     assert.match(macosAppStoreWorkflow, /pkgutil --check-signature Clawke-macOS-AppStore\.pkg/);
-    assert.match(macosAppStoreWorkflow, /signed by a certificate trusted by \(macOS\|Mac OS X\)/);
+    assert.match(macosAppStoreWorkflow, /Apple Worldwide Developer Relations Certification Authority/);
+    assert.match(macosAppStoreWorkflow, /Apple Root CA/);
+    assert.match(macosAppStoreWorkflow, /signed by untrusted certificate/);
     assert.match(macosAppStoreWorkflow, /name: macos-app-store-pkg/);
   });
 

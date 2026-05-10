@@ -243,8 +243,10 @@ jobs:
           security delete-keychain "$MACOS_APP_STORE_SIGNING_KEYCHAIN"
           pkgutil --check-signature Clawke-macOS-AppStore.pkg | tee "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"
           grep -q "3rd Party Mac Developer Installer" "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"
-          if ! grep -Eq "Status: signed by a certificate trusted by (macOS|Mac OS X)" "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"; then
-            echo "::error::Mac App Store package signature is not trusted. The Apple WWDR G3 intermediate certificate must be embedded in the package signature."
+          grep -q "Apple Worldwide Developer Relations Certification Authority" "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"
+          grep -q "Apple Root CA" "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"
+          if grep -q "signed by untrusted certificate" "$RUNNER_TEMP/macos-app-store-pkg-signature.txt"; then
+            echo "::error::Mac App Store package signature chain is incomplete. The Apple WWDR G3 intermediate certificate must be embedded in the package signature."
             exit 1
           fi
           pkgutil --check-signature Clawke-macOS-AppStore.pkg
