@@ -14,6 +14,10 @@ describe('release workflow guardrails', () => {
     path.join(repoRoot, '.github', 'workflows', 'internal-desktop-build.yml'),
     'utf8',
   );
+  const macosAppStoreWorkflow = fs.readFileSync(
+    path.join(repoRoot, '.github', 'workflows', 'macos-app-store-build.yml'),
+    'utf8',
+  );
   const androidReleaseSmokeWorkflow = fs.readFileSync(
     path.join(repoRoot, '.github', 'workflows', 'android-release-smoke.yml'),
     'utf8',
@@ -85,6 +89,7 @@ describe('release workflow guardrails', () => {
     for (const candidate of [
       workflow,
       internalDesktopWorkflow,
+      macosAppStoreWorkflow,
       androidReleaseSmokeWorkflow,
     ]) {
       assert.match(candidate, /actions\/checkout@v6/);
@@ -137,6 +142,33 @@ describe('release workflow guardrails', () => {
     assert.match(macosPodfile, /initWithItemName:kGTMAppAuthKeychainName/);
     assert.match(macosPodfile, /keychainAttributes:\[NSSet setWithObject:/);
     assert.match(macosPodfile, /keychainAccessGroupWithName:keychainAccessGroup/);
+  });
+
+  it('builds a private Mac App Store package with separate signing assets', () => {
+    assert.match(macosAppStoreWorkflow, /workflow_dispatch/);
+    assert.match(macosAppStoreWorkflow, /permissions:\n  contents: read/);
+    assert.doesNotMatch(macosAppStoreWorkflow, /softprops\/action-gh-release/);
+    assert.doesNotMatch(macosAppStoreWorkflow, /APPLE_NOTARY_/);
+    assert.match(macosAppStoreWorkflow, /runs-on: macos-26/);
+    assert.match(macosAppStoreWorkflow, /MACOS_APP_STORE_CERTIFICATE_BASE64/);
+    assert.match(macosAppStoreWorkflow, /MACOS_APP_STORE_CERTIFICATE_PASSWORD/);
+    assert.match(macosAppStoreWorkflow, /MACOS_APP_STORE_INSTALLER_CERTIFICATE_BASE64/);
+    assert.match(macosAppStoreWorkflow, /MACOS_APP_STORE_INSTALLER_CERTIFICATE_PASSWORD/);
+    assert.match(macosAppStoreWorkflow, /MACOS_APP_STORE_PROVISION_PROFILE_BASE64/);
+    assert.doesNotMatch(macosAppStoreWorkflow, /secrets\.MACOS_CERTIFICATE_BASE64/);
+    assert.doesNotMatch(macosAppStoreWorkflow, /secrets\.MACOS_PROVISION_PROFILE_BASE64/);
+    assert.match(macosAppStoreWorkflow, /3rd Party Mac Developer Application:/);
+    assert.match(macosAppStoreWorkflow, /3rd Party Mac Developer Installer:/);
+    assert.match(macosAppStoreWorkflow, /CBGN3JTHC4\.ai\.clawke\.app/);
+    assert.match(macosAppStoreWorkflow, /com\.apple\.application-identifier/);
+    assert.match(macosAppStoreWorkflow, /com\.apple\.developer\.team-identifier/);
+    assert.match(macosAppStoreWorkflow, /validate_profile_entitlement "com\.apple\.developer\.applesignin"/);
+    assert.match(macosAppStoreWorkflow, /com\.apple\.security\.app-sandbox/);
+    assert.match(macosAppStoreWorkflow, /productbuild/);
+    assert.match(macosAppStoreWorkflow, /--component "\$APP_PATH"/);
+    assert.match(macosAppStoreWorkflow, /Clawke-macOS-AppStore\.pkg/);
+    assert.match(macosAppStoreWorkflow, /pkgutil --check-signature Clawke-macOS-AppStore\.pkg/);
+    assert.match(macosAppStoreWorkflow, /name: macos-app-store-pkg/);
   });
 
   it('bundles the Visual C++ runtime into Windows release zips', () => {
