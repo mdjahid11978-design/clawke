@@ -115,6 +115,9 @@ describe('release workflow guardrails', () => {
     assert.match(macosBuild, /codesign --force --options runtime --timestamp/);
     assert.match(macosBuild, /codesign --verify --deep --strict --verbose=2 "\$APP_PATH"/);
     assert.match(macosBuild, /Missing macOS provisioning profile entitlement/);
+    assert.match(macosBuild, /Unexpected macOS app bundle name:/);
+    assert.doesNotMatch(macosBuild, /Build\/Products\/Release\/clawke\.app/);
+    assert.match(macosBuild, /test "\$\(basename "\$DMG_APP_PATH"\)" = "Clawke\.app"/);
     assert.match(macosBuild, /flutter build macos --release/);
     assert.doesNotMatch(macosBuild, /GOOGLE_DESKTOP_CLIENT_ID/);
     assert.match(macosVerify, /lipo -archs "\$DMG_EXE_PATH"/);
@@ -221,6 +224,8 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(internalDesktopWorkflow, /softprops\/action-gh-release/);
     assert.match(internalDesktopWorkflow, /build-macos-universal/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-macOS\.dmg/);
+    assert.match(internalDesktopWorkflow, /Unexpected macOS app bundle name:/);
+    assert.doesNotMatch(internalDesktopWorkflow, /Build\/Products\/Release\/clawke\.app/);
     assert.match(internalDesktopWorkflow, /build-windows-x64/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
     assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);

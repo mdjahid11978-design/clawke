@@ -237,10 +237,16 @@ jobs:
             fi
           }
 
-          APP_PATH="client/build/macos/Build/Products/Release/clawke.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find client/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          APP_PATH="$(find client/build/macos/Build/Products/Release -maxdepth 1 -type d -name "*.app" | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS app bundle not found."
+            exit 1
           fi
+          if [ "$(basename "$APP_PATH")" != "Clawke.app" ]; then
+            echo "::error::Unexpected macOS app bundle name: $(basename "$APP_PATH")"
+            exit 1
+          fi
+          echo "Using macOS app bundle: $APP_PATH"
 
           cp "$RUNNER_TEMP/macos.provisionprofile" "$APP_PATH/Contents/embedded.provisionprofile"
           security cms -D -i "$RUNNER_TEMP/macos.provisionprofile" > "$RUNNER_TEMP/macos-profile.plist"
@@ -292,11 +298,17 @@ jobs:
 
       - name: Create DMG
         run: |
-          APP_PATH="client/build/macos/Build/Products/Release/clawke.app"
-          # Fallback: find the .app if name differs
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find client/build/macos/Build/Products/Release -name "*.app" -maxdepth 1 | head -1)
+          set -euo pipefail
+          APP_PATH="$(find client/build/macos/Build/Products/Release -maxdepth 1 -type d -name "*.app" | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS app bundle not found."
+            exit 1
           fi
+          if [ "$(basename "$APP_PATH")" != "Clawke.app" ]; then
+            echo "::error::Unexpected macOS app bundle name: $(basename "$APP_PATH")"
+            exit 1
+          fi
+          echo "Using macOS app bundle for DMG: $APP_PATH"
           bash scripts/create_macos_dmg.sh "$APP_PATH" Clawke-macOS.dmg Clawke
 
       - name: Notarize and staple DMG
@@ -340,6 +352,7 @@ jobs:
           trap 'hdiutil detach "$VERIFY_MOUNT" >/dev/null 2>&1 || true' EXIT
           DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
           test -n "$DMG_APP_PATH"
+          test "$(basename "$DMG_APP_PATH")" = "Clawke.app"
           codesign --verify --deep --strict --verbose=2 "$DMG_APP_PATH"
           assert_signature_has_certificate "$DMG_APP_PATH"
           find "$DMG_APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
@@ -391,6 +404,7 @@ jobs:
 
           DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
           test -n "$DMG_APP_PATH"
+          test "$(basename "$DMG_APP_PATH")" = "Clawke.app"
           DMG_EXE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$DMG_APP_PATH/Contents/Info.plist")
           DMG_EXE_PATH="$DMG_APP_PATH/Contents/MacOS/$DMG_EXE_NAME"
           test -x "$DMG_EXE_PATH"

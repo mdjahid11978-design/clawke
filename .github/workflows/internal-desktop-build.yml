@@ -119,10 +119,16 @@ jobs:
             fi
           }
 
-          APP_PATH="client/build/macos/Build/Products/Release/clawke.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find client/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          APP_PATH="$(find client/build/macos/Build/Products/Release -maxdepth 1 -type d -name "*.app" | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS app bundle not found."
+            exit 1
           fi
+          if [ "$(basename "$APP_PATH")" != "Clawke.app" ]; then
+            echo "::error::Unexpected macOS app bundle name: $(basename "$APP_PATH")"
+            exit 1
+          fi
+          echo "Using macOS app bundle: $APP_PATH"
 
           cp "$RUNNER_TEMP/macos.provisionprofile" "$APP_PATH/Contents/embedded.provisionprofile"
           security cms -D -i "$RUNNER_TEMP/macos.provisionprofile" > "$RUNNER_TEMP/macos-profile.plist"
@@ -158,7 +164,8 @@ jobs:
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
-          MACOS_ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/clawke")"
+          MACOS_EXE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")
+          MACOS_ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/$MACOS_EXE_NAME")"
           echo "Internal macOS binary architectures: $MACOS_ARCHS"
           if ! printf '%s\n' "$MACOS_ARCHS" | grep -qw x86_64 || ! printf '%s\n' "$MACOS_ARCHS" | grep -qw arm64; then
             echo "::error::Internal macOS binary is not universal: $MACOS_ARCHS"
@@ -167,10 +174,17 @@ jobs:
 
       - name: Create DMG
         run: |
-          APP_PATH="client/build/macos/Build/Products/Release/clawke.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH=$(find client/build/macos/Build/Products/Release -name "*.app" -maxdepth 1 | head -1)
+          set -euo pipefail
+          APP_PATH="$(find client/build/macos/Build/Products/Release -maxdepth 1 -type d -name "*.app" | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::macOS app bundle not found."
+            exit 1
           fi
+          if [ "$(basename "$APP_PATH")" != "Clawke.app" ]; then
+            echo "::error::Unexpected macOS app bundle name: $(basename "$APP_PATH")"
+            exit 1
+          fi
+          echo "Using macOS app bundle for DMG: $APP_PATH"
           bash scripts/create_macos_dmg.sh "$APP_PATH" Clawke-internal-macOS.dmg Clawke
 
       - name: Notarize and staple DMG
