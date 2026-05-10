@@ -194,7 +194,11 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /Verify Linux binary architecture/);
     assert.match(workflow, /EXE_PATH="\$\{\{ matrix\.bundle_path \}\}\/clawke"/);
     assert.match(workflow, /EXE_PATH="\$VERIFY_DIR\/extract\/clawke"/);
-    assert.match(workflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
+    assert.match(workflow, /STAGE_DIR="\$RUNNER_TEMP\/linux-\$\{\{ matrix\.arch \}\}-stage"/);
+    assert.match(workflow, /cp -R "\$\{\{ matrix\.bundle_path \}\}\/\." "\$STAGE_DIR\/"/);
+    assert.match(workflow, /ln -sfn clawke "\$STAGE_DIR\/Clawke"/);
+    assert.match(workflow, /tar -C "\$STAGE_DIR" -czf "\$GITHUB_WORKSPACE\/\$\{\{ matrix\.archive_name \}\}"/);
+    assert.doesNotMatch(workflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
     assert.match(workflow, /LINK_PATH="\$VERIFY_DIR\/extract\/Clawke"/);
     assert.match(workflow, /readlink "\$LINK_PATH"\)" = "clawke"/);
     assert.doesNotMatch(workflow, /\/client"/);
@@ -236,7 +240,11 @@ describe('release workflow guardrails', () => {
     assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-linux-x64\.tar\.gz/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-linux-arm64\.tar\.gz/);
-    assert.match(internalDesktopWorkflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
+    assert.match(internalDesktopWorkflow, /STAGE_DIR="\$RUNNER_TEMP\/linux-\$\{\{ matrix\.arch \}\}-stage"/);
+    assert.match(internalDesktopWorkflow, /cp -R "\$\{\{ matrix\.bundle_path \}\}\/\." "\$STAGE_DIR\/"/);
+    assert.match(internalDesktopWorkflow, /ln -sfn clawke "\$STAGE_DIR\/Clawke"/);
+    assert.match(internalDesktopWorkflow, /tar -C "\$STAGE_DIR" -czf "\$\{\{ matrix\.archive_name \}\}"/);
+    assert.doesNotMatch(internalDesktopWorkflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
     assert.match(internalDesktopWorkflow, /Build Linux in Ubuntu 20\.04 container/);
     assert.match(internalDesktopWorkflow, /ubuntu:20\.04 bash -euxo pipefail -c/);
     assert.match(internalDesktopWorkflow, /requires glibc newer than 2\.31/);

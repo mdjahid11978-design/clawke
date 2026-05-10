@@ -687,11 +687,16 @@ jobs:
 
       - name: Create tar.gz
         run: |
-          ln -sfn clawke "${{ matrix.bundle_path }}/Clawke"
-          test -L "${{ matrix.bundle_path }}/Clawke"
-          test "$(readlink "${{ matrix.bundle_path }}/Clawke")" = "clawke"
-          cd "${{ matrix.bundle_path }}"
-          tar czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
+          set -euo pipefail
+          STAGE_DIR="$RUNNER_TEMP/linux-${{ matrix.arch }}-stage"
+          rm -rf "$STAGE_DIR"
+          mkdir -p "$STAGE_DIR"
+          cp -R "${{ matrix.bundle_path }}/." "$STAGE_DIR/"
+          ln -sfn clawke "$STAGE_DIR/Clawke"
+          test -x "$STAGE_DIR/clawke"
+          test -L "$STAGE_DIR/Clawke"
+          test "$(readlink "$STAGE_DIR/Clawke")" = "clawke"
+          tar -C "$STAGE_DIR" -czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
