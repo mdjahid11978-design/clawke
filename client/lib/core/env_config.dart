@@ -17,12 +17,6 @@ class EnvConfig {
     defaultValue: '',
   );
 
-  /// macOS 是否启用 Apple 登录 — Whether macOS Apple sign-in is enabled.
-  static const bool enableMacosAppleSignIn = bool.fromEnvironment(
-    'ENABLE_MACOS_APPLE_SIGN_IN',
-    defaultValue: false,
-  );
-
   /// 是否允许自签名证书（本地开发时设为 true）
   static const bool allowBadCertificates = false;
 }

@@ -139,6 +139,20 @@ jobs:
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
 
+          validate_profile_entitlement() {
+            local entitlement="$1"
+            if /usr/libexec/PlistBuddy -c "Print :${entitlement}" "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1; then
+              if ! /usr/libexec/PlistBuddy -c "Print :Entitlements:${entitlement}" "$RUNNER_TEMP/macos-profile.plist" >/dev/null 2>&1; then
+                echo "::error::Missing macOS provisioning profile entitlement: ${entitlement}"
+                exit 1
+              fi
+            fi
+          }
+
+          validate_profile_entitlement "com.apple.developer.aps-environment"
+          validate_profile_entitlement "keychain-access-groups"
+          validate_profile_entitlement "com.apple.developer.applesignin"
+
           find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
             codesign --force --options runtime --timestamp \
               --keychain "$MACOS_SIGNING_KEYCHAIN" \
@@ -160,6 +174,7 @@ jobs:
 
           codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"

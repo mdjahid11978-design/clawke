@@ -292,6 +292,7 @@ jobs:
 
           codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
@@ -421,6 +422,7 @@ jobs:
           done
           codesign -d --entitlements - "$DMG_APP_PATH" > "$RUNNER_TEMP/macos-release-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"

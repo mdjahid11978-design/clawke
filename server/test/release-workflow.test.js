@@ -124,7 +124,10 @@ describe('release workflow guardrails', () => {
     assert.match(macosVerify, /grep -qw x86_64/);
     assert.match(macosVerify, /grep -qw arm64/);
     assert.match(macosVerify, /Published macOS binary is not universal/);
-    assert.doesNotMatch(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
+    assert.match(macosBuild, /validate_profile_entitlement "com\.apple\.developer\.applesignin"/);
+    assert.match(macosBuild, /grep -q "com\.apple\.developer\.applesignin" "\$RUNNER_TEMP\/macos-entitlements\.txt"/);
+    assert.match(macosVerify, /grep -q "com\.apple\.developer\.applesignin" "\$RUNNER_TEMP\/macos-release-entitlements\.txt"/);
+    assert.match(macosReleaseEntitlements, /com\.apple\.developer\.applesignin/);
     assert.match(macosReleaseEntitlements, /\$\(AppIdentifierPrefix\)ai\.clawke\.app/);
     assert.match(macosDebugProfileEntitlements, /\$\(AppIdentifierPrefix\)ai\.clawke\.app/);
     assert.doesNotMatch(macosReleaseEntitlements, /com\.google\.GIDSignIn/);
@@ -232,6 +235,8 @@ describe('release workflow guardrails', () => {
     assert.match(internalDesktopWorkflow, /Clawke-internal-macOS\.dmg/);
     assert.match(internalDesktopWorkflow, /Unexpected macOS app bundle name:/);
     assert.doesNotMatch(internalDesktopWorkflow, /Build\/Products\/Release\/clawke\.app/);
+    assert.match(internalDesktopWorkflow, /validate_profile_entitlement "com\.apple\.developer\.applesignin"/);
+    assert.match(internalDesktopWorkflow, /grep -q "com\.apple\.developer\.applesignin" "\$RUNNER_TEMP\/macos-entitlements\.txt"/);
     assert.match(internalDesktopWorkflow, /build-windows-x64/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
     assert.match(internalDesktopWorkflow, /Windows release output is missing Clawke\.exe/);
