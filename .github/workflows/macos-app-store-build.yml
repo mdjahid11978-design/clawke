@@ -115,7 +115,7 @@ jobs:
 
       - name: Build macOS App Store app
         working-directory: client
-        run: flutter build macos --release --dart-define=CLAWKE_MACOS_APPLE_SIGN_IN_ENABLED=true
+        run: flutter build macos --release --dart-define=CLAWKE_MACOS_APPLE_SIGN_IN_ENABLED=true --dart-define=CLAWKE_MACOS_APP_STORE_BUILD=true
 
       - name: Sign and verify macOS App Store app
         run: |

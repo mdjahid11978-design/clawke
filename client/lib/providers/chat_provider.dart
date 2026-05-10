@@ -22,6 +22,7 @@ import 'package:client/providers/locale_provider.dart';
 import 'package:client/providers/app_version_provider.dart';
 import 'package:client/l10n/app_localizations.dart';
 import 'package:client/upgrade/upgrade_handler.dart';
+import 'package:client/upgrade/update_policy.dart';
 import 'package:client/core/file_logger.dart';
 
 final _fl = FileLogger.instance;
@@ -228,20 +229,22 @@ class WsMessageHandler with WidgetsBindingObserver {
     }
 
     final ws = _ref.read(wsServiceProvider);
-    final appVersion = await _resolveAppVersion();
+    final appVersion = AppUpdatePolicy.inAppUpdatesEnabled
+        ? await _resolveAppVersion()
+        : '';
     ws.sendJson({
       'id': 'sync_${DateTime.now().millisecondsSinceEpoch}',
       'protocol': 'cup_v2',
       'event_type': 'sync',
-      'data': {
-        'last_seq': lastSeq,
-        'app_version': appVersion,
-        'platform': _platform,
-        'arch': _arch,
-      },
+      'data': AppUpdatePolicy.buildSyncData(
+        lastSeq: lastSeq,
+        appVersion: appVersion,
+        platform: _platform,
+        arch: _arch,
+      ),
     });
     debugPrint(
-      '[WsMessageHandler] Sent sync, last_seq=$lastSeq, version=$appVersion',
+      '[WsMessageHandler] Sent sync, last_seq=$lastSeq, updates=${AppUpdatePolicy.inAppUpdatesEnabled ? "enabled" : "disabled"}',
     );
   }
 
@@ -315,6 +318,12 @@ class WsMessageHandler with WidgetsBindingObserver {
   }
 
   void sendCheckUpdate() {
+    if (!AppUpdatePolicy.inAppUpdatesEnabled) {
+      debugPrint(
+        '[WsMessageHandler] check_update skipped: in-app updates disabled',
+      );
+      return;
+    }
     unawaited(_sendCheckUpdate());
   }
 
@@ -485,6 +494,12 @@ class WsMessageHandler with WidgetsBindingObserver {
 
       // 升级通知 — 直接从 raw JSON 处理（SystemMessage model 不含升级字段）
       if (status == 'update_available' || status == 'up_to_date') {
+        if (!AppUpdatePolicy.inAppUpdatesEnabled) {
+          debugPrint(
+            '[WsMessageHandler] Update status ignored: in-app updates disabled',
+          );
+          return;
+        }
         if (status == 'update_available') {
           UpgradeHandler.handleSystemStatusFromRef(json, _ref);
           debugPrint('[WsMessageHandler] 🚀 Update available');

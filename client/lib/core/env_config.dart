@@ -23,6 +23,12 @@ class EnvConfig {
     defaultValue: false,
   );
 
+  /// macOS App Store 包禁用应用内更新 — Disable in-app updates for Mac App Store builds.
+  static const bool macOSAppStoreBuild = bool.fromEnvironment(
+    'CLAWKE_MACOS_APP_STORE_BUILD',
+    defaultValue: false,
+  );
+
   /// 是否允许自签名证书（本地开发时设为 true）
   static const bool allowBadCertificates = false;
 }

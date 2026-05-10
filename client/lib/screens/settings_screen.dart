@@ -19,6 +19,7 @@ import 'package:client/providers/app_version_provider.dart';
 import 'package:client/models/user_model.dart';
 import 'package:client/services/media_resolver.dart';
 import 'package:client/l10n/l10n.dart';
+import 'package:client/upgrade/update_policy.dart';
 import 'package:client/widgets/app_snack_bar.dart';
 
 /// 设置主页 — 用户卡片 + 分组菜单布局。
@@ -206,6 +207,7 @@ class SettingsScreen extends ConsumerWidget {
     final mermaidEnabled = ref.watch(mermaidEnabledProvider);
     final debugLogEnabled = ref.watch(debugLogEnabledProvider);
     final serverConfig = ref.watch(serverConfigProvider);
+    final inAppUpdatesEnabled = AppUpdatePolicy.inAppUpdatesEnabled;
 
     return _MenuCard(
       children: [
@@ -250,35 +252,37 @@ class SettingsScreen extends ConsumerWidget {
             },
           ),
           showChevron: false,
+          isLast: !inAppUpdatesEnabled,
           onTap: () {
             ref
                 .read(debugLogEnabledProvider.notifier)
                 .setEnabled(!debugLogEnabled);
           },
         ),
-        _MenuRow(
-          icon: Icons.system_update_outlined,
-          iconColor: const Color(0xFFfb923c),
-          iconBg: const Color(0xFFfb923c).withValues(alpha: 0.12),
-          label: t.checkUpdate,
-          subtitle: t.currentVersion(
-            ref
-                .watch(appVersionProvider)
-                .maybeWhen(
-                  data: (info) => info.fullVersion,
-                  orElse: () => '...',
-                ),
+        if (inAppUpdatesEnabled)
+          _MenuRow(
+            icon: Icons.system_update_outlined,
+            iconColor: const Color(0xFFfb923c),
+            iconBg: const Color(0xFFfb923c).withValues(alpha: 0.12),
+            label: t.checkUpdate,
+            subtitle: t.currentVersion(
+              ref
+                  .watch(appVersionProvider)
+                  .maybeWhen(
+                    data: (info) => info.fullVersion,
+                    orElse: () => '...',
+                  ),
+            ),
+            isLast: true,
+            onTap: () {
+              ref.read(wsMessageHandlerProvider).sendCheckUpdate();
+              showAppSnackBar(
+                context,
+                t.checkingUpdate,
+                duration: const Duration(seconds: 2),
+              );
+            },
           ),
-          isLast: true,
-          onTap: () {
-            ref.read(wsMessageHandlerProvider).sendCheckUpdate();
-            showAppSnackBar(
-              context,
-              t.checkingUpdate,
-              duration: const Duration(seconds: 2),
-            );
-          },
-        ),
       ],
     );
   }

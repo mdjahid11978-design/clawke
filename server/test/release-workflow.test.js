@@ -165,6 +165,7 @@ describe('release workflow guardrails', () => {
     assert.match(macosAppStoreWorkflow, /3rd Party Mac Developer Installer:/);
     assert.match(macosAppStoreWorkflow, /AppleWWDRCAG3\.cer/);
     assert.match(macosAppStoreWorkflow, /CBGN3JTHC4\.ai\.clawke\.app/);
+    assert.match(macosAppStoreWorkflow, /CLAWKE_MACOS_APP_STORE_BUILD=true/);
     assert.match(macosAppStoreWorkflow, /com\.apple\.application-identifier/);
     assert.match(macosAppStoreWorkflow, /com\.apple\.developer\.team-identifier/);
     assert.match(macosAppStoreWorkflow, /validate_profile_entitlement "com\.apple\.developer\.applesignin"/);
