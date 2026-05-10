@@ -262,6 +262,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $releaseDir = "client\build\windows\x64\runner\Release"
+          $clawkeExe = Join-Path $releaseDir "Clawke.exe"
+          if (-not (Test-Path $clawkeExe)) {
+            throw "Windows release output is missing Clawke.exe."
+          }
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
           $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vsInstall) {
@@ -363,7 +367,12 @@ jobs:
           done < <(find "${{ matrix.bundle_path }}" -type f \( -name clawke -o -name "*.so" \) -print0)
 
       - name: Create TAR
-        run: tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
+        run: |
+          set -euo pipefail
+          ln -sfn clawke "${{ matrix.bundle_path }}/Clawke"
+          test -L "${{ matrix.bundle_path }}/Clawke"
+          test "$(readlink "${{ matrix.bundle_path }}/Clawke")" = "clawke"
+          tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7

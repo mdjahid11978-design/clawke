@@ -147,7 +147,8 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /vcruntime140\.dll/);
     assert.match(workflow, /vcruntime140_1\.dll/);
     assert.match(workflow, /Failed to bundle Visual C\+\+ runtime DLL/);
-    assert.match(workflow, /clawke\.exe/);
+    assert.match(workflow, /Clawke\.exe/);
+    assert.doesNotMatch(workflow, /missing clawke\.exe/);
     assert.doesNotMatch(workflow, /client\.exe/);
   });
 
@@ -193,6 +194,9 @@ describe('release workflow guardrails', () => {
     assert.match(workflow, /Verify Linux binary architecture/);
     assert.match(workflow, /EXE_PATH="\$\{\{ matrix\.bundle_path \}\}\/clawke"/);
     assert.match(workflow, /EXE_PATH="\$VERIFY_DIR\/extract\/clawke"/);
+    assert.match(workflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
+    assert.match(workflow, /LINK_PATH="\$VERIFY_DIR\/extract\/Clawke"/);
+    assert.match(workflow, /readlink "\$LINK_PATH"\)" = "clawke"/);
     assert.doesNotMatch(workflow, /\/client"/);
     assert.match(workflow, /ARM aarch64\|aarch64\|ARM64/);
     assert.match(workflow, /Clawke-\$\{TAG\}-linux-arm64\.tar\.gz/);
@@ -207,8 +211,8 @@ describe('release workflow guardrails', () => {
   it('uses Clawke as the desktop executable name', () => {
     assert.match(linuxCMake, /set\(BINARY_NAME "clawke"\)/);
     assert.match(windowsCMake, /project\(clawke LANGUAGES CXX\)/);
-    assert.match(windowsCMake, /set\(BINARY_NAME "clawke"\)/);
-    assert.match(windowsRunnerRc, /VALUE "OriginalFilename", "clawke\.exe"/);
+    assert.match(windowsCMake, /set\(BINARY_NAME "Clawke"\)/);
+    assert.match(windowsRunnerRc, /VALUE "OriginalFilename", "Clawke\.exe"/);
     assert.match(windowsRunnerRc, /VALUE "ProductName", "Clawke"/);
     assert.doesNotMatch(linuxCMake, /set\(BINARY_NAME "client"\)/);
     assert.doesNotMatch(windowsCMake, /set\(BINARY_NAME "client"\)/);
@@ -228,9 +232,11 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(internalDesktopWorkflow, /Build\/Products\/Release\/clawke\.app/);
     assert.match(internalDesktopWorkflow, /build-windows-x64/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-windows-x64\.zip/);
+    assert.match(internalDesktopWorkflow, /Windows release output is missing Clawke\.exe/);
     assert.match(internalDesktopWorkflow, /build-linux-\$\{\{ matrix\.arch \}\}/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-linux-x64\.tar\.gz/);
     assert.match(internalDesktopWorkflow, /Clawke-internal-linux-arm64\.tar\.gz/);
+    assert.match(internalDesktopWorkflow, /ln -sfn clawke "\$\{\{ matrix\.bundle_path \}\}\/Clawke"/);
     assert.match(internalDesktopWorkflow, /Build Linux in Ubuntu 20\.04 container/);
     assert.match(internalDesktopWorkflow, /ubuntu:20\.04 bash -euxo pipefail -c/);
     assert.match(internalDesktopWorkflow, /requires glibc newer than 2\.31/);

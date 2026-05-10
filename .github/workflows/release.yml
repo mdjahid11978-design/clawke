@@ -494,6 +494,9 @@ jobs:
           tar xzf "$TARBALL_PATH" -C "$VERIFY_DIR/extract"
           EXE_PATH="$VERIFY_DIR/extract/clawke"
           test -x "$EXE_PATH"
+          LINK_PATH="$VERIFY_DIR/extract/Clawke"
+          test -L "$LINK_PATH"
+          test "$(readlink "$LINK_PATH")" = "clawke"
           file "$EXE_PATH" | tee "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
           grep -Eq '${{ matrix.expected_pattern }}' "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
 
@@ -543,9 +546,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $releaseDir = "client\build\windows\x64\runner\Release"
-          $clawkeExe = Join-Path $releaseDir "clawke.exe"
+          $clawkeExe = Join-Path $releaseDir "Clawke.exe"
           if (-not (Test-Path $clawkeExe)) {
-            throw "Windows release output is missing clawke.exe."
+            throw "Windows release output is missing Clawke.exe."
           }
 
           $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -684,6 +687,9 @@ jobs:
 
       - name: Create tar.gz
         run: |
+          ln -sfn clawke "${{ matrix.bundle_path }}/Clawke"
+          test -L "${{ matrix.bundle_path }}/Clawke"
+          test "$(readlink "${{ matrix.bundle_path }}/Clawke")" = "clawke"
           cd "${{ matrix.bundle_path }}"
           tar czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
 
@@ -738,9 +744,9 @@ jobs:
           | 🍎 iOS | — | [App Store](https://apps.apple.com/app/clawke/id6744313782) |
           | 🖥 macOS | `Clawke-TAG-macOS.dmg` | Open DMG, drag to Applications |
           | 🤖 Android | `Clawke-TAG-android.apk` | Enable "Unknown sources", install APK |
-          | 🪟 Windows | `Clawke-TAG-windows-x64.zip` | Unzip, run `clawke.exe` |
-          | 🐧 Linux x64 | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./clawke` |
-          | 🐧 Linux ARM64 | `Clawke-TAG-linux-arm64.tar.gz` | Extract, run `./clawke` |
+          | 🪟 Windows | `Clawke-TAG-windows-x64.zip` | Unzip, run `Clawke.exe` |
+          | 🐧 Linux x64 | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./Clawke` or `./clawke` |
+          | 🐧 Linux ARM64 | `Clawke-TAG-linux-arm64.tar.gz` | Extract, run `./Clawke` or `./clawke` |
 
           ## Server Setup
           ```bash
