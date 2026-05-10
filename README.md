@@ -135,6 +135,11 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.29 (2026-05-10)
+
+**[Bug Fix]** Fixed Mac App Store build behavior for Apple/Google sign-in, production APNs, and App Store-managed updates.
+**[Enhancement]** Hardened Mac App Store package validation and improved debug runtime path safety on mobile.
+
 ### v1.1.28 (2026-05-10)
 
 **[Bug Fix]** Fixed macOS Google Sign-In keychain access for GitHub release builds.

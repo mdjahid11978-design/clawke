@@ -134,6 +134,11 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.29 (2026-05-10)
+
+**[问题修复]** 修复 Mac App Store 构建中的 Apple/Google 登录、production APNs 和 App Store 托管更新行为。
+**[功能优化]** 加固 Mac App Store 包上传前校验，并优化移动端 debug runtime 路径安全。
+
 ### v1.1.28 (2026-05-10)
 
 **[问题修复]** 修复 GitHub release 构建中的 macOS Google 登录 keychain 访问问题。

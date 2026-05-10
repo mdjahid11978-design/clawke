@@ -4,6 +4,17 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.29 (2026-05-10)
+
+**[问题修复]** macOS App Store 登录与审核准备。
+- App Store 版禁用应用内更新检查和更新弹窗，确保更新完全由 Mac App Store 管理。
+- 修复 macOS App Store 签名和 entitlement 校验，覆盖 Apple 登录、production APNs 和 Google 登录 Keychain 访问。
+- 加固 Mac App Store 包签名流程，上传前拦截 quarantine 扩展属性和审核不允许的 entitlements。
+
+**[功能优化]** 发布体验与运行路径安全。
+- 优化欢迎页布局，提升首次启动体验。
+- 移动端和无法定位仓库根目录时忽略 debug runtime directory 覆盖，避免错误路径影响运行。
+
 ## v1.1.27 (2026-05-09)
 
 **[问题修复]** macOS release 登录与桌面端 OAuth 打包。

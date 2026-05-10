@@ -4,6 +4,17 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.29 (2026-05-10)
+
+**[Bug Fix]** macOS App Store login and review readiness.
+- Disabled in-app update checks and update prompts for Mac App Store builds so updates stay under App Store control.
+- Fixed macOS App Store signing and entitlement validation for Apple Sign-In, production APNs, and Google Sign-In keychain access.
+- Added safeguards for Mac App Store package signing so quarantine attributes and disallowed entitlements are caught before upload.
+
+**[Enhancement]** Release polish and runtime path safety.
+- Refined the welcome screen layout for a cleaner first-run experience.
+- Ignored debug runtime directory overrides on mobile platforms and when the repo root cannot be resolved.
+
 ## v1.1.27 (2026-05-09)
 
 **[Bug Fix]** macOS release sign-in and desktop OAuth packaging.
