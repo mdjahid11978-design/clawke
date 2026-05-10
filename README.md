@@ -135,6 +135,11 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.28 (2026-05-10)
+
+**[Bug Fix]** Fixed macOS Google Sign-In keychain access for GitHub release builds.
+**[Enhancement]** Unified desktop package entry names so macOS, Windows, and Linux expose `Clawke` consistently.
+
 ### v1.1.27 (2026-05-09)
 
 **[Bug Fix]** Preserved native macOS Google Sign-In and hid unavailable Apple login until the release profile supports it.

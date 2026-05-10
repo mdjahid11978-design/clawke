@@ -134,6 +134,11 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.28 (2026-05-10)
+
+**[问题修复]** 修复 GitHub release 构建中的 macOS Google 登录 keychain 访问问题。
+**[功能优化]** 统一桌面端包入口名称，macOS、Windows、Linux 均对外使用 `Clawke`。
+
 ### v1.1.27 (2026-05-09)
 
 **[问题修复]** macOS release 版保持原生 Google 登录，并隐藏当前 profile 尚不支持的 Apple 登录。
