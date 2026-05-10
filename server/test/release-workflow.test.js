@@ -159,6 +159,7 @@ describe('release workflow guardrails', () => {
     assert.doesNotMatch(macosAppStoreWorkflow, /secrets\.MACOS_PROVISION_PROFILE_BASE64/);
     assert.match(macosAppStoreWorkflow, /3rd Party Mac Developer Application:/);
     assert.match(macosAppStoreWorkflow, /3rd Party Mac Developer Installer:/);
+    assert.match(macosAppStoreWorkflow, /AppleWWDRCAG3\.cer/);
     assert.match(macosAppStoreWorkflow, /CBGN3JTHC4\.ai\.clawke\.app/);
     assert.match(macosAppStoreWorkflow, /com\.apple\.application-identifier/);
     assert.match(macosAppStoreWorkflow, /com\.apple\.developer\.team-identifier/);
@@ -168,6 +169,7 @@ describe('release workflow guardrails', () => {
     assert.match(macosAppStoreWorkflow, /--component "\$APP_PATH"/);
     assert.match(macosAppStoreWorkflow, /Clawke-macOS-AppStore\.pkg/);
     assert.match(macosAppStoreWorkflow, /pkgutil --check-signature Clawke-macOS-AppStore\.pkg/);
+    assert.match(macosAppStoreWorkflow, /signed by a certificate trusted by \(macOS\|Mac OS X\)/);
     assert.match(macosAppStoreWorkflow, /name: macos-app-store-pkg/);
   });
 
