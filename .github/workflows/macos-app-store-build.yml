@@ -82,8 +82,10 @@ jobs:
           INSTALLER_SIGN_IDENTITY_HASH="$(security find-identity -v "$KEYCHAIN_PATH" | awk '/3rd Party Mac Developer Installer:/ {print $2; exit}')"
           INSTALLER_SIGN_IDENTITY_NAME="$(security find-identity -v "$KEYCHAIN_PATH" | sed -n 's/.*"\(3rd Party Mac Developer Installer:.*\)"/\1/p' | head -1)"
           test -n "$APP_SIGN_IDENTITY_HASH"
-          test -n "$INSTALLER_SIGN_IDENTITY_HASH"
-          test -n "$INSTALLER_SIGN_IDENTITY_NAME"
+          if [ -z "$INSTALLER_SIGN_IDENTITY_HASH" ] || [ -z "$INSTALLER_SIGN_IDENTITY_NAME" ]; then
+            echo "::error::Mac App Store installer identity was not found after import. Re-export MACOS_APP_STORE_INSTALLER_CERTIFICATE_BASE64 from the '3rd Party Mac Developer Installer' certificate row, not from the private-key row."
+            exit 1
+          fi
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/clawke-macos-app-store.provisionprofile"
