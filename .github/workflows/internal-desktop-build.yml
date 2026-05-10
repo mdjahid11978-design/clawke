@@ -134,11 +134,16 @@ jobs:
           security cms -D -i "$RUNNER_TEMP/macos.provisionprofile" > "$RUNNER_TEMP/macos-profile.plist"
           APP_ID_PREFIX=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationIdentifierPrefix:0' "$RUNNER_TEMP/macos-profile.plist")
           PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$RUNNER_TEMP/macos-profile.plist")
+          PROFILE_TEAM_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.team-identifier' "$RUNNER_TEMP/macos-profile.plist")
           export APP_ID_PREFIX
           export APP_ID_PREFIX_PLACEHOLDER='$(AppIdentifierPrefix)'
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
           /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.applesignin' "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c 'Delete :com.apple.application-identifier' "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $PROFILE_APP_ID" "$RUNNER_TEMP/macos-release.entitlements"
+          /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.team-identifier' "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1 || true
+          /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string $PROFILE_TEAM_ID" "$RUNNER_TEMP/macos-release.entitlements"
 
           validate_profile_entitlement() {
             local entitlement="$1"
@@ -150,6 +155,8 @@ jobs:
             fi
           }
 
+          validate_profile_entitlement "com.apple.application-identifier"
+          validate_profile_entitlement "com.apple.developer.team-identifier"
           validate_profile_entitlement "com.apple.developer.aps-environment"
           validate_profile_entitlement "keychain-access-groups"
 
@@ -177,6 +184,7 @@ jobs:
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "$PROFILE_TEAM_ID" "$RUNNER_TEMP/macos-entitlements.txt"
 
           MACOS_EXE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")
           MACOS_ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/$MACOS_EXE_NAME")"
