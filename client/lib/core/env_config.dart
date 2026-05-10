@@ -17,6 +17,12 @@ class EnvConfig {
     defaultValue: '',
   );
 
+  /// macOS App Store 包才启用 Apple 登录 — Enable Apple sign-in only for Mac App Store builds.
+  static const bool macOSAppleSignInEnabled = bool.fromEnvironment(
+    'CLAWKE_MACOS_APPLE_SIGN_IN_ENABLED',
+    defaultValue: false,
+  );
+
   /// 是否允许自签名证书（本地开发时设为 true）
   static const bool allowBadCertificates = false;
 }

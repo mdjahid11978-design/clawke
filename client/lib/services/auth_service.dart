@@ -42,7 +42,7 @@ class AuthService {
     if (kIsWeb) return false;
     return switch (defaultTargetPlatform) {
       TargetPlatform.iOS => true,
-      TargetPlatform.macOS => true,
+      TargetPlatform.macOS => EnvConfig.macOSAppleSignInEnabled,
       _ => false,
     };
   }

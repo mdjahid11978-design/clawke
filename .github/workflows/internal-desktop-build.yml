@@ -101,7 +101,7 @@ jobs:
 
       - name: Build macOS
         working-directory: client
-        run: flutter build macos --release
+        run: flutter build macos --release --dart-define=CLAWKE_MACOS_APPLE_SIGN_IN_ENABLED=false
 
       - name: Sign and verify macOS production app
         run: |
@@ -138,6 +138,7 @@ jobs:
           export APP_ID_PREFIX_PLACEHOLDER='$(AppIdentifierPrefix)'
           cp client/macos/Runner/Release.entitlements "$RUNNER_TEMP/macos-release.entitlements"
           perl -0pi -e 's/\Q$ENV{APP_ID_PREFIX_PLACEHOLDER}\E/$ENV{APP_ID_PREFIX}./g' "$RUNNER_TEMP/macos-release.entitlements"
+          /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.applesignin' "$RUNNER_TEMP/macos-release.entitlements" >/dev/null 2>&1 || true
 
           validate_profile_entitlement() {
             local entitlement="$1"
@@ -151,7 +152,6 @@ jobs:
 
           validate_profile_entitlement "com.apple.developer.aps-environment"
           validate_profile_entitlement "keychain-access-groups"
-          validate_profile_entitlement "com.apple.developer.applesignin"
 
           find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
             codesign --force --options runtime --timestamp \
@@ -174,7 +174,6 @@ jobs:
 
           codesign -d --entitlements - "$APP_PATH" > "$RUNNER_TEMP/macos-entitlements.txt" 2>/dev/null
           cat "$RUNNER_TEMP/macos-entitlements.txt"
-          grep -q "com.apple.developer.applesignin" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
