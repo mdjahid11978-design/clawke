@@ -21,15 +21,39 @@ test('install.sh offers guided post-install actions', () => {
 
   assert.match(script, /run_post_install_setup\(\)/);
   assert.match(script, /Install an AI gateway now\?/);
+  assert.match(script, /Install another AI gateway\?/);
   assert.match(script, /Start Clawke Server now\?/);
   assert.match(script, /run_clawke_command\(\)/);
+});
+
+test('install.sh requires an explicit answer before leaving gateway loop', () => {
+  const script = fs.readFileSync(installScriptPath, 'utf8');
+
+  assert.match(script, /prompt_yes_no_required\(\)/);
+  assert.match(script, /prompt_yes_no_required "Install another AI gateway\?"/);
+});
+
+test('install.sh exits gateway loop immediately when CLI skip is selected', () => {
+  const script = fs.readFileSync(installScriptPath, 'utf8');
+
+  assert.match(script, /run_clawke_command_record\(\)/);
+  assert.match(script, /Gateway installation skipped\./);
+  assert.match(script, /Gateway installation skipped\.[\s\S]*break[\s\S]*prompt_yes_no_required "Install another AI gateway\?"/);
 });
 
 test('guided post-install commands keep stdin connected to the terminal', () => {
   const script = fs.readFileSync(installScriptPath, 'utf8');
 
   assert.match(script, /<\s*\/dev\/tty/);
+  assert.match(script, /printf '\\n'/);
   assert.match(script, /clawke_cmd="\$\(get_command_link_dir\)\/clawke"/);
+});
+
+test('install.sh uses printf for status logs', () => {
+  const script = fs.readFileSync(installScriptPath, 'utf8');
+
+  assert.match(script, /log_success\(\) \{\s*printf/s);
+  assert.doesNotMatch(script, /log_success\(\) \{\s*echo -e/s);
 });
 
 test('install.sh supports local non-interactive install without post-install prompts', () => {

@@ -83,25 +83,28 @@ function detectAvailableGateways(): GatewayInfo[] {
 /**
  * 交互式选择 Gateway — Interactive gateway selection
  */
-async function promptGatewaySelection(gateways: GatewayInfo[]): Promise<number> {
+async function promptGatewaySelection(gateways: GatewayInfo[]): Promise<number | null> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  return new Promise<number>((resolve) => {
+  return new Promise<number | null>((resolve) => {
     console.log('\n  Available gateways:\n');
     gateways.forEach((gw, i) => {
       const detected = fs.existsSync(gw.configPath) ? '(detected ✓)' : '(not detected)';
       console.log(`    ${i + 1}. ${gw.displayName}  ${detected}`);
     });
+    console.log(`    0. Skip gateway installation`);
     console.log('');
 
-    rl.question('  Select gateway to install [1]: ', (answer) => {
+    rl.question('  Select gateway to install [1, 0 to skip]: ', (answer) => {
       rl.close();
       const trimmed = answer.trim();
       if (trimmed === '') {
         resolve(0); // default: first
+      } else if (trimmed === '0' || trimmed.toLowerCase() === 'q') {
+        resolve(null);
       } else {
         const idx = parseInt(trimmed, 10) - 1;
         if (isNaN(idx) || idx < 0 || idx >= gateways.length) {
@@ -124,23 +127,21 @@ async function installGateway(): Promise<void> {
   const detected = gateways.filter(gw => fs.existsSync(gw.configPath));
 
   if (detected.length === 1) {
-    // 只有一个平台检测到，直接安装 — Only one platform detected, install directly
     console.log(`[clawke] 🔍 Auto-detected: ${detected[0].displayName}`);
-    await detected[0].installFn();
-
   } else if (detected.length > 1) {
-    // 多个平台检测到，让用户选择 — Multiple platforms detected, let user choose
     console.log(`[clawke] 🔍 Multiple agent platforms detected.`);
-    const idx = await promptGatewaySelection(detected);
-    await detected[idx].installFn();
-
   } else {
-    // 没有检测到任何平台，展示所有选项让用户选 — None detected, show all options
     console.log(`[clawke] ⚠️  No agent platform detected locally.`);
     console.log(`[clawke] Select which gateway to install (you may need to install the agent platform first):`);
-    const idx = await promptGatewaySelection(gateways);
-    await gateways[idx].installFn();
   }
+
+  const idx = await promptGatewaySelection(gateways);
+  if (idx === null) {
+    console.log('[clawke] Gateway installation skipped.');
+    return;
+  }
+
+  await gateways[idx].installFn();
 }
 
 // ────────────── PID 管理 ──────────────

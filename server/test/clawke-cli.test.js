@@ -136,7 +136,36 @@ test('clawke gateway install does not offer disabled nanobot gateway', () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.match(result.stdout, /OpenClaw/);
   assert.match(result.stdout, /Hermes/);
+  assert.match(result.stdout, /0\. Skip gateway installation/);
   assert.doesNotMatch(result.stdout, /nanobot/i);
+
+  const openClawIndex = result.stdout.indexOf('OpenClaw');
+  const hermesIndex = result.stdout.indexOf('Hermes');
+  const skipIndex = result.stdout.indexOf('Skip gateway installation');
+  assert.ok(openClawIndex >= 0);
+  assert.ok(hermesIndex > openClawIndex);
+  assert.ok(skipIndex > hermesIndex);
+});
+
+test('clawke gateway install exits without installing when skip is selected', () => {
+  for (const input of ['0\n', 'q\n']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-cli-'));
+
+    const result = spawnSync(process.execPath, [cliPath, 'gateway', 'install'], {
+      cwd: serverRoot,
+      env: {
+        ...process.env,
+        HOME: dir,
+      },
+      input,
+      encoding: 'utf-8',
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Skip gateway installation/);
+    assert.doesNotMatch(result.stderr, /Invalid selection/);
+    assert.equal(fs.existsSync(path.join(dir, '.clawke', 'clawke.json')), false);
+  }
 });
 
 test('clawke openclaw-gateway install explains local install when OpenClaw is missing', () => {
