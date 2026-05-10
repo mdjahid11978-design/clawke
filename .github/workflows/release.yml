@@ -492,11 +492,8 @@ jobs:
 
           TARBALL_PATH="$VERIFY_DIR/Clawke-${TAG}-linux-${{ matrix.arch }}.tar.gz"
           tar xzf "$TARBALL_PATH" -C "$VERIFY_DIR/extract"
-          EXE_PATH="$VERIFY_DIR/extract/clawke"
+          EXE_PATH="$VERIFY_DIR/extract/Clawke"
           test -x "$EXE_PATH"
-          LINK_PATH="$VERIFY_DIR/extract/Clawke"
-          test -L "$LINK_PATH"
-          test "$(readlink "$LINK_PATH")" = "clawke"
           file "$EXE_PATH" | tee "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
           grep -Eq '${{ matrix.expected_pattern }}' "$RUNNER_TEMP/published-linux-${{ matrix.arch }}-file.txt"
 
@@ -661,7 +658,7 @@ jobs:
       - name: Verify Linux binary architecture
         run: |
           set -euo pipefail
-          EXE_PATH="${{ matrix.bundle_path }}/clawke"
+          EXE_PATH="${{ matrix.bundle_path }}/Clawke"
           test -x "$EXE_PATH"
           file "$EXE_PATH" | tee "linux-${{ matrix.arch }}-file.txt"
           case "${{ matrix.arch }}" in
@@ -683,20 +680,13 @@ jobs:
               readelf --version-info "$binary" | grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])' || true
               exit 1
             fi
-          done < <(find "${{ matrix.bundle_path }}" -type f \( -name clawke -o -name "*.so" \) -print0)
+          done < <(find "${{ matrix.bundle_path }}" -type f \( -name Clawke -o -name "*.so" \) -print0)
 
       - name: Create tar.gz
         run: |
           set -euo pipefail
-          STAGE_DIR="$RUNNER_TEMP/linux-${{ matrix.arch }}-stage"
-          rm -rf "$STAGE_DIR"
-          mkdir -p "$STAGE_DIR"
-          cp -R "${{ matrix.bundle_path }}/." "$STAGE_DIR/"
-          ln -sfn clawke "$STAGE_DIR/Clawke"
-          test -x "$STAGE_DIR/clawke"
-          test -L "$STAGE_DIR/Clawke"
-          test "$(readlink "$STAGE_DIR/Clawke")" = "clawke"
-          tar -C "$STAGE_DIR" -czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
+          test -x "${{ matrix.bundle_path }}/Clawke"
+          tar -C "${{ matrix.bundle_path }}" -czf "$GITHUB_WORKSPACE/${{ matrix.archive_name }}" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -750,8 +740,8 @@ jobs:
           | 🖥 macOS | `Clawke-TAG-macOS.dmg` | Open DMG, drag to Applications |
           | 🤖 Android | `Clawke-TAG-android.apk` | Enable "Unknown sources", install APK |
           | 🪟 Windows | `Clawke-TAG-windows-x64.zip` | Unzip, run `Clawke.exe` |
-          | 🐧 Linux x64 | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./Clawke` or `./clawke` |
-          | 🐧 Linux ARM64 | `Clawke-TAG-linux-arm64.tar.gz` | Extract, run `./Clawke` or `./clawke` |
+          | 🐧 Linux x64 | `Clawke-TAG-linux-x64.tar.gz` | Extract, run `./Clawke` |
+          | 🐧 Linux ARM64 | `Clawke-TAG-linux-arm64.tar.gz` | Extract, run `./Clawke` |
 
           ## Server Setup
           ```bash

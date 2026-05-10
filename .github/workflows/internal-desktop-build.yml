@@ -354,7 +354,7 @@ jobs:
       - name: Verify Linux binary architecture
         run: |
           set -euo pipefail
-          EXE_PATH="${{ matrix.bundle_path }}/clawke"
+          EXE_PATH="${{ matrix.bundle_path }}/Clawke"
           test -x "$EXE_PATH"
           file "$EXE_PATH"
           command -v readelf
@@ -364,20 +364,13 @@ jobs:
               readelf --version-info "$binary" | grep -E 'GLIBC_2\.(3[2-9]|[4-9][0-9])' || true
               exit 1
             fi
-          done < <(find "${{ matrix.bundle_path }}" -type f \( -name clawke -o -name "*.so" \) -print0)
+          done < <(find "${{ matrix.bundle_path }}" -type f \( -name Clawke -o -name "*.so" \) -print0)
 
       - name: Create TAR
         run: |
           set -euo pipefail
-          STAGE_DIR="$RUNNER_TEMP/linux-${{ matrix.arch }}-stage"
-          rm -rf "$STAGE_DIR"
-          mkdir -p "$STAGE_DIR"
-          cp -R "${{ matrix.bundle_path }}/." "$STAGE_DIR/"
-          ln -sfn clawke "$STAGE_DIR/Clawke"
-          test -x "$STAGE_DIR/clawke"
-          test -L "$STAGE_DIR/Clawke"
-          test "$(readlink "$STAGE_DIR/Clawke")" = "clawke"
-          tar -C "$STAGE_DIR" -czf "${{ matrix.archive_name }}" .
+          test -x "${{ matrix.bundle_path }}/Clawke"
+          tar -C "${{ matrix.bundle_path }}" -czf "${{ matrix.archive_name }}" .
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7
