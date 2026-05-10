@@ -303,6 +303,7 @@ jobs:
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_TEAM_ID" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-entitlements.txt"
 
       - name: Create DMG
         run: |
@@ -431,6 +432,7 @@ jobs:
           cat "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-release-entitlements.txt"
           grep -q "production" "$RUNNER_TEMP/macos-release-entitlements.txt"
+          grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-release-entitlements.txt"
           spctl --assess --type execute --verbose=4 "$DMG_APP_PATH"
 
   # ── Verify published Android asset ───────────────────────────

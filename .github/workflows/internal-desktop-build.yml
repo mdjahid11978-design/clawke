@@ -185,6 +185,7 @@ jobs:
           grep -q "production" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_APP_ID" "$RUNNER_TEMP/macos-entitlements.txt"
           grep -q "$PROFILE_TEAM_ID" "$RUNNER_TEMP/macos-entitlements.txt"
+          grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-entitlements.txt"
 
           MACOS_EXE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP_PATH/Contents/Info.plist")
           MACOS_ARCHS="$(lipo -archs "$APP_PATH/Contents/MacOS/$MACOS_EXE_NAME")"
@@ -220,6 +221,16 @@ jobs:
           test -n "$APPLE_NOTARY_ISSUER_ID"
           test -n "$APPLE_NOTARY_KEY_BASE64"
 
+          assert_signature_has_certificate() {
+            local target="$1"
+            local prefix="$RUNNER_TEMP/codesign-cert-$(uuidgen)-"
+            codesign -d --extract-certificates="$prefix" "$target" >/dev/null 2>&1 || true
+            if [ ! -s "${prefix}0" ]; then
+              echo "::error::Code signature has no embedded signing certificate: $target"
+              exit 1
+            fi
+          }
+
           hdiutil verify Clawke-internal-macOS.dmg
           NOTARY_KEY="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           echo "$APPLE_NOTARY_KEY_BASE64" | base64 -D > "$NOTARY_KEY"
@@ -233,6 +244,24 @@ jobs:
 
           xcrun stapler staple Clawke-internal-macOS.dmg
           hdiutil verify Clawke-internal-macOS.dmg
+
+          VERIFY_MOUNT="$RUNNER_TEMP/clawke-internal-dmg-verify"
+          mkdir -p "$VERIFY_MOUNT"
+          hdiutil attach Clawke-internal-macOS.dmg -readonly -nobrowse -mountpoint "$VERIFY_MOUNT" >/dev/null
+          trap 'hdiutil detach "$VERIFY_MOUNT" >/dev/null 2>&1 || true' EXIT
+          DMG_APP_PATH="$(find "$VERIFY_MOUNT" -maxdepth 1 -name "*.app" -type d | head -1)"
+          test -n "$DMG_APP_PATH"
+          test "$(basename "$DMG_APP_PATH")" = "Clawke.app"
+          codesign --verify --deep --strict --verbose=2 "$DMG_APP_PATH"
+          assert_signature_has_certificate "$DMG_APP_PATH"
+          find "$DMG_APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d -print0 | while IFS= read -r -d '' framework; do
+            assert_signature_has_certificate "$framework"
+          done
+          codesign -d --entitlements - "$DMG_APP_PATH" > "$RUNNER_TEMP/macos-internal-dmg-entitlements.txt" 2>/dev/null
+          cat "$RUNNER_TEMP/macos-internal-dmg-entitlements.txt"
+          grep -q "com.apple.developer.aps-environment" "$RUNNER_TEMP/macos-internal-dmg-entitlements.txt"
+          grep -q "production" "$RUNNER_TEMP/macos-internal-dmg-entitlements.txt"
+          grep -q "com.google.GIDSignIn" "$RUNNER_TEMP/macos-internal-dmg-entitlements.txt"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v7
