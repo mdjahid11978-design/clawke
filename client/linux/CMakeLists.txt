@@ -99,6 +99,11 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/resources/app_icon.png"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 
+# 安装 Linux 桌面入口注册脚本 — Install Linux desktop entry registration script.
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/install-desktop-entry.sh"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
+
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 
