@@ -96,10 +96,12 @@ function mergeOpenClawConfig(): void {
   }
 
   // 合并 plugins.entries.clawke
-  if (!config.plugins) config.plugins = {};
-  if (!config.plugins.entries) config.plugins.entries = {};
-  config.plugins.entries.clawke = { enabled: true };
-  console.log('[clawke] ✅ Enabled plugins.entries.clawke');
+  const addedConversationHookAccess = enableClawkePluginEntryForClawke(config);
+  if (addedConversationHookAccess) {
+    console.log('[clawke] ✅ Enabled plugins.entries.clawke with hooks.allowConversationAccess = true');
+  } else {
+    console.log('[clawke] ✅ Enabled plugins.entries.clawke (existing hook config preserved)');
+  }
 
   if (enableControlUiInsecureAuthForClawke(config)) {
     console.log('[clawke] ✅ Set gateway.controlUi.allowInsecureAuth = true');
@@ -192,7 +194,12 @@ If OpenClaw is installed on a remote server, install the gateway manually:
        },
        "plugins": {
          "entries": {
-           "clawke": { "enabled": true }
+           "clawke": {
+             "enabled": true,
+             "hooks": {
+               "allowConversationAccess": true
+             }
+           }
          }
        }
      }
@@ -216,4 +223,32 @@ export function enableControlUiInsecureAuthForClawke(config: Record<string, any>
   const changed = config.gateway.controlUi.allowInsecureAuth !== true;
   config.gateway.controlUi.allowInsecureAuth = true;
   return changed;
+}
+
+export function enableClawkePluginEntryForClawke(config: Record<string, any>): boolean {
+  if (!config.plugins || typeof config.plugins !== 'object' || Array.isArray(config.plugins)) {
+    config.plugins = {};
+  }
+  if (!config.plugins.entries || typeof config.plugins.entries !== 'object' || Array.isArray(config.plugins.entries)) {
+    config.plugins.entries = {};
+  }
+
+  const existingEntry = config.plugins.entries.clawke;
+  const entry =
+    existingEntry && typeof existingEntry === 'object' && !Array.isArray(existingEntry)
+      ? existingEntry
+      : {};
+  config.plugins.entries.clawke = entry;
+  entry.enabled = true;
+
+  if (!entry.hooks || typeof entry.hooks !== 'object' || Array.isArray(entry.hooks)) {
+    entry.hooks = {};
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(entry.hooks, 'allowConversationAccess')) {
+    entry.hooks.allowConversationAccess = true;
+    return true;
+  }
+
+  return false;
 }

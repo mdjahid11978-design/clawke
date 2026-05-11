@@ -304,6 +304,7 @@ Future<void> _simulateRemotePush(
     'message_id': step['message_id'] as String,
     'gateway_id': step['gateway_id'] as String,
     'seq': step['seq'] as int? ?? 0,
+    'event_type': step['event_type'] as String? ?? 'notification_tap',
   };
   final message = const StandardMethodCodec().encodeMethodCall(
     MethodCall('remotePushReceived', payload),

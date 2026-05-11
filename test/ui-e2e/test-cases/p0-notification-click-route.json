@@ -40,6 +40,7 @@
       "conversation_name": "e2e_mock",
       "message_id": "agent_notification_route_1",
       "gateway_id": "e2e_mock",
+      "event_type": "notification_tap",
       "seq": 1
     },
     { "action": "wait_for_absent_text", "text": "选择一个会话开始聊天", "durationMs": 1200 },

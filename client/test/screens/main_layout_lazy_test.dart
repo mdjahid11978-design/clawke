@@ -4,6 +4,7 @@ import 'package:client/l10n/app_localizations.dart';
 import 'package:client/providers/chat_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/gateway_provider.dart';
+import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,22 +20,50 @@ void main() {
     var built = false;
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: buildLazyIndexedChild(
-          isActive: false,
-          child: Builder(
-            builder: (_) {
-              built = true;
-              return const Text('hidden');
-            },
-          ),
+      buildLazyIndexedChild(
+        isActive: false,
+        child: Builder(
+          builder: (_) {
+            built = true;
+            return const Text('hidden');
+          },
         ),
       ),
     );
 
     expect(built, isFalse);
+    expect(find.byType(TickerMode), findsOneWidget);
+    expect(tester.widget<TickerMode>(find.byType(TickerMode)).enabled, isFalse);
     expect(find.text('hidden'), findsNothing);
   });
+
+  testWidgets(
+    'desktop chat page does not build inactive SDUI loading spinners',
+    (tester) async {
+      await _pumpMainLayout(tester, size: const Size(1280, 800));
+
+      expect(
+        find.byType(CircularProgressIndicator, skipOffstage: false),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'desktop active dashboard shows only the dashboard loading spinner',
+    (tester) async {
+      await _pumpMainLayout(
+        tester,
+        size: const Size(1280, 800),
+        activePage: NavPage.dashboard,
+      );
+
+      expect(
+        find.byType(CircularProgressIndicator, skipOffstage: false),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('does not show global gateway disconnected alert', (
     tester,
@@ -157,4 +186,60 @@ void main() {
     await tester.tap(find.byIcon(Icons.refresh));
     verify(() => mockWs.reconnect()).called(1);
   });
+}
+
+Future<void> _pumpMainLayout(
+  WidgetTester tester, {
+  required Size size,
+  NavPage? activePage,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  final mockWs = MockWsService();
+  when(() => mockWs.connect()).thenAnswer((_) async {});
+  when(() => mockWs.state).thenReturn(WsState.connected);
+  when(() => mockWs.lastError).thenReturn(null);
+  when(() => mockWs.reconnect()).thenReturn(null);
+  when(() => mockWs.dispose()).thenReturn(null);
+  when(() => mockWs.send(any())).thenReturn(null);
+  when(() => mockWs.sendJson(any())).thenReturn(null);
+  when(
+    () => mockWs.stateStream,
+  ).thenAnswer((_) => Stream.value(WsState.connected));
+  when(
+    () => mockWs.messageStream,
+  ).thenAnswer((_) => const Stream<Map<String, dynamic>>.empty());
+
+  final mockHandler = MockWsMessageHandler();
+  when(() => mockHandler.dispose()).thenReturn(null);
+
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        wsServiceProvider.overrideWithValue(mockWs),
+        wsStateProvider.overrideWith((ref) => Stream.value(WsState.connected)),
+        aiBackendStateProvider.overrideWith((ref) => AiBackendState.connected),
+        wsMessageHandlerProvider.overrideWithValue(mockHandler),
+        conversationListProvider.overrideWith((ref) => Stream.value([])),
+        gatewayListProvider.overrideWith((ref) => Stream.value([])),
+        if (activePage != null)
+          activeNavPageProvider.overrideWith((ref) => activePage),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
+        home: MainLayout(),
+      ),
+    ),
+  );
+
+  await tester.pump(const Duration(seconds: 9));
+  await tester.pump();
 }
