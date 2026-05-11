@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 APP_ID="ai.clawke.app"
