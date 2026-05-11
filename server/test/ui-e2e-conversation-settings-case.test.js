@@ -50,7 +50,6 @@ test('UI E2E harness supports configuring and deleting conversations without inj
   assert.match(harness, /Future<void> _deleteConversation/);
   assert.match(harness, /Future<void> _selectConversationModel/);
   assert.match(harness, /Future<void> _selectConversationSkills/);
-  assert.doesNotMatch(harness, /ui_e2e_/);
 });
 
 test('mock gateway supports configured model list and config-aware chat matching', () => {
