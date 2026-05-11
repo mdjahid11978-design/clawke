@@ -16,6 +16,7 @@ interface GatewayUpdateOptions {
   projectRoot?: string;
   clawkeConfigPath?: string;
   openclawHome?: string;
+  localOnly?: boolean;
   stdout?: WritableLike;
   stderr?: WritableLike;
 }
@@ -101,6 +102,7 @@ function updateHermesGateway(
 function updateOpenClawGateway(
   projectRoot: string,
   openclawHome: string,
+  localOnly: boolean,
   stdout: WritableLike,
   stderr: WritableLike,
 ): boolean {
@@ -114,6 +116,10 @@ function updateOpenClawGateway(
   }
 
   if (!fs.existsSync(openclawConfig)) {
+    if (localOnly) {
+      stdout.write('[clawke] ⚠️ Skipping OpenClaw gateway sync: local OpenClaw install was not found.\n');
+      return true;
+    }
     stderr.write('[clawke] ⚠️ OpenClaw is configured, but local OpenClaw install was not found.\n');
     stderr.write('[clawke] Remote gateway cannot be updated automatically.\n');
     stderr.write(`  scp -r ${sourceDir}/ user@<REMOTE>:~/.openclaw/extensions/clawke/\n`);
@@ -145,6 +151,7 @@ export function runGatewayUpdate(options: GatewayUpdateOptions = {}): number {
   const projectRoot = options.projectRoot || DEFAULT_PROJECT_ROOT;
   const configPath = options.clawkeConfigPath || DEFAULT_CLAWKE_CONFIG;
   const openclawHome = options.openclawHome || DEFAULT_OPENCLAW_HOME;
+  const localOnly = options.localOnly === true;
   const stdout = options.stdout || process.stdout;
   const stderr = options.stderr || process.stderr;
   const config = readConfig(configPath, stderr);
@@ -166,7 +173,7 @@ export function runGatewayUpdate(options: GatewayUpdateOptions = {}): number {
     if (gateway.type === 'hermes') {
       ok = updateHermesGateway(projectRoot, gateway.entry, stdout, stderr);
     } else if (gateway.type === 'openclaw') {
-      ok = updateOpenClawGateway(projectRoot, openclawHome, stdout, stderr);
+      ok = updateOpenClawGateway(projectRoot, openclawHome, localOnly, stdout, stderr);
     } else {
       stdout.write(`[clawke] ⚠️ Skipping unknown gateway type: ${gateway.type}\n`);
     }
