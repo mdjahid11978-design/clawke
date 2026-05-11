@@ -544,7 +544,7 @@ async function main(): Promise<void> {
 
   } else if (command === 'gateway' && subCommand === 'update') {
     const { runGatewayUpdate } = await import('./gateway-updater.js');
-    const result = runGatewayUpdate();
+    const result = runGatewayUpdate({ localOnly: args.includes('--local-only') });
     if (result !== 0) process.exit(result);
 
   // 旧命令别名兼容 — Legacy command aliases

@@ -59,7 +59,70 @@ test('gateway update syncs configured local OpenClaw gateway without restart', a
   assert.doesNotMatch(stdout.text(), /restart/i);
 });
 
-test('gateway update refreshes configured Hermes start_shell to current source', async () => {
+test('gateway update local-only skips configured OpenClaw when local install is missing', async () => {
+  const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
+  const projectRoot = path.join(dir, 'clawke');
+  const configPath = path.join(dir, 'clawke.json');
+  const openclawHome = path.join(dir, '.openclaw');
+  const sourceDir = path.join(projectRoot, 'gateways', 'openclaw', 'clawke');
+  const stdout = makeCapture();
+  const stderr = makeCapture();
+
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'index.ts'), 'export const version = "new";\n');
+  writeJson(configPath, {
+    gateways: {
+      openclaw: [{ id: 'OpenClaw' }],
+    },
+  });
+
+  const code = runGatewayUpdate({
+    projectRoot,
+    clawkeConfigPath: configPath,
+    openclawHome,
+    localOnly: true,
+    stdout: stdout.stream,
+    stderr: stderr.stream,
+  });
+
+  assert.equal(code, 0);
+  assert.match(stdout.text(), /Skipping OpenClaw gateway sync/);
+  assert.doesNotMatch(stderr.text(), /Remote gateway cannot be updated automatically/);
+});
+
+test('gateway update strict mode fails when configured OpenClaw local install is missing', async () => {
+  const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
+  const projectRoot = path.join(dir, 'clawke');
+  const configPath = path.join(dir, 'clawke.json');
+  const openclawHome = path.join(dir, '.openclaw');
+  const sourceDir = path.join(projectRoot, 'gateways', 'openclaw', 'clawke');
+  const stdout = makeCapture();
+  const stderr = makeCapture();
+
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceDir, 'index.ts'), 'export const version = "new";\n');
+  writeJson(configPath, {
+    gateways: {
+      openclaw: [{ id: 'OpenClaw' }],
+    },
+  });
+
+  const code = runGatewayUpdate({
+    projectRoot,
+    clawkeConfigPath: configPath,
+    openclawHome,
+    stdout: stdout.stream,
+    stderr: stderr.stream,
+  });
+
+  assert.equal(code, 1);
+  assert.match(stderr.text(), /Remote gateway cannot be updated automatically/);
+  assert.match(stderr.text(), /Gateway update failed/);
+});
+
+test('gateway update refreshes configured Hermes start_shell in local-only mode', async () => {
   const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
   const projectRoot = path.join(dir, 'clawke');
@@ -79,6 +142,7 @@ test('gateway update refreshes configured Hermes start_shell to current source',
   const code = runGatewayUpdate({
     projectRoot,
     clawkeConfigPath: configPath,
+    localOnly: true,
     stdout: stdout.stream,
     stderr: stderr.stream,
   });
@@ -98,6 +162,7 @@ test('cli exposes gateway update and clawke update calls it after rebuild', () =
   const updateSource = fs.readFileSync(path.join(repoRoot, 'server', 'src', 'cli', 'clawke-update.ts'), 'utf-8');
 
   assert.match(cliSource, /command === 'gateway' && subCommand === 'update'/);
+  assert.match(cliSource, /runGatewayUpdate\(\{ localOnly: args\.includes\('--local-only'\) \}\)/);
   assert.match(updateSource, /runGatewayUpdate\(/);
   assert.match(updateSource, /commitCount === 0[\s\S]*return runGatewayUpdateAfterBuild\(projectRoot/);
   assert.match(updateSource, /Rebuilding server[\s\S]*const gatewayUpdateCode = runGatewayUpdateAfterBuild\(projectRoot/);
