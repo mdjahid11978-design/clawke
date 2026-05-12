@@ -109,6 +109,15 @@ function waitForListening(server: Listenable): Promise<void> {
   });
 }
 
+function printReadyBanner(httpPort: number): void {
+  const freshConfig = loadConfig();
+  printClientInstallBanner({
+    serverAddress: `http://127.0.0.1:${httpPort}`,
+    token: freshConfig.relay?.token || '',
+    configPath: getConfigPath(),
+  });
+}
+
 export async function startClawkeServer() {
   // 日志持久化：所有 console.log/error/warn 自动写入 ~/.clawke/logs/server-YYYY-MM-DD.log
   initLogger();
@@ -517,7 +526,7 @@ export async function startClawkeServer() {
     process.on('SIGTERM', shutdownOC);
     await Promise.all([unifiedReady, mediaReady, upstreamReady]);
     console.log('[Server] ✅ Ready');
-    printClientInstallBanner();
+    printReadyBanner(HTTP_PORT);
     return; // 不走通用 shutdown
   } else {
     console.error(`[Server] Unknown MODE: ${MODE}`);
@@ -550,7 +559,7 @@ export async function startClawkeServer() {
   process.on('SIGTERM', shutdown);
   await Promise.all([unifiedReady, mediaReady]);
   console.log('[Server] ✅ Ready');
-  printClientInstallBanner();
+  printReadyBanner(HTTP_PORT);
 }
 
 function isDirectRun(entryPath: string | undefined): boolean {
