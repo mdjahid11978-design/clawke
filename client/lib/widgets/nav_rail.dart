@@ -262,65 +262,66 @@ class _NavItem extends StatelessWidget {
     return Tooltip(
       message: isExpanded ? '' : label,
       waitDuration: const Duration(milliseconds: 500),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: SizedBox(
+        width: double.infinity,
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
           child: InkWell(
-            borderRadius: BorderRadius.circular(6),
             onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              height: 38,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
-                color: isActive
-                    ? colorScheme.primary.withValues(alpha: 0.12)
-                    : Colors.transparent,
-              ),
-              padding: EdgeInsets.symmetric(horizontal: isExpanded ? 10 : 0),
-              child: Row(
-                mainAxisAlignment: isExpanded
-                    ? MainAxisAlignment.start
-                    : MainAxisAlignment.center,
-                children: [
-                  UnreadBadgeIcon(
-                    icon: icon,
-                    count: badgeCount,
-                    semanticsLabel: '$label未读消息 $badgeCount',
-                    badgeKey: ValueKey(
-                      'ui_e2e_nav_unread_${label}_$badgeCount',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  color: isActive
+                      ? colorScheme.primary.withValues(alpha: 0.12)
+                      : Colors.transparent,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: isExpanded ? 10 : 0),
+                child: Row(
+                  mainAxisAlignment: isExpanded
+                      ? MainAxisAlignment.start
+                      : MainAxisAlignment.center,
+                  children: [
+                    UnreadBadgeIcon(
+                      icon: icon,
+                      count: badgeCount,
+                      semanticsLabel: '$label未读消息 $badgeCount',
+                      badgeKey: ValueKey(
+                        'ui_e2e_nav_unread_${label}_$badgeCount',
+                      ),
+                      iconColor: isActive
+                          ? colorScheme.primary
+                          : colorScheme.onSurfaceVariant,
+                      badgeBackgroundColor: colorScheme.error,
+                      badgeForegroundColor: colorScheme.onError,
                     ),
-                    iconColor: isActive
-                        ? colorScheme.primary
-                        : colorScheme.onSurfaceVariant,
-                    badgeBackgroundColor: colorScheme.error,
-                    badgeForegroundColor: colorScheme.onError,
-                  ),
-                  if (isExpanded) ...[
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 150),
-                        opacity: isExpanded ? 1.0 : 0.0,
-                        child: Text(
-                          label,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: Theme.of(
-                              context,
-                            ).textTheme.labelSmall!.fontSize,
-                            fontWeight: FontWeight.w500,
-                            color: isActive
-                                ? colorScheme.primary
-                                : colorScheme.onSurfaceVariant,
+                    if (isExpanded) ...[
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: isExpanded ? 1.0 : 0.0,
+                          child: Text(
+                            label,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: Theme.of(
+                                context,
+                              ).textTheme.labelSmall!.fontSize,
+                              fontWeight: FontWeight.w500,
+                              color: isActive
+                                  ? colorScheme.primary
+                                  : colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

@@ -69,6 +69,50 @@ void main() {
     },
   );
 
+  testWidgets('desktop nav switches from dashboard back to chat page', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: _mainLayoutOverrides(activePage: NavPage.dashboard),
+    );
+
+    await _pumpMainLayoutWithContainer(
+      tester,
+      size: const Size(1280, 800),
+      container: container,
+    );
+
+    expect(container.read(activeNavPageProvider), NavPage.dashboard);
+    expect(find.text('暂无已连接 Gateway'), findsOneWidget);
+
+    await tester.tap(find.text('会话'));
+    await tester.pump();
+
+    expect(container.read(activeNavPageProvider), NavPage.chat);
+    expect(find.text('选择一个会话开始聊天'), findsOneWidget);
+  });
+
+  testWidgets('desktop chat nav item accepts clicks across the full rail row', (
+    tester,
+  ) async {
+    final container = ProviderContainer(
+      overrides: _mainLayoutOverrides(activePage: NavPage.dashboard),
+    );
+
+    await _pumpMainLayoutWithContainer(
+      tester,
+      size: const Size(1280, 800),
+      container: container,
+    );
+
+    expect(container.read(activeNavPageProvider), NavPage.dashboard);
+
+    await tester.tapAt(const Offset(92, 82));
+    await tester.pump();
+
+    expect(container.read(activeNavPageProvider), NavPage.chat);
+  });
+
   testWidgets('does not show global gateway disconnected alert', (
     tester,
   ) async {
@@ -198,6 +242,47 @@ Future<void> _pumpMainLayout(
   NavPage? activePage,
 }) async {
   SharedPreferences.setMockInitialValues({});
+  await _pumpMainLayoutWithContainer(
+    tester,
+    size: size,
+    container: ProviderContainer(
+      overrides: _mainLayoutOverrides(activePage: activePage),
+    ),
+  );
+}
+
+Future<void> _pumpMainLayoutWithContainer(
+  WidgetTester tester, {
+  required Size size,
+  required ProviderContainer container,
+}) async {
+  SharedPreferences.setMockInitialValues({});
+  addTearDown(container.dispose);
+
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
+        home: MainLayout(),
+      ),
+    ),
+  );
+
+  await tester.pump(const Duration(seconds: 9));
+  await tester.pump();
+}
+
+List<Override> _mainLayoutOverrides({NavPage? activePage}) {
   final mockWs = MockWsService();
   when(() => mockWs.connect()).thenAnswer((_) async {});
   when(() => mockWs.state).thenReturn(WsState.connected);
@@ -216,37 +301,17 @@ Future<void> _pumpMainLayout(
   final mockHandler = MockWsMessageHandler();
   when(() => mockHandler.dispose()).thenReturn(null);
 
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1.0;
-  addTearDown(() {
-    tester.view.resetPhysicalSize();
-    tester.view.resetDevicePixelRatio();
-  });
-
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        wsServiceProvider.overrideWithValue(mockWs),
-        wsStateProvider.overrideWith((ref) => Stream.value(WsState.connected)),
-        aiBackendStateProvider.overrideWith((ref) => AiBackendState.connected),
-        wsMessageHandlerProvider.overrideWithValue(mockHandler),
-        conversationListProvider.overrideWith((ref) => Stream.value([])),
-        gatewayListProvider.overrideWith((ref) => Stream.value([])),
-        gatewayRepositoryProvider.overrideWithValue(_FakeGatewayRepository()),
-        if (activePage != null)
-          activeNavPageProvider.overrideWith((ref) => activePage),
-      ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('zh'),
-        home: MainLayout(),
-      ),
-    ),
-  );
-
-  await tester.pump(const Duration(seconds: 9));
-  await tester.pump();
+  return [
+    wsServiceProvider.overrideWithValue(mockWs),
+    wsStateProvider.overrideWith((ref) => Stream.value(WsState.connected)),
+    aiBackendStateProvider.overrideWith((ref) => AiBackendState.connected),
+    wsMessageHandlerProvider.overrideWithValue(mockHandler),
+    conversationListProvider.overrideWith((ref) => Stream.value([])),
+    gatewayListProvider.overrideWith((ref) => Stream.value([])),
+    gatewayRepositoryProvider.overrideWithValue(_FakeGatewayRepository()),
+    if (activePage != null)
+      activeNavPageProvider.overrideWith((ref) => activePage),
+  ];
 }
 
 class _FakeGatewayRepository implements GatewayRepository {
