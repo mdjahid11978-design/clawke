@@ -1,8 +1,11 @@
 import 'package:client/screens/main_layout.dart';
 import 'package:client/core/ws_service.dart';
+import 'package:client/data/repositories/gateway_repository.dart';
 import 'package:client/l10n/app_localizations.dart';
+import 'package:client/models/gateway_info.dart';
 import 'package:client/providers/chat_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
+import 'package:client/providers/database_providers.dart';
 import 'package:client/providers/gateway_provider.dart';
 import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/providers/ws_state_provider.dart';
@@ -50,7 +53,7 @@ void main() {
   );
 
   testWidgets(
-    'desktop active dashboard shows only the dashboard loading spinner',
+    'desktop active dashboard shows dashboard management empty state',
     (tester) async {
       await _pumpMainLayout(
         tester,
@@ -60,8 +63,9 @@ void main() {
 
       expect(
         find.byType(CircularProgressIndicator, skipOffstage: false),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.text('暂无已连接 Gateway'), findsOneWidget);
     },
   );
 
@@ -228,6 +232,7 @@ Future<void> _pumpMainLayout(
         wsMessageHandlerProvider.overrideWithValue(mockHandler),
         conversationListProvider.overrideWith((ref) => Stream.value([])),
         gatewayListProvider.overrideWith((ref) => Stream.value([])),
+        gatewayRepositoryProvider.overrideWithValue(_FakeGatewayRepository()),
         if (activePage != null)
           activeNavPageProvider.overrideWith((ref) => activePage),
       ],
@@ -242,4 +247,27 @@ Future<void> _pumpMainLayout(
 
   await tester.pump(const Duration(seconds: 9));
   await tester.pump();
+}
+
+class _FakeGatewayRepository implements GatewayRepository {
+  @override
+  Stream<List<GatewayInfo>> watchAll() => Stream.value(const []);
+
+  @override
+  Stream<List<GatewayInfo>> watchOnline() => Stream.value(const []);
+
+  @override
+  Future<List<GatewayInfo>> getOnlineGateways() async => const [];
+
+  @override
+  Future<void> syncFromServer() async {}
+
+  @override
+  Future<void> markOnline(GatewayInfo gateway) async {}
+
+  @override
+  Future<void> markOffline(String gatewayId) async {}
+
+  @override
+  Future<void> renameGateway(String gatewayId, String displayName) async {}
 }

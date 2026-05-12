@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:client/screens/settings_screen.dart';
 import 'package:client/providers/auth_provider.dart';
-import 'package:client/providers/chat_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
 import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/core/env_config.dart';
@@ -101,7 +100,6 @@ class _NavRailState extends ConsumerState<NavRail> {
                 onTap: () {
                   ref.read(activeNavPageProvider.notifier).state =
                       NavPage.dashboard;
-                  ref.read(wsMessageHandlerProvider).requestDashboard();
                 },
               ),
               const SizedBox(height: 2),

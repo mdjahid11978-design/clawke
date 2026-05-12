@@ -42,6 +42,7 @@ import { CronService } from './services/cron-service.js';
 import { initLogger } from './logger.js';
 import { initSkillsRoutes } from './routes/skills-routes.js';
 import { initGatewayRoutes } from './routes/gateway-routes.js';
+import { initDashboardRoutes } from './routes/dashboard-routes.js';
 import { GatewayStore } from './store/gateway-store.js';
 import { GatewayModelCacheStore } from './store/gateway-model-cache-store.js';
 import { SkillTranslationStore } from './store/skill-translation-store.js';
@@ -238,6 +239,9 @@ export async function startClawkeServer() {
 
   // ━━━ Service 层 ━━━
   const statsCollector = new StatsCollector(DATA_DIR);
+  initDashboardRoutes({
+    getUsageDashboard: (gatewayId?: string) => statsCollector.getUsageDashboard(gatewayId),
+  });
   const configDir = path.join(serverDir, 'config');
   const versionChecker = new VersionChecker(configDir);
   versionChecker.startPeriodicCheck();
