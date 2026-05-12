@@ -505,7 +505,7 @@ describe('TS: MessageRouter', () => {
     const broadcasted = [];
     const stats = {
       recorded: { tokens: [], tools: [], messages: 0, conversations: 0 },
-      recordTokens(i, o, c) { this.recorded.tokens.push({ i, o, c }); },
+      recordTokens(i, o, c, options) { this.recorded.tokens.push({ i, o, c, options }); },
       recordToolCall(n, d) { this.recorded.tools.push({ n, d }); },
       recordMessage() { this.recorded.messages++; },
       recordConversation() { this.recorded.conversations++; },
@@ -550,6 +550,8 @@ describe('TS: MessageRouter', () => {
     assert.equal(stats.recorded.tokens.length, 1);
     assert.equal(stats.recorded.tokens[0].i, 500);
     assert.equal(stats.recorded.tokens[0].o, 100);
+    assert.equal(stats.recorded.tokens[0].options.gatewayId, 'acc1');
+    assert.equal(stats.recorded.tokens[0].options.conversationId, 'acc1');
     db.close();
   });
 
@@ -715,6 +717,33 @@ describe('TS: StatsCollector', () => {
     // Verify stats grid exists
     const statsGrid = dashboard.props.sections.find(s => s.type === 'stats_grid');
     assert.ok(statsGrid, 'stats_grid section exists');
+  });
+
+  it('recordTokens tracks gateway usage dashboard', () => {
+    const stats = new StatsCollector('/tmp/clawke-test-stats-' + Date.now());
+    stats.recordTokens(100, 50, 20, {
+      gatewayId: 'hermes',
+      conversationId: 'conv_1',
+      model: 'claude-sonnet',
+      provider: 'anthropic',
+      cacheWrite: 5,
+      reasoning: 7,
+    });
+
+    const usage = stats.getUsageDashboard('hermes');
+    assert.equal(usage.gateway_id, 'hermes');
+    assert.deepEqual(usage.summary, {
+      input: 100,
+      output: 50,
+      cacheRead: 20,
+      cacheWrite: 5,
+      reasoning: 7,
+      total: 150,
+    });
+    assert.equal(usage.models.length, 1);
+    assert.equal(usage.models[0].model, 'claude-sonnet');
+    assert.equal(usage.models[0].provider, 'anthropic');
+    assert.equal(usage.recent[0].conversation_id, 'conv_1');
   });
 
   it('populateMockData fills all sections', () => {

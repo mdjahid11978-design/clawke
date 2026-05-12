@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:client/screens/conversation_list_screen.dart';
 import 'package:client/screens/chat_screen.dart';
+import 'package:client/screens/dashboard_management_screen.dart';
 import 'package:client/screens/profile_screen.dart';
 import 'package:client/screens/skills_management_screen.dart';
 import 'package:client/screens/tasks_management_screen.dart';
@@ -445,7 +446,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   Widget _buildMobileLayout(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = context.l10n;
-    final sduiCache = ref.watch(sduiPageCacheProvider);
     final debugLogEnabled = ref.watch(debugLogEnabledProvider);
     final unreadCount = ref.watch(totalUnseenCountProvider);
 
@@ -466,12 +466,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                   // 1: 仪表盘
                   buildIndexedChild(
                     isActive: _mobileTabIndex == 1,
-                    child: _buildMobileDashboard(
-                      context,
-                      sduiCache,
-                      colorScheme,
-                      isActive: _mobileTabIndex == 1,
-                    ),
+                    child: const DashboardManagementScreen(showAppBar: true),
                   ),
                   // 2: 任务管理
                   buildLazyIndexedChild(
@@ -500,10 +495,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         currentIndex: _mobileTabIndex,
         onTap: (index) {
           setState(() => _mobileTabIndex = index);
-          // 切到仪表盘时请求 SDUI 数据
-          if (index == 1) {
-            ref.read(wsMessageHandlerProvider).requestDashboard();
-          }
         },
         type: BottomNavigationBarType.fixed,
         backgroundColor: colorScheme.surface,
@@ -561,29 +552,6 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
             label: l10n.navProfile,
           ),
         ],
-      ),
-    );
-  }
-
-  /// 移动端仪表盘：AppBar + SDUI 内容
-  Widget _buildMobileDashboard(
-    BuildContext context,
-    Map<NavPage, dynamic> sduiCache,
-    ColorScheme colorScheme, {
-    required bool isActive,
-  }) {
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      appBar: AppBar(
-        title: Text(context.l10n.navDashboard),
-        backgroundColor: colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
-      ),
-      body: _buildSduiPage(
-        NavPage.dashboard,
-        sduiCache,
-        colorScheme,
-        isActive: isActive,
       ),
     );
   }
@@ -708,14 +676,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                         ),
                       ),
                       // 1: 仪表盘
-                      buildIndexedChild(
+                      buildLazyIndexedChild(
                         isActive: activePage == NavPage.dashboard,
-                        child: _buildSduiPage(
-                          NavPage.dashboard,
-                          sduiCache,
-                          colorScheme,
-                          isActive: activePage == NavPage.dashboard,
-                        ),
+                        child: const DashboardManagementScreen(),
                       ),
                       // 2: 任务管理
                       buildLazyIndexedChild(
