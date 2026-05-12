@@ -23,16 +23,22 @@ function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 }
 
-test('gateway update syncs configured local OpenClaw gateway without restart', async () => {
+test('gateway update syncs configured local OpenClaw gateway and restarts it', async () => {
   const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
   const projectRoot = path.join(dir, 'clawke');
+  const clawkeHome = path.join(dir, '.clawke');
   const configPath = path.join(dir, 'clawke.json');
   const openclawHome = path.join(dir, '.openclaw');
   const sourceDir = path.join(projectRoot, 'gateways', 'openclaw', 'clawke');
   const targetDir = path.join(openclawHome, 'extensions', 'clawke');
   const stdout = makeCapture();
   const stderr = makeCapture();
+  const restartCommands = [];
+  const spawnSyncProcess = (command) => {
+    restartCommands.push(command);
+    return { status: 0 };
+  };
 
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.writeFileSync(path.join(sourceDir, 'index.ts'), 'export const version = "new";\n');
@@ -47,8 +53,10 @@ test('gateway update syncs configured local OpenClaw gateway without restart', a
 
   const code = runGatewayUpdate({
     projectRoot,
+    clawkeHome,
     clawkeConfigPath: configPath,
     openclawHome,
+    spawnSyncProcess,
     stdout: stdout.stream,
     stderr: stderr.stream,
   });
@@ -56,7 +64,9 @@ test('gateway update syncs configured local OpenClaw gateway without restart', a
   assert.equal(code, 0);
   assert.equal(fs.readFileSync(path.join(targetDir, 'index.ts'), 'utf-8'), 'export const version = "new";\n');
   assert.equal(fs.existsSync(path.join(targetDir, 'stale.txt')), false);
-  assert.doesNotMatch(stdout.text(), /restart/i);
+  assert.deepEqual(restartCommands, ['which openclaw', 'openclaw gateway restart']);
+  assert.match(stdout.text(), /Restarting OpenClaw gateway/);
+  assert.match(stdout.text(), /OpenClaw gateway restarted/);
 });
 
 test('gateway update local-only skips configured OpenClaw when local install is missing', async () => {
@@ -82,6 +92,9 @@ test('gateway update local-only skips configured OpenClaw when local install is 
     clawkeConfigPath: configPath,
     openclawHome,
     localOnly: true,
+    spawnSyncProcess() {
+      throw new Error('spawnSync should not be called');
+    },
     stdout: stdout.stream,
     stderr: stderr.stream,
   });
@@ -113,6 +126,9 @@ test('gateway update strict mode fails when configured OpenClaw local install is
     projectRoot,
     clawkeConfigPath: configPath,
     openclawHome,
+    spawnSyncProcess() {
+      throw new Error('spawnSync should not be called');
+    },
     stdout: stdout.stream,
     stderr: stderr.stream,
   });
@@ -126,6 +142,7 @@ test('gateway update refreshes configured Hermes start_shell in local-only mode'
   const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
   const projectRoot = path.join(dir, 'clawke');
+  const clawkeHome = path.join(dir, '.clawke');
   const configPath = path.join(dir, 'clawke.json');
   const hermesSourceDir = path.join(projectRoot, 'gateways', 'hermes', 'clawke');
   const stdout = makeCapture();
@@ -141,8 +158,12 @@ test('gateway update refreshes configured Hermes start_shell in local-only mode'
 
   const code = runGatewayUpdate({
     projectRoot,
+    clawkeHome,
     clawkeConfigPath: configPath,
     localOnly: true,
+    spawnProcess() {
+      throw new Error('spawn should not be called');
+    },
     stdout: stdout.stream,
     stderr: stderr.stream,
   });
@@ -154,6 +175,57 @@ test('gateway update refreshes configured Hermes start_shell in local-only mode'
     `/opt/hermes/bin/python ${path.join(hermesSourceDir, 'run.py')}`,
   );
   assert.match(stdout.text(), /hermes gateway uses in-place source/);
+  assert.match(stdout.text(), /Hermes gateway updated\. Next `clawke server start` will load it/);
+});
+
+test('gateway update restarts Clawke Server when Hermes is updated and server is running', async () => {
+  const { runGatewayUpdate } = await import('../dist/cli/gateway-updater.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'clawke-gateway-update-'));
+  const projectRoot = path.join(dir, 'clawke');
+  const clawkeHome = path.join(dir, '.clawke');
+  const configPath = path.join(dir, 'clawke.json');
+  const hermesSourceDir = path.join(projectRoot, 'gateways', 'hermes', 'clawke');
+  const cliPath = path.join(projectRoot, 'server', 'dist', 'cli', 'clawke.js');
+  const stdout = makeCapture();
+  const stderr = makeCapture();
+  const spawnCalls = [];
+  const spawnProcess = (command, args, options) => {
+    spawnCalls.push({ command, args, options, unrefed: false });
+    return {
+      unref() {
+        spawnCalls[0].unrefed = true;
+      },
+    };
+  };
+
+  fs.mkdirSync(hermesSourceDir, { recursive: true });
+  fs.writeFileSync(path.join(hermesSourceDir, 'run.py'), 'print("gateway")\n');
+  fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+  fs.writeFileSync(cliPath, '#!/usr/bin/env node\n');
+  fs.mkdirSync(clawkeHome, { recursive: true });
+  fs.writeFileSync(path.join(clawkeHome, 'server.pid'), String(process.pid));
+  writeJson(configPath, {
+    gateways: {
+      hermes: [{ id: 'hermes', start_shell: '/opt/hermes/bin/python /old/clawke/run.py' }],
+    },
+  });
+
+  const code = runGatewayUpdate({
+    projectRoot,
+    clawkeHome,
+    clawkeConfigPath: configPath,
+    spawnProcess,
+    stdout: stdout.stream,
+    stderr: stderr.stream,
+  });
+
+  assert.equal(code, 0);
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, process.execPath);
+  assert.deepEqual(spawnCalls[0].args, [cliPath, 'server', 'restart']);
+  assert.equal(spawnCalls[0].options.detached, true);
+  assert.equal(spawnCalls[0].unrefed, true);
+  assert.match(stdout.text(), /Restarting Clawke Server to reload the updated Hermes gateway/);
 });
 
 test('cli exposes gateway update and clawke update calls it after rebuild', () => {
