@@ -703,6 +703,69 @@ describe('TS: VersionChecker', () => {
     assert.equal(VersionChecker.matchDownloadUrl(assets, 'linux', 'x64'), 'https://dl/linux');
     assert.equal(VersionChecker.matchDownloadUrl(assets, 'windows', 'x64'), null);
   });
+
+  it('fetchLatestRelease defaults to the Clawke release API and logs failed URL', async () => {
+    const originalFetch = global.fetch;
+    const originalError = console.error;
+    const originalOwner = process.env.GITHUB_OWNER;
+    const originalRepo = process.env.GITHUB_REPO;
+    let requestedUrl = '';
+    let loggedError = '';
+
+    try {
+      delete process.env.GITHUB_OWNER;
+      delete process.env.GITHUB_REPO;
+      global.fetch = async (url) => {
+        requestedUrl = String(url);
+        throw new Error('network down');
+      };
+      console.error = (message) => {
+        loggedError = String(message);
+      };
+
+      const release = await new VersionChecker().fetchLatestRelease();
+
+      assert.equal(release, null);
+      assert.equal(requestedUrl, 'https://api.github.com/repos/clawke/clawke/releases/latest');
+      assert.match(loggedError, /Failed to fetch https:\/\/api\.github\.com\/repos\/clawke\/clawke\/releases\/latest: network down/);
+    } finally {
+      global.fetch = originalFetch;
+      console.error = originalError;
+      if (originalOwner === undefined) delete process.env.GITHUB_OWNER;
+      else process.env.GITHUB_OWNER = originalOwner;
+      if (originalRepo === undefined) delete process.env.GITHUB_REPO;
+      else process.env.GITHUB_REPO = originalRepo;
+    }
+  });
+
+  it('startPeriodicCheck skips fetching when auto update is disabled', () => {
+    const originalDisable = process.env.DISABLE_AUTO_UPDATE;
+    const originalLog = console.log;
+    let fetchCalls = 0;
+    let loggedMessage = '';
+    const checker = new VersionChecker(undefined, 1);
+    checker.fetchLatestRelease = async () => {
+      fetchCalls += 1;
+      return null;
+    };
+
+    try {
+      process.env.DISABLE_AUTO_UPDATE = 'true';
+      console.log = (message) => {
+        loggedMessage = String(message);
+      };
+
+      checker.startPeriodicCheck();
+
+      assert.equal(fetchCalls, 0);
+      assert.match(loggedMessage, /Auto update check disabled/);
+    } finally {
+      if (checker.checkTimer) clearInterval(checker.checkTimer);
+      console.log = originalLog;
+      if (originalDisable === undefined) delete process.env.DISABLE_AUTO_UPDATE;
+      else process.env.DISABLE_AUTO_UPDATE = originalDisable;
+    }
+  });
 });
 
 describe('TS: StatsCollector', () => {
