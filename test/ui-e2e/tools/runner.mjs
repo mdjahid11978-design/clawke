@@ -763,6 +763,7 @@ async function main() {
 
     const flutterArgs = [
       'test',
+      ...(args['no-pub'] ? ['--no-pub'] : []),
       'integration_test/ui_e2e_app_test.dart',
       '-d',
       'macos',

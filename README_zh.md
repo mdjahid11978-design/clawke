@@ -134,6 +134,11 @@ clawke/
 ## 版本演进
 
 <!-- README_CHANGELOG_START -->
+### v1.1.31 (2026-05-12)
+
+**[新功能]** 新增 Gateway 使用情况可视化、Gateway 更新自动重启和本地 Server 连接提示。
+**[问题修复]** 修复 OpenClaw Gateway 配置合并，优化 GatewayClient 指引，并加固 Server PID 生命周期校验。
+
 ### v1.1.30 (2026-05-11)
 
 **[问题修复]** 稳定 OpenClaw Gateway 集成和 UI E2E 回归校验。

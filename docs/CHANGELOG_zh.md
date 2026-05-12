@@ -4,6 +4,17 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.31 (2026-05-12)
+
+**[新功能]** Gateway 使用情况可视化与更新自动化。
+- 新增 Gateway 使用情况面板，便于查看已连接 Gateway 的活动状态。
+- 新增 Gateway 更新后的自动重启处理，并补充本地 Server 连接提示。
+
+**[问题修复]** OpenClaw Gateway 配置与运行指引。
+- 修复 OpenClaw Gateway 更新配置合并问题。
+- 优化 GatewayClient 错误指引和 Server PID 生命周期保护。
+- 让发布版本校验可配置，并改进安装脚本的 TTY 处理。
+
 ## v1.1.30 (2026-05-11)
 
 **[问题修复]** OpenClaw Gateway 与 UI 回归稳定性。

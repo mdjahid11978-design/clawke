@@ -135,6 +135,11 @@ clawke/
 ## Changelog
 
 <!-- README_CHANGELOG_START -->
+### v1.1.31 (2026-05-12)
+
+**[New Feature]** Added gateway usage visibility, automatic gateway restart handling, and clearer local server connection hints.
+**[Bug Fix]** Fixed OpenClaw gateway config merging, improved GatewayClient guidance, and hardened server PID lifecycle checks.
+
 ### v1.1.30 (2026-05-11)
 
 **[Bug Fix]** Stabilized OpenClaw gateway integration and UI E2E regression checks.

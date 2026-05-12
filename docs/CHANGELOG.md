@@ -4,6 +4,17 @@
 
 <!-- CHANGELOG_START -->
 
+## v1.1.31 (2026-05-12)
+
+**[New Feature]** Gateway usage visibility and update automation.
+- Added a gateway usage dashboard so connected gateway activity is easier to inspect.
+- Added automatic restart handling for updated gateways and clearer local server connection hints.
+
+**[Bug Fix]** OpenClaw gateway configuration and runtime guidance.
+- Fixed OpenClaw gateway update configuration merging.
+- Improved GatewayClient error guidance and server PID lifecycle safeguards.
+- Made release version checks configurable and improved install script TTY handling.
+
 ## v1.1.30 (2026-05-11)
 
 **[Bug Fix]** OpenClaw gateway and UI regression stability.
