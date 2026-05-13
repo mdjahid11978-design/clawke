@@ -47,7 +47,7 @@ Manage OpenClaw, Hermes, Codex and Claude Code from your phone or desktop.
 
 ## Step 1: Install Clawke Server
 
-### Quick Install
+### Quick Install (Recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash

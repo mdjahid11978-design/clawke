@@ -47,7 +47,7 @@ AI Agent 原生移动工作空间
 
 ## 步骤 1：安装 Clawke Server
 
-### 快速安装
+### 快速安装（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/clawke/clawke/main/scripts/install.sh | bash
