@@ -25,6 +25,15 @@ class AuthService {
   static const _kRelayJsonKey = 'clawke_relay_credentials';
   static const _kLoggedOutKey = 'clawke_logged_out';
   static const _kKnownAccountsKey = 'clawke_known_accounts';
+  static Future<RelayCredentials> Function()?
+  _relayCredentialsFetcherForTesting;
+
+  @visibleForTesting
+  static void setRelayCredentialsFetcherForTesting(
+    Future<RelayCredentials> Function()? fetcher,
+  ) {
+    _relayCredentialsFetcherForTesting = fetcher;
+  }
 
   static bool get supportsGoogleSignIn {
     if (kIsWeb) return true;
@@ -462,6 +471,13 @@ class AuthService {
   /// 返回 token + subdomain + relayServer，拼接为 relayUrl。
   static Future<RelayCredentials> fetchRelayCredentials() async {
     debugPrint('[Auth] Fetching relay credentials');
+
+    final testingFetcher = _relayCredentialsFetcherForTesting;
+    if (testingFetcher != null) {
+      final relay = await testingFetcher();
+      await _persistRelay(relay);
+      return relay;
+    }
 
     final result = await HttpUtil.doPost('/clawke/relay/credentials.json');
     final relay = RelayCredentials.fromJson(

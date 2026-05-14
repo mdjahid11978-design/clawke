@@ -39,8 +39,7 @@ Manage OpenClaw, Hermes, Codex and Claude Code from your phone or desktop.
 ## Features
 
 - **Cross-device collaboration** — Supports Mac, Windows, Linux, iOS, and Android, so you can keep working wherever you go
-- **CUP Protocol** — Streaming AI responses with thinking blocks, tool calls, and usage tracking
-- **SDUI** — Server-driven UI: dashboards, forms, dialogs rendered from server instructions
+- **Remote agent workspace** — Run OpenClaw or Hermes on a cloud server, Mac mini, or home machine, then control it from Clawke on desktop or mobile
 - **Multi-agent management** — Manage OpenClaw, Hermes, Nanobot, and other AI agents at the same time
 - **Media** — Image/PDF/text file upload and inline rendering
 - **Relay** — Built-in tunnel for remote access without port forwarding

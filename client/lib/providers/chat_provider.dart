@@ -15,11 +15,15 @@ import 'package:client/core/ws_service.dart';
 import 'package:client/data/repositories/message_repository.dart' show deviceId;
 import 'package:client/providers/ws_state_provider.dart';
 import 'package:client/providers/database_providers.dart';
+import 'package:client/providers/auth_provider.dart';
 import 'package:client/providers/chat_limit_provider.dart';
 import 'package:client/providers/conversation_provider.dart';
+import 'package:client/providers/server_host_provider.dart';
 import 'package:client/providers/nav_page_provider.dart';
 import 'package:client/providers/locale_provider.dart';
 import 'package:client/providers/app_version_provider.dart';
+import 'package:client/services/auth_service.dart';
+import 'package:client/services/media_resolver.dart';
 import 'package:client/l10n/app_localizations.dart';
 import 'package:client/upgrade/upgrade_handler.dart';
 import 'package:client/upgrade/update_policy.dart';
@@ -118,6 +122,8 @@ class WsMessageHandler with WidgetsBindingObserver {
   /// 当前流式消息关联的 conversationId
   String? _streamingConversationId;
 
+  Future<bool>? _relayCredentialRefresh;
+
   // ── 流式 debounce 缓冲 ──────────────────────────
   // 累积 delta 到缓冲区，定时刷新到 provider，减少 GptMarkdown 重建次数
   Timer? _textFlushTimer;
@@ -141,6 +147,10 @@ class WsMessageHandler with WidgetsBindingObserver {
 
     // 设置重连回调
     _ws.onConnected = _onConnected;
+
+    // 设置认证恢复回调：刷新 relay 凭证后重连
+    // Set auth recovery callback: refresh relay credentials before reconnect.
+    _ws.onAuthRecoveryRequired = _refreshRelayCredentialsForWs;
 
     // 设置认证失败回调（token 被拒 → 弹窗提示重新登录）
     _ws.onAuthFailed = () {
@@ -166,6 +176,55 @@ class WsMessageHandler with WidgetsBindingObserver {
         // WS 已断，触发重连（重连成功后 onReconnected 会自动 sync）
         _ws.reconnect();
       }
+    }
+  }
+
+  Future<bool> _refreshRelayCredentialsForWs() {
+    final current = _relayCredentialRefresh;
+    if (current != null) return current;
+
+    final refresh = _refreshRelayCredentialsForWsOnce();
+    _relayCredentialRefresh = refresh;
+    refresh.whenComplete(() {
+      if (identical(_relayCredentialRefresh, refresh)) {
+        _relayCredentialRefresh = null;
+      }
+    });
+    return refresh;
+  }
+
+  Future<bool> _refreshRelayCredentialsForWsOnce() async {
+    try {
+      debugPrint('[WsMessageHandler] 🔄 Refreshing relay credentials');
+      final relay = await AuthService.fetchRelayCredentials();
+      final relayUrl = relay.relayUrl.trim();
+      final token = relay.token.trim();
+      if (relayUrl.isEmpty || token.isEmpty) {
+        debugPrint('[WsMessageHandler] ❌ Empty relay credentials from server');
+        return false;
+      }
+
+      _ref.read(relayCredentialsProvider.notifier).state = relay;
+      final configNotifier = _ref.read(serverConfigProvider.notifier);
+      await configNotifier.setServerAddress(relayUrl);
+      await configNotifier.setToken(token);
+
+      final updated = _ref.read(serverConfigProvider);
+      WsService.setUrl(updated.wsUrl);
+      WsService.setToken(updated.token);
+      MediaResolver.setBaseUrl(updated.httpUrl);
+      MediaResolver.setToken(updated.token);
+      _ref.read(authFailedProvider.notifier).state = false;
+
+      debugPrint(
+        '[WsMessageHandler] ✅ Relay credentials refreshed: ${updated.wsUrl}',
+      );
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[WsMessageHandler] ❌ Failed to refresh relay credentials: $e',
+      );
+      return false;
     }
   }
 

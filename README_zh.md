@@ -39,8 +39,7 @@ AI Agent 原生移动工作空间
 ## 功能特性
 
 - **多端协同** — 同时支持 Mac、Windows、Linux、iOS、Android，无论走到哪里都可以继续工作
-- **CUP 协议** — AI 流式响应，支持思考块、工具调用和用量统计
-- **SDUI** — 服务端驱动 UI：仪表盘、表单、对话框由服务端指令渲染
+- **远程 Agent 工作空间** — OpenClaw、Hermes 可以运行在云服务器、Mac mini 或家用主机上，Clawke 客户端可在电脑和手机上远程连接、管理和操作
 - **多 Agent 管理** — 可同时管理 OpenClaw、Hermes、Nanobot 等 AI Agent
 - **媒体** — 图片/PDF/文本文件上传与内联渲染
 - **Relay** — 内置隧道，无需端口转发即可远程访问
