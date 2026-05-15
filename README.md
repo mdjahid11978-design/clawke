@@ -110,7 +110,7 @@ flutter build macos  # Or: ios, apk, windows, linux
 Have questions or want to discuss Clawke? Scan the QR code below to join the Clawke WeChat discussion group.
 
 <p align="center">
-  <img src=".github/wechat-group.jpg" width="320" alt="Clawke WeChat discussion group QR code" />
+  <img src=".github/wechat-group.jpg" width="280" alt="Clawke WeChat discussion group QR code" />
 </p>
 
 ## Project Structure

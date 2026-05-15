@@ -109,7 +109,7 @@ flutter build macos  # 也可以是 ios, apk, windows, linux
 有问题或想交流使用经验，可以扫码加入 Clawke 微信交流群讨论。
 
 <p align="center">
-  <img src=".github/wechat-group.jpg" width="320" alt="Clawke 微信交流群二维码" />
+  <img src=".github/wechat-group.jpg" width="280" alt="Clawke 微信交流群二维码" />
 </p>
 
 ## 项目结构
